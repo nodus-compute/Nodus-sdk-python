@@ -15,10 +15,10 @@ with nodus.Client() as client:
 ## Install
 
 ```bash
-pip install nodus-run
+pip install nodus_compute
 ```
 
-The distribution is `nodus-run`; the import is `nodus` — the same split as
+The distribution is `nodus_compute`; the import is `nodus` — the same split as
 `pip install scikit-learn` and `import sklearn`.
 
 ## Point it at your account

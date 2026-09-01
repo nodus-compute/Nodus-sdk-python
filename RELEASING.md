@@ -8,9 +8,9 @@
 2. **Turn on two-factor auth.** PyPI requires it for anyone who uploads.
 3. **Add a Trusted Publisher** so no API token ever exists to leak. On PyPI:
    *Your projects → Publishing → Add a new pending publisher*
-   - PyPI project name: `nodus-run`
-   - Owner: `nodus-run`
-   - Repository: `nodus-sdk-python`
+   - PyPI project name: `nodus_compute`
+   - Owner: `nodus_compute`
+   - Repository: `Nodus-sdk-python`
    - Workflow: `publish.yml`
    - Environment: `pypi`
 4. **Create the `pypi` environment** in the GitHub repo

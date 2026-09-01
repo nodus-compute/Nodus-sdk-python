@@ -3,7 +3,7 @@ requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "nodus-run"
+name = "nodus_compute"
 version = "0.1.0"
 description = "Python client for the Nodus workload execution API"
 readme = "README.md"
@@ -35,8 +35,8 @@ nodus = "nodus.cli:main"
 [project.urls]
 Homepage = "https://nodus.run"
 Documentation = "https://nodus.run/docs/"
-Source = "https://github.com/nodus-run/nodus-sdk-python"
-Issues = "https://github.com/nodus-run/nodus-sdk-python/issues"
+Source = "https://github.com/Nodus-compute/Nodus-sdk-python"
+Issues = "https://github.com/Nodus-compute/Nodus-sdk-python/issues"
 
 [tool.setuptools.package-data]
 nodus = ["py.typed"]

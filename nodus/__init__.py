@@ -75,9 +75,9 @@ from .types import (
 )
 
 try:
-    # The distribution is nodus-run; the import name alone would resolve to a
+    # The distribution is nodus_compute; the import name alone would resolve to a
     # different project that happens to be installed, or to nothing.
-    __version__ = _distribution_version("nodus-run")
+    __version__ = _distribution_version("nodus_compute")
 except PackageNotFoundError:
     # Imported from a source tree that was never installed. Not a release
     # number, and deliberately not one that could be mistaken for one.
