@@ -103,21 +103,70 @@ class RateLimitError(NodusError):
 
     @property
     def retry_after(self) -> float | None:
-        """Seconds to wait, from the Retry-After header, when the server sent one."""
+        """Seconds to wait, as the server asked, when it sent a Retry-After.
+
+        Unclamped: this is what the control plane said, not what the SDK's own
+        backoff chose to do with it.
+        """
         return self._retry_after
 
-    def __init__(self, message: str, *, retry_after: float | None = None, **kw: Any):
+    @property
+    def retry_after_header(self) -> str | None:
+        """The header verbatim — seconds or an HTTP-date, as it arrived."""
+        return self._retry_after_header
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        retry_after: float | None = None,
+        retry_after_header: str | None = None,
+        **kw: Any,
+    ):
         super().__init__(message, **kw)
         self._retry_after = retry_after
+        self._retry_after_header = retry_after_header
 
 
 class BudgetExceededError(NodusError):
     """402. The brief would breach a spend cap on the key.
 
-    ``payload`` carries ``monthly_spend_cap_usd``, ``month_to_date_usd`` and
-    ``estimated_cost_usd`` so a caller can compute real headroom and resubmit
-    against it rather than against the ceiling it asked for.
+    The refusal carries the whole arithmetic it was made from, so a caller can
+    resubmit against real headroom rather than against the ceiling it asked for.
     """
+
+    def _amount(self, *keys: str) -> float | None:
+        for key in keys:
+            value = self.payload.get(key)
+            if isinstance(value, (int, float)):
+                return float(value)
+        return None
+
+    @property
+    def monthly_cap_usd(self) -> float | None:
+        """The cap on the key for this billing period."""
+        return self._amount("monthly_spend_cap_usd")
+
+    @property
+    def month_to_date_usd(self) -> float | None:
+        """Settled spend so far this period."""
+        return self._amount("month_to_date_usd")
+
+    @property
+    def estimated_cost_usd(self) -> float | None:
+        """Cost to completion the router priced this brief at."""
+        return self._amount("estimated_cost_usd")
+
+    @property
+    def headroom_usd(self) -> float | None:
+        """What is left under the cap; derived when the server did not send it."""
+        stated = self._amount("remaining_headroom_usd")
+        if stated is not None:
+            return stated
+        cap, spent = self.monthly_cap_usd, self.month_to_date_usd
+        if cap is None or spent is None:
+            return None
+        return cap - spent
 
 
 class CapacityUnavailableError(NodusError):
@@ -150,6 +199,37 @@ class APITimeoutError(NodusError):
     """
 
 
+# What to do about each rejection the control plane names, in the SDK's own
+# vocabulary. A message that says only what failed leaves the reader where they
+# started, and these are the codes internal/api actually writes.
+_REMEDIES: dict[str, str] = {
+    "missing_source": (
+        "Give the workload something to run: image= and command=, or framework=, "
+        "or stages=[...]."
+    ),
+    "invalid_compute_class": 'compute_class must be "vm" or "accelerator".',
+    "invalid_continuity_mode": (
+        'continuity must be "checkpointed", "restartable", or "ephemeral".'
+    ),
+    "invalid_complete_by": (
+        'finish_by must be a datetime, or RFC3339 text such as "2026-01-02T15:04:05Z".'
+    ),
+    "budget_exceeded": (
+        "Raise the cap in the console, or lower budget= or expected_runtime_hours "
+        "and resubmit; monthly_cap_usd, month_to_date_usd and headroom_usd on this "
+        "error carry the arithmetic."
+    ),
+    "capacity_unavailable": (
+        "No route fits this brief right now. Retry, or widen it: raise "
+        "interrupt_tolerance, or drop finish_by."
+    ),
+    "idempotency_conflict": (
+        "That Idempotency-Key already names a different payload. Resend the "
+        "original brief, or mint a new key for the new intent."
+    ),
+}
+
+
 # Status codes whose meaning is specific enough to deserve their own class.
 _BY_STATUS: dict[int, type[NodusError]] = {
     400: ValidationError,
@@ -171,9 +251,14 @@ def error_from_response(
     body: Any,
     *,
     retry_after: float | None = None,
+    retry_after_header: str | None = None,
     request_id: str | None = None,
 ) -> NodusError:
-    """Map an HTTP response onto the most specific exception class."""
+    """Map an HTTP response onto the most specific exception class.
+
+    The message carries three things: what failed, what to do about it, and
+    which request it was — the last is what support can correlate on.
+    """
     message = f"{method} {path} failed ({status_code})"
     if isinstance(body, dict):
         detail = body.get("message") or body.get("error")
@@ -181,6 +266,11 @@ def error_from_response(
             message = f"{message}: {detail}"
 
     code = body.get("error") if isinstance(body, dict) else None
+    remedy = _REMEDIES.get(code) if isinstance(code, str) else None
+    if remedy:
+        message = f"{message}\n{remedy}"
+    if request_id:
+        message = f"{message}\nrequest id: {request_id}"
 
     # A signed-request rejection is a 401 like a bad key, but it means something
     # different to the caller: the credential is fine, the signature is not.
@@ -195,5 +285,7 @@ def error_from_response(
         "request_id": request_id,
     }
     if cls is RateLimitError:
-        return RateLimitError(message, retry_after=retry_after, **kwargs)
+        return RateLimitError(
+            message, retry_after=retry_after, retry_after_header=retry_after_header, **kwargs
+        )
     return cls(message, **kwargs)

@@ -17,6 +17,9 @@ __all__ = [
     "ContinuityMode",
     "InterruptTolerance",
     "WorkloadStatus",
+    "TERMINAL",
+    "TERMINAL_STATUSES",
+    "MEDIA_TAR",
     "Route",
     "StageRun",
     "ManifestFile",
@@ -25,6 +28,7 @@ __all__ = [
     "LedgerEntry",
     "Settlement",
     "Ledger",
+    "Meter",
 ]
 
 
@@ -133,11 +137,6 @@ class Route:
     interruptible: bool = False
     resources: dict[str, Any] = field(default_factory=dict)
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
-
-    @property
-    def offer_id(self) -> str:
-        """Wire name for :attr:`sku`. Kept so older code keeps working."""
-        return self.sku
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> "Route | None":
@@ -369,5 +368,37 @@ class Ledger:
         return cls(
             entries=[LedgerEntry.from_dict(e) for e in (d.get("entries") or [])],
             settlement=Settlement.from_dict(d.get("settlement")),
+            raw=d,
+        )
+
+
+@dataclass
+class Meter:
+    """What a workload costs at one instant: what is settled plus what is accruing.
+
+    A charge is booked when a lease closes, so ``settled_usd`` does not move
+    while the work runs; ``total_now_usd`` is what answers "what is this
+    costing me right now". ``as_of`` is part of that number — a live figure
+    without the instant it was true cannot be read — and
+    ``accruing_rate_usd_hour`` is what ticks it forward between polls.
+    """
+
+    settled_usd: float = 0.0
+    accruing_usd: float = 0.0
+    accruing_rate_usd_hour: float = 0.0
+    total_now_usd: float = 0.0
+    as_of: datetime | None = None
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any] | None) -> "Meter | None":
+        if not d:
+            return None
+        return cls(
+            settled_usd=float(d.get("settled_usd") or 0.0),
+            accruing_usd=float(d.get("accruing_usd") or 0.0),
+            accruing_rate_usd_hour=float(d.get("accruing_rate_usd_hour") or 0.0),
+            total_now_usd=float(d.get("total_now_usd") or 0.0),
+            as_of=_dt(d.get("as_of")),
             raw=d,
         )

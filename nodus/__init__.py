@@ -14,15 +14,15 @@ API address already in it:
     import nodus
 
     with nodus.Client() as client:
-        workload = client.run(
+        wl = client.run(
             model="7B fine-tune",
             command=["python", "train.py"],
             peak_memory_gb=80,
             expected_runtime_hours=18,
             budget=400,
         )
-        workload.wait()
-        print(workload.status, workload.route.sku, workload.spend_usd)
+        done = client.wait(wl.id)
+        print(done.status, done.route.sku, done.cost_now_usd)
 """
 
 from __future__ import annotations
@@ -32,6 +32,9 @@ import os
 import time
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime
+from email.utils import parsedate_to_datetime
+from importlib.metadata import PackageNotFoundError, version as _distribution_version
 from typing import Any, AsyncIterator, Iterator
 
 import httpx
@@ -64,13 +67,21 @@ from .types import (
     Ledger,
     LedgerEntry,
     ManifestFile,
+    Meter,
     Route,
     Settlement,
     StageRun,
     WorkloadStatus,
 )
 
-__version__ = "1.0.0"
+try:
+    # The distribution is nodus-run; the import name alone would resolve to a
+    # different project that happens to be installed, or to nothing.
+    __version__ = _distribution_version("nodus-run")
+except PackageNotFoundError:
+    # Imported from a source tree that was never installed. Not a release
+    # number, and deliberately not one that could be mistaken for one.
+    __version__ = "0.0.0+source"
 
 __all__ = [
     "Client",
@@ -85,10 +96,13 @@ __all__ = [
     "Ledger",
     "LedgerEntry",
     "Settlement",
+    "Meter",
     "ComputeClass",
     "ContinuityMode",
     "InterruptTolerance",
     "WorkloadStatus",
+    "TERMINAL",
+    "TERMINAL_STATUSES",
     "NodusError",
     "ConfigurationError",
     "AuthenticationError",
@@ -102,7 +116,6 @@ __all__ = [
     "APIError",
     "APIConnectionError",
     "APITimeoutError",
-    "run",
     "__version__",
 ]
 
@@ -112,15 +125,41 @@ _RETRY_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
 _RETRY_METHODS = frozenset({"GET", "PUT", "DELETE", "POST"})
 
 
+# Longest a single backoff will honour a Retry-After for. A larger hint is real
+# and worth keeping on the error, but sleeping ten minutes inside one call is
+# indistinguishable to the caller from a hang.
+_RETRY_AFTER_CAP = 300.0
+
+
 def _retry_after(resp: httpx.Response) -> float | None:
+    """Seconds the server asked for, in either spelling the header allows.
+
+    Returned as sent, not clamped: what to do about a very long hint is the
+    caller's decision, and :func:`_retry_after_backoff` makes the SDK's own.
+    """
     raw = resp.headers.get("Retry-After")
     if not raw:
         return None
     try:
-        value = float(raw)
+        return max(0.0, float(raw))
     except ValueError:
+        pass
+    try:
+        when = parsedate_to_datetime(raw)
+    except (TypeError, ValueError):
         return None
-    return value if 0 < value <= 300 else None
+    if when is None:
+        return None
+    now = datetime.now(when.tzinfo)
+    return max(0.0, (when - now).total_seconds())
+
+
+def _retry_after_backoff(resp: httpx.Response) -> float | None:
+    """The hint a retry will actually wait for."""
+    seconds = _retry_after(resp)
+    if seconds is None or seconds <= 0:
+        return None
+    return min(seconds, _RETRY_AFTER_CAP)
 
 
 # Ceiling on how long a wait holds off after a failed poll. A wait is cheap to
@@ -239,15 +278,21 @@ def _headers(api_key: str) -> dict[str, str]:
     }
 
 
-@dataclass
+# Identity, not value: a handle is a live view of one workload, so two handles
+# on the same id are two things to refresh, and equality on the fields would
+# make every blank handle equal to every other one.
+@dataclass(eq=False)
 class _WorkloadState:
     """Fields shared by the sync and async workload handles."""
 
     id: str = ""
     status: Any = None
     route: Route | None = None
+    #: Settled charges only. What a running workload costs is ``cost_now_usd``.
     spend_usd: float = 0.0
     budget_usd: float = 0.0
+    #: Settled plus accruing, as of an instant. ``None`` until a read sends one.
+    meter: Meter | None = None
     revision: int = 1
     stages: list[StageRun] = field(default_factory=list)
     error: str | None = None
@@ -256,11 +301,16 @@ class _WorkloadState:
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
     def _absorb(self, d: dict[str, Any]) -> None:
-        """Update in place from a wire object.
+        """Update in place from a wire object, keeping every field it omits.
 
         In place rather than returning a new handle: after ``wait()`` the caller
         reads attributes off the object it already has, without another round
         trip and without having to rebind.
+
+        An absent key is not a key set to nothing. A list row carries no route
+        and no stages, and a body that clobbered them would leave the handle
+        claiming the workload has none — worse for ``status``, where None is
+        never terminal and a wait polling it can never end.
         """
         from .types import _dt  # local import: internal helper
 
@@ -271,17 +321,33 @@ class _WorkloadState:
         # the workload. Unit tests missed it because the fixtures used a shape
         # POST /v1/workloads has never returned.
         self.id = d.get("id") or d.get("workload_id") or self.id
-        self.status = WorkloadStatus.coerce(d.get("status"))
+        if "status" in d:
+            self.status = WorkloadStatus.coerce(d.get("status"))
         self.route = Route.from_dict(d.get("route")) or self.route
-        self.spend_usd = float(d.get("spend_usd") or 0.0)
+        if "spend_usd" in d:
+            self.spend_usd = float(d.get("spend_usd") or 0.0)
+        self.meter = Meter.from_dict(d.get("meter")) or self.meter
         outcome = (d.get("payload") or {}).get("outcome") or {}
-        self.budget_usd = float(d.get("budget_usd") or outcome.get("max_cost_usd") or 0.0)
+        ceiling = d.get("budget_usd") or outcome.get("max_cost_usd")
+        if ceiling is not None:
+            self.budget_usd = float(ceiling)
         self.revision = int(d.get("revision") or self.revision)
-        self.stages = [StageRun.from_dict(s) for s in (d.get("stages") or [])]
-        self.error = d.get("error") or d.get("error_message")
+        if "stages" in d:
+            self.stages = [StageRun.from_dict(s) for s in (d.get("stages") or [])]
+        self.error = d.get("error") or d.get("error_message") or self.error
         self.created_at = _dt(d.get("created_at")) or self.created_at
         self.updated_at = _dt(d.get("updated_at")) or self.updated_at
         self.raw = d
+
+    @property
+    def cost_now_usd(self) -> float:
+        """What this workload has cost as of the last read.
+
+        A charge is booked when a lease closes, so ``spend_usd`` does not move
+        while the work runs. The meter is what the control plane sends so a
+        running row does not read $0.00; without one this is the settled figure.
+        """
+        return self.meter.total_now_usd if self.meter is not None else self.spend_usd
 
     @property
     def is_terminal(self) -> bool:
@@ -311,6 +377,7 @@ class _Transport:
             resp.status_code,
             body,
             retry_after=_retry_after(resp),
+            retry_after_header=resp.headers.get("Retry-After"),
             request_id=resp.headers.get("X-Request-Id"),
         )
 
@@ -324,10 +391,21 @@ class _Transport:
     @staticmethod
     def _backoff(attempt: int, resp: httpx.Response | None) -> float:
         if resp is not None:
-            hinted = _retry_after(resp)
+            hinted = _retry_after_backoff(resp)
             if hinted:
                 return hinted
         return min(8.0, 0.5 * (2**attempt))
+
+    @staticmethod
+    def _one(body: Any, method: str, path: str) -> dict[str, Any]:
+        """A read that must have answered with an object.
+
+        An empty body absorbed as ``{}`` leaves a handle with no status, which
+        no wait can ever see finish.
+        """
+        if not isinstance(body, dict) or not body:
+            raise NodusError(f"{method} {path} returned an empty body", body=body)
+        return body
 
 
 class Client(_Transport):
@@ -406,18 +484,67 @@ class Client(_Transport):
 
     # -- workloads ---------------------------------------------------------
 
-    def run(self, *, idempotency_key: str | None = None, **brief: Any) -> "Workload":
+    def run(
+        self,
+        *,
+        command: list[str] | str | None = None,
+        image: str | None = None,
+        model: str | None = None,
+        peak_memory_gb: float | None = None,
+        expected_runtime_hours: float | None = None,
+        budget: float | None = None,
+        compute_class: ComputeClass | str | None = None,
+        continuity: ContinuityMode | str | dict[str, Any] | None = None,
+        interrupt_tolerance: InterruptTolerance | str | None = None,
+        finish_by: datetime | str | None = None,
+        data_regions: list[str] | None = None,
+        env: dict[str, str] | None = None,
+        inputs: list[dict[str, Any]] | dict[str, Any] | None = None,
+        stages: list[dict[str, Any]] | None = None,
+        framework: str | None = None,
+        policy: dict[str, Any] | None = None,
+        requirements: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
+        extra: dict[str, Any] | None = None,
+        **unknown: Any,
+    ) -> "Workload":
         """Submit a brief — requirements and outcomes, never a machine.
 
         Returns as soon as the workload is accepted; it is not yet placed. Call
-        ``wait()`` on the handle to block until it reaches a terminal state.
+        ``client.wait(wl.id)`` to block until it reaches a terminal state.
+
+        ``budget`` is cost to completion in USD, and omitting it leaves the run
+        capped only by the account. ``finish_by`` takes a datetime or RFC3339
+        text. ``extra`` is merged into the payload for a field the control plane
+        models and this SDK version does not; any other keyword is refused
+        rather than sent, because the server drops what it does not recognise.
 
         ``idempotency_key`` defaults to a fresh value per call, which covers
         this call's own retries and nothing beyond it. To make an
         application-level retry loop safe, pass a key derived from the thing you
         are running so a resubmission cannot become a second paid workload.
         """
-        payload = build_payload(**brief)
+        payload = build_payload(
+            command=command,
+            image=image,
+            model=model,
+            peak_memory_gb=peak_memory_gb,
+            expected_runtime_hours=expected_runtime_hours,
+            budget=budget,
+            compute_class=compute_class,
+            continuity=continuity,
+            interrupt_tolerance=interrupt_tolerance,
+            finish_by=finish_by,
+            data_regions=data_regions,
+            env=env,
+            inputs=inputs,
+            stages=stages,
+            framework=framework,
+            policy=policy,
+            requirements=requirements,
+            extra=extra,
+            **unknown,
+        )
         res = self._request(
             "POST",
             "/v1/workloads",
@@ -431,17 +558,18 @@ class Client(_Transport):
         return wl
 
     def get(self, workload_id: str) -> "Workload":
+        path = f"/v1/workloads/{workload_id}"
         wl = Workload(self)
-        wl._absorb(self._request("GET", f"/v1/workloads/{workload_id}") or {})
+        wl._absorb(self._one(self._request("GET", path), "GET", path))
         return wl
 
     def list(
         self, *, limit: int = 50, offset: int = 0, status: Any = None
     ) -> list["Workload"]:
-        """One page, newest first.
+        """The first page only — use ``iter_workloads()`` for all of them.
 
-        ``status`` accepts a member, a wire string, a list of either, or the
-        presets ``"active"`` and ``"terminal"``.
+        Newest first. ``status`` accepts a member, a wire string, a list of
+        either, or the presets ``"active"`` and ``"terminal"``.
         """
         items, _ = self.list_page(limit=limit, offset=offset, status=status)
         return items
@@ -463,13 +591,17 @@ class Client(_Transport):
         return out, res.get("next_offset")
 
     def iter_workloads(self, *, page_size: int = 50, status: Any = None) -> Iterator["Workload"]:
-        """Page lazily so a long history never has to be held in memory."""
+        """Page lazily so a long history never has to be held in memory.
+
+        Stops when the next offset does not advance: an offset that repeats is
+        a stall, and following it re-reads the same page forever.
+        """
         offset = 0
         while True:
             page, nxt = self.list_page(limit=page_size, offset=offset, status=status)
             for wl in page:
                 yield wl
-            if nxt is None:
+            if nxt is None or nxt <= offset:
                 return
             offset = nxt
 
@@ -481,8 +613,23 @@ class Client(_Transport):
         )
 
     def events(self, workload_id: str, *, after: int = 0) -> list[Event]:
+        """One page of lifecycle events, oldest first.
+
+        The server returns at most 100 and does not say whether more follow.
+        Pass ``after=`` the last ``seq`` you saw, or use ``iter_events()``.
+        """
         res = self._request("GET", f"/v1/workloads/{workload_id}/events", params={"after": after})
         return [Event.from_dict(e) for e in (res or {}).get("events") or []]
+
+    def iter_events(self, workload_id: str, *, after: int = 0) -> Iterator[Event]:
+        """Every event recorded so far, walking past the server's page cap."""
+        while True:
+            batch = self.events(workload_id, after=after)
+            if not batch:
+                return
+            for ev in batch:
+                after = max(after, ev.seq)
+                yield ev
 
     def artifacts(self, workload_id: str) -> list[Artifact]:
         res = self._request("GET", f"/v1/workloads/{workload_id}/artifacts")
@@ -508,7 +655,9 @@ class Client(_Transport):
         params: dict[str, Any] = {}
         if stage:
             params["stage"] = stage
-        if generation:
+        # `is not None`, so an explicit generation=0 is sent and refused rather
+        # than read as "no filter": a caller that computed 0 has a bug.
+        if generation is not None:
             params["generation"] = generation
         return self._request(
             "GET", f"/v1/workloads/{workload_id}/logs", params=params or None, text=True
@@ -549,15 +698,17 @@ class Client(_Transport):
         while True:
             try:
                 batch = self.events(workload_id, after=after)
-                terminal = self.get(workload_id).is_terminal
+                # Whether it is over is only worth a request when the events ran
+                # out: a stream that runs for hours would otherwise double its
+                # load to ask a question the next batch answers anyway.
+                if not batch and self.get(workload_id).is_terminal:
+                    return
             except NodusError as exc:
                 time.sleep(policy.failed(exc))
                 continue
             for ev in batch:
                 after = max(after, ev.seq)
                 yield ev
-            if terminal and not batch:
-                return
             time.sleep(policy.polled())
 
     # -- webhooks / health -------------------------------------------------
@@ -596,7 +747,8 @@ class Workload(_WorkloadState):
         self._client = client
 
     def refresh(self) -> "Workload":
-        self._absorb(self._client._request("GET", f"/v1/workloads/{self.id}") or {})
+        path = f"/v1/workloads/{self.id}"
+        self._absorb(self._client._one(self._client._request("GET", path), "GET", path))
         return self
 
     def wait(self, *, poll_seconds: float = 2.0, timeout_seconds: float | None = None) -> "Workload":
@@ -622,6 +774,9 @@ class Workload(_WorkloadState):
     def events(self, *, after: int = 0) -> list[Event]:
         return self._client.events(self.id, after=after)
 
+    def iter_events(self, *, after: int = 0) -> Iterator[Event]:
+        return self._client.iter_events(self.id, after=after)
+
     def stream_events(self, *, poll_seconds: float = 2.0) -> Iterator[Event]:
         return self._client.stream_events(self.id, poll_seconds=poll_seconds)
 
@@ -630,6 +785,10 @@ class Workload(_WorkloadState):
 
     def ledger(self) -> Ledger:
         return self._client.ledger(self.id)
+
+    def logs(self, *, stage: str | None = None, generation: int | None = None) -> str:
+        """This workload's log. See :meth:`Client.logs`."""
+        return self._client.logs(self.id, stage=stage, generation=generation)
 
     def cancel(self) -> None:
         self._client.cancel(self.id)
@@ -669,6 +828,7 @@ class AsyncClient(_Transport):
         json: Any = None,
         idempotency_key: str | None = None,
         params: dict[str, Any] | None = None,
+        text: bool = False,
     ) -> Any:
         headers = {"Idempotency-Key": idempotency_key} if idempotency_key else {}
         attempt = 0
@@ -698,11 +858,57 @@ class AsyncClient(_Transport):
                 self._raise(method, path, resp)
 
             if not resp.content:
-                return None
-            return resp.json()
+                return "" if text else None
+            # The log endpoint answers text/plain, because its whole purpose is
+            # to be read. Everything else is JSON.
+            return resp.text if text else resp.json()
 
-    async def run(self, *, idempotency_key: str | None = None, **brief: Any) -> "AsyncWorkload":
-        payload = build_payload(**brief)
+    async def run(
+        self,
+        *,
+        command: list[str] | str | None = None,
+        image: str | None = None,
+        model: str | None = None,
+        peak_memory_gb: float | None = None,
+        expected_runtime_hours: float | None = None,
+        budget: float | None = None,
+        compute_class: ComputeClass | str | None = None,
+        continuity: ContinuityMode | str | dict[str, Any] | None = None,
+        interrupt_tolerance: InterruptTolerance | str | None = None,
+        finish_by: datetime | str | None = None,
+        data_regions: list[str] | None = None,
+        env: dict[str, str] | None = None,
+        inputs: list[dict[str, Any]] | dict[str, Any] | None = None,
+        stages: list[dict[str, Any]] | None = None,
+        framework: str | None = None,
+        policy: dict[str, Any] | None = None,
+        requirements: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
+        extra: dict[str, Any] | None = None,
+        **unknown: Any,
+    ) -> "AsyncWorkload":
+        """Submit a brief. Same arguments and same meaning as :meth:`Client.run`."""
+        payload = build_payload(
+            command=command,
+            image=image,
+            model=model,
+            peak_memory_gb=peak_memory_gb,
+            expected_runtime_hours=expected_runtime_hours,
+            budget=budget,
+            compute_class=compute_class,
+            continuity=continuity,
+            interrupt_tolerance=interrupt_tolerance,
+            finish_by=finish_by,
+            data_regions=data_regions,
+            env=env,
+            inputs=inputs,
+            stages=stages,
+            framework=framework,
+            policy=policy,
+            requirements=requirements,
+            extra=extra,
+            **unknown,
+        )
         res = await self._request(
             "POST",
             "/v1/workloads",
@@ -716,13 +922,19 @@ class AsyncClient(_Transport):
         return wl
 
     async def get(self, workload_id: str) -> "AsyncWorkload":
+        path = f"/v1/workloads/{workload_id}"
         wl = AsyncWorkload(self)
-        wl._absorb(await self._request("GET", f"/v1/workloads/{workload_id}") or {})
+        wl._absorb(self._one(await self._request("GET", path), "GET", path))
         return wl
 
     async def list(
         self, *, limit: int = 50, offset: int = 0, status: Any = None
     ) -> list["AsyncWorkload"]:
+        """The first page only — use ``iter_workloads()`` for all of them.
+
+        Newest first. ``status`` accepts a member, a wire string, a list of
+        either, or the presets ``"active"`` and ``"terminal"``.
+        """
         items, _ = await self.list_page(limit=limit, offset=offset, status=status)
         return items
 
@@ -744,12 +956,17 @@ class AsyncClient(_Transport):
     async def iter_workloads(
         self, *, page_size: int = 50, status: Any = None
     ) -> AsyncIterator["AsyncWorkload"]:
+        """Page lazily so a long history never has to be held in memory.
+
+        Stops when the next offset does not advance: an offset that repeats is
+        a stall, and following it re-reads the same page forever.
+        """
         offset = 0
         while True:
             page, nxt = await self.list_page(limit=page_size, offset=offset, status=status)
             for wl in page:
                 yield wl
-            if nxt is None:
+            if nxt is None or nxt <= offset:
                 return
             offset = nxt
 
@@ -761,10 +978,25 @@ class AsyncClient(_Transport):
         )
 
     async def events(self, workload_id: str, *, after: int = 0) -> list[Event]:
+        """One page of lifecycle events, oldest first.
+
+        The server returns at most 100 and does not say whether more follow.
+        Pass ``after=`` the last ``seq`` you saw, or use ``iter_events()``.
+        """
         res = await self._request(
             "GET", f"/v1/workloads/{workload_id}/events", params={"after": after}
         )
         return [Event.from_dict(e) for e in (res or {}).get("events") or []]
+
+    async def iter_events(self, workload_id: str, *, after: int = 0) -> AsyncIterator[Event]:
+        """Every event recorded so far, walking past the server's page cap."""
+        while True:
+            batch = await self.events(workload_id, after=after)
+            if not batch:
+                return
+            for ev in batch:
+                after = max(after, ev.seq)
+                yield ev
 
     async def artifacts(self, workload_id: str) -> list[Artifact]:
         res = await self._request("GET", f"/v1/workloads/{workload_id}/artifacts")
@@ -772,6 +1004,72 @@ class AsyncClient(_Transport):
 
     async def ledger(self, workload_id: str) -> Ledger:
         return Ledger.from_dict(await self._request("GET", f"/v1/workloads/{workload_id}/ledger"))
+
+    async def logs(
+        self, workload_id: str, *, stage: str | None = None, generation: int | None = None
+    ) -> str:
+        """What the submitted program printed. See :meth:`Client.logs`."""
+        params: dict[str, Any] = {}
+        if stage:
+            params["stage"] = stage
+        if generation is not None:
+            params["generation"] = generation
+        return await self._request(
+            "GET", f"/v1/workloads/{workload_id}/logs", params=params or None, text=True
+        ) or ""
+
+    async def wait(
+        self,
+        workload_id: str,
+        *,
+        poll_seconds: float = 2.0,
+        timeout_seconds: float | None = None,
+    ) -> "AsyncWorkload":
+        """Poll until the workload is terminal. Same policy as :meth:`Client.wait`."""
+        policy = _WaitPolicy(poll_seconds, timeout_seconds)
+        while True:
+            try:
+                wl = await self.get(workload_id)
+            except NodusError as exc:
+                delay = policy.failed(exc)
+            else:
+                if wl.is_terminal:
+                    return wl
+                delay = policy.polled()
+            await asyncio.sleep(policy.hold(delay, workload_id))
+
+    async def stream_events(
+        self, workload_id: str, *, poll_seconds: float = 2.0
+    ) -> AsyncIterator[Event]:
+        """Yield events until the terminal one. Same policy as :meth:`Client.stream_events`."""
+        after = 0
+        policy = _WaitPolicy(poll_seconds)
+        while True:
+            try:
+                batch = await self.events(workload_id, after=after)
+                if not batch and (await self.get(workload_id)).is_terminal:
+                    return
+            except NodusError as exc:
+                await asyncio.sleep(policy.failed(exc))
+                continue
+            for ev in batch:
+                after = max(after, ev.seq)
+                yield ev
+            await asyncio.sleep(policy.polled())
+
+    # -- webhooks / health -------------------------------------------------
+
+    async def set_webhook(self, url: str, *, secret: str | None = None) -> dict[str, Any]:
+        body: dict[str, Any] = {"url": url}
+        if secret:
+            body["secret"] = secret
+        return await self._request("PUT", "/v1/webhooks", json=body) or {}
+
+    async def get_webhook(self) -> dict[str, Any]:
+        return await self._request("GET", "/v1/webhooks") or {}
+
+    async def delete_webhook(self) -> None:
+        await self._request("DELETE", "/v1/webhooks")
 
     async def healthz(self) -> dict[str, Any]:
         return await self._request("GET", "/healthz") or {}
@@ -788,7 +1086,8 @@ class AsyncWorkload(_WorkloadState):
         self._client = client
 
     async def refresh(self) -> "AsyncWorkload":
-        self._absorb(await self._client._request("GET", f"/v1/workloads/{self.id}") or {})
+        path = f"/v1/workloads/{self.id}"
+        self._absorb(self._client._one(await self._client._request("GET", path), "GET", path))
         return self
 
     async def wait(
@@ -810,23 +1109,11 @@ class AsyncWorkload(_WorkloadState):
     async def events(self, *, after: int = 0) -> list[Event]:
         return await self._client.events(self.id, after=after)
 
-    async def stream_events(self, *, poll_seconds: float = 2.0) -> AsyncIterator[Event]:
-        """Yield events until the terminal one. Same policy as :meth:`Client.stream_events`."""
-        after = 0
-        policy = _WaitPolicy(poll_seconds)
-        while True:
-            try:
-                batch = await self._client.events(self.id, after=after)
-                terminal = (await self._client.get(self.id)).is_terminal
-            except NodusError as exc:
-                await asyncio.sleep(policy.failed(exc))
-                continue
-            for ev in batch:
-                after = max(after, ev.seq)
-                yield ev
-            if terminal and not batch:
-                return
-            await asyncio.sleep(policy.polled())
+    def iter_events(self, *, after: int = 0) -> AsyncIterator[Event]:
+        return self._client.iter_events(self.id, after=after)
+
+    def stream_events(self, *, poll_seconds: float = 2.0) -> AsyncIterator[Event]:
+        return self._client.stream_events(self.id, poll_seconds=poll_seconds)
 
     async def artifacts(self) -> list[Artifact]:
         return await self._client.artifacts(self.id)
@@ -834,11 +1121,9 @@ class AsyncWorkload(_WorkloadState):
     async def ledger(self) -> Ledger:
         return await self._client.ledger(self.id)
 
+    async def logs(self, *, stage: str | None = None, generation: int | None = None) -> str:
+        """This workload's log. See :meth:`Client.logs`."""
+        return await self._client.logs(self.id, stage=stage, generation=generation)
+
     async def cancel(self) -> None:
         await self._client.cancel(self.id)
-
-
-def run(**brief: Any) -> Workload:
-    """Submit and wait, using a client built from the environment."""
-    with Client() as client:
-        return client.run(**brief).wait()

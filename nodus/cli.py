@@ -10,19 +10,19 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import textwrap
 from typing import Any
 
 from . import Client, __version__
-from . import _pricebook
-from .errors import NodusError
+from .errors import NodusError, NotFoundError
 from .types import ContinuityMode
 
 
 def _fmt_workload(wl: Any) -> str:
+    # cost_now_usd, not spend_usd: a charge is booked when a lease closes, so a
+    # list of running workloads would otherwise show $0.00 for all of them.
     route = wl.route.sku if wl.route else "—"
     status = getattr(wl.status, "value", wl.status)
-    return f"{wl.id}  {status:<13} {route:<28} ${wl.spend_usd:.2f}"
+    return f"{wl.id}  {status:<13} {route:<28} ${wl.cost_now_usd:.2f}"
 
 
 def _split_command(argv: list[str]) -> tuple[list[str], list[str]]:
@@ -125,12 +125,23 @@ def _cmd_ledger(args: argparse.Namespace) -> int:
     return 0
 
 
+_NO_LOG_YET = (
+    "no log recorded yet — the log is a committed artifact, so it appears"
+    " once a checkpoint carrying it has been verified"
+)
+
+
 def _cmd_logs(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
-        out = client.logs(args.workload_id, stage=args.stage, generation=args.generation)
+        try:
+            out = client.logs(args.workload_id, stage=args.stage, generation=args.generation)
+        except NotFoundError:
+            # The server 404s until a manifest carries a log. That is the normal
+            # answer for a workload that has not checkpointed yet, not a fault.
+            print(_NO_LOG_YET)
+            return 1
     if not out:
-        print("no log recorded yet — the log is a committed artifact, so it appears"
-              " once a checkpoint carrying it has been verified")
+        print(_NO_LOG_YET)
         return 1
     lines = out.splitlines()
     if args.tail and len(lines) > args.tail:
@@ -155,147 +166,23 @@ def _fmt_route(route: Any) -> list[str]:
 
 
 def _cmd_explain(args: argparse.Namespace) -> int:
-    """Why this route, and — with --baselines — what the same brief costs elsewhere.
+    """Why this route: what was chosen, and the arithmetic it was chosen on.
 
-    The two halves come from different places on purpose and the output says so:
-    the route is read back from the control plane that made it, the comparison
-    from a committed artifact of other people's published prices.
+    Read back from the control plane that made the decision, so what is printed
+    is the routing that happened rather than a re-derivation of it.
     """
     with Client(base_url=args.base_url) as client:
         wl = client.get(args.workload_id)
         if not wl.route:
             print(f"{wl.id} has no route yet (status {getattr(wl.status, 'value', wl.status)})")
             return 1
-        route = wl.route
         print(f"workload  {wl.id}")
         print()
-        for line in _fmt_route(route):
+        for line in _fmt_route(wl.route):
             print(f"  {line}")
         print()
         print("  expected cost is cost to completion: the run plus the recovery reserve,")
         print("  not rate x hours. It is the number the budget is checked against.")
-
-        if not args.baselines:
-            return 0
-
-        # The declared brief, which is what the comparison has to be priced
-        # against: comparing on the route's own hours would quietly hand us the
-        # win, since those hours are already the speedup we are arguing for.
-        req = ((wl.raw.get("payload") or {}).get("requirements")) or {}
-        peak = float(req.get("peak_memory_gb") or req.get("device_memory_gb") or 0.0)
-        hours = float(req.get("expected_runtime_hours") or 0.0)
-        if not peak or not hours:
-            print("\n  brief does not declare peak memory and runtime; no comparison possible")
-            return 0
-
-        try:
-            book = _pricebook.load(args.pricebook)
-        except (_pricebook.PricebookMissing, ValueError) as exc:
-            print(f"\n  no price book: {exc}")
-            return 0
-
-        quotes = _pricebook.quote(book, peak, hours)
-        if not quotes:
-            print("\n  no published rate in the book has enough memory for this brief")
-            return 0
-
-        print()
-        print(f"  same brief on published list prices, as of {book.as_of}:")
-        print()
-        print(f"    {'seller':<12} {'picks':<10} {'$/h':>9} {'hours':>8} {'cost':>10}")
-        for q in sorted(quotes, key=lambda x: x.cost_usd):
-            print(f"    {q.seller:<12} {q.picks:<10} {q.rate_usd_hour:>9.4f} {q.hours:>8.2f} {q.cost_usd:>10.2f}")
-
-        best = min(quotes, key=lambda x: x.cost_usd)
-        ours = route.expected_cost_usd
-        if ours > 0 and best.cost_usd > 0:
-            delta = (best.cost_usd - ours) / best.cost_usd * 100.0
-            print()
-            print(f"    routed here  {route.sku}  ${ours:.2f}"
-                  + (f"   {delta:.1f}% under {best.seller}" if delta > 0 else f"   {-delta:.1f}% over {best.seller}"))
-
-        # The line that is not a percentage. A cheaper hourly rate losing on
-        # cost to completion is the whole product claim, so it is called out
-        # when it is true and silently skipped when it is not.
-        cheaper = [q for q in quotes if q.rate_usd_hour < route.price_usd_hour and q.cost_usd > ours > 0]
-        if cheaper:
-            c = min(cheaper, key=lambda x: x.rate_usd_hour)
-            print(f"    {c.seller} lists a lower hourly rate (${c.rate_usd_hour:.4f}/h) and a higher"
-                  f" cost to finish (${c.cost_usd:.2f}).")
-
-        print()
-        print(f"  published prices and arithmetic on them, not a measurement.  nodus sources")
-    return 0
-
-
-def _cmd_quote(args: argparse.Namespace) -> int:
-    """What a brief costs on published price lists. No control plane, no network."""
-    try:
-        book = _pricebook.load(args.pricebook)
-    except (_pricebook.PricebookMissing, ValueError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
-
-    quotes = _pricebook.quote(book, args.peak_memory_gb, args.hours)
-    if not quotes:
-        print("no published rate in the book has enough memory for this brief")
-        return 1
-
-    print(f"brief    {args.peak_memory_gb:g} GB peak  ·  {args.hours:g} h declared")
-    print()
-    print(f"  {'seller':<12} {'picks':<10} {'$/h':>9} {'hours':>8} {'cost':>10} {'flips at':>10}")
-    for q in sorted(quotes, key=lambda x: x.cost_usd):
-        flip = f"{q.breakeven_speedup_x:.2f}x" if q.breakeven_speedup_x else "—"
-        print(f"  {q.seller:<12} {q.picks:<10} {q.rate_usd_hour:>9.4f} {q.hours:>8.2f}"
-              f" {q.cost_usd:>10.2f} {flip:>10}")
-
-    span = book.breakeven_span
-    if span and span.get("low_x") and span.get("high_x"):
-        print()
-        print(f"  These lists disagree about which accelerator is cheaper to finish on.")
-        print(f"  The speedup where each flips runs {span['low_x']:.2f}x ({span.get('low_seller','')})"
-              f" to {span['high_x']:.2f}x ({span.get('high_seller','')}).")
-        print(f"  That span is one published price over another and assumes nothing of ours.")
-
-    assumed = book.assumed_keys()
-    if assumed:
-        print()
-        for a in assumed:
-            print(f"  [assumed] {a.get('key')}  {a.get('speedup_x', 0):.4f}x — our judgement, not a measurement")
-
-    print()
-    print(f"  published list prices as of {book.as_of}, cost = rate x hours x performance factor.")
-    print(f"  no control plane was consulted for these.  nodus sources")
-    return 0
-
-
-def _cmd_sources(args: argparse.Namespace) -> int:
-    """Where every number in a quote came from. This is the footnote made checkable."""
-    try:
-        book = _pricebook.load(args.pricebook)
-    except (_pricebook.PricebookMissing, ValueError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
-
-    print(f"price book  {book.source_path.name}  ·  as of {book.as_of}  ·  measured: {book.measured}")
-    print(f"generated by {book.generated_by}")
-    print()
-    for r in sorted(book.rates, key=lambda x: (x.seller, x.fit_class, x.tier)):
-        tier = "" if r.tier == "on_demand" else f"  [{r.tier}]"
-        print(f"  {r.seller} {r.sku}  {r.fit_class} {r.device_memory_gb:g}GB{tier}")
-        print(f"    ${r.usd_per_gpu_hour:.6f} per GPU-hour   ({r.derivation})")
-        print(f"    {r.source_url}")
-    if book.assumptions:
-        print()
-        print("  assumptions — judgements, not citations:")
-        for a in book.assumptions:
-            if str(a.get("basis")) != "assumed":
-                continue
-            print(f"    [{a.get('basis')}] {a.get('key')}  {a.get('value')}  ({a.get('speedup_x', 0):.4f}x)")
-            note = str(a.get("note") or "").strip()
-            if note and args.verbose:
-                for line in textwrap.wrap(note, 74):
-                    print(f"        {line}")
     return 0
 
 
@@ -356,19 +243,8 @@ def build_parser() -> argparse.ArgumentParser:
     lg.add_argument("--generation", type=int, default=None, help="which attempt, after a reclaim")
     lg.add_argument("--tail", type=int, default=0, help="last N lines only")
 
-    x = sub.add_parser("explain", help="why this route, and what it beat")
+    x = sub.add_parser("explain", help="why this route")
     x.add_argument("workload_id")
-    x.add_argument("--baselines", action="store_true", help="price the same brief on published lists")
-    x.add_argument("--pricebook", default=None, help=f"path to the price book (or ${_pricebook.ENV_VAR})")
-
-    q = sub.add_parser("quote", help="what a brief costs on published price lists")
-    q.add_argument("--peak-memory-gb", type=float, required=True)
-    q.add_argument("--hours", type=float, required=True, help="declared runtime")
-    q.add_argument("--pricebook", default=None, help=f"path to the price book (or ${_pricebook.ENV_VAR})")
-
-    s = sub.add_parser("sources", help="where every quoted number came from")
-    s.add_argument("--pricebook", default=None, help=f"path to the price book (or ${_pricebook.ENV_VAR})")
-    s.add_argument("-v", "--verbose", action="store_true", help="include assumption notes in full")
     return p
 
 
@@ -387,8 +263,6 @@ def main(argv: list[str] | None = None) -> int:
         "ledger": lambda: _cmd_ledger(args),
         "logs": lambda: _cmd_logs(args),
         "explain": lambda: _cmd_explain(args),
-        "quote": lambda: _cmd_quote(args),
-        "sources": lambda: _cmd_sources(args),
     }
     try:
         return handlers[args.cmd]()

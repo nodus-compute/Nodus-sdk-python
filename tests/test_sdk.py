@@ -16,6 +16,7 @@ import httpx
 import pytest
 
 import nodus
+from nodus import types
 from nodus._brief import (
     BOOTSTRAP_FETCH_TOOLS,
     DEFAULT_IMAGE,
@@ -91,15 +92,15 @@ def test_build_payload_is_the_nested_wire_shape():
 
 
 def test_continuity_defaults_to_checkpointed_and_ephemeral_opts_out():
-    assert build_payload()["continuity"]["mode"] == "checkpointed"
-    eph = build_payload(continuity="ephemeral")["continuity"]
+    assert build_payload(budget=1)["continuity"]["mode"] == "checkpointed"
+    eph = build_payload(budget=1, continuity="ephemeral")["continuity"]
     assert eph == {"mode": "ephemeral", "resume_on_interruption": False}
 
 
 def test_enums_and_strings_are_interchangeable():
-    a = build_payload(continuity=nodus.ContinuityMode.RESTARTABLE,
+    a = build_payload(budget=1, continuity=nodus.ContinuityMode.RESTARTABLE,
                       interrupt_tolerance=nodus.InterruptTolerance.HIGH)
-    b = build_payload(continuity="restartable", interrupt_tolerance="high")
+    b = build_payload(budget=1, continuity="restartable", interrupt_tolerance="high")
     assert a == b
 
 
@@ -131,13 +132,13 @@ def test_the_default_image_can_install_the_runner():
     tools = IMAGE_FETCH_TOOLS.get(DEFAULT_IMAGE)
     assert tools is not None, f"{DEFAULT_IMAGE} has never been measured for a fetch tool"
     assert tools & BOOTSTRAP_FETCH_TOOLS, f"{DEFAULT_IMAGE} ships no tool the bootstrap can fetch with"
-    assert build_payload(command=["python", "train.py"])["source"]["image"] == DEFAULT_IMAGE
+    assert build_payload(budget=1, command=["python", "train.py"])["source"]["image"] == DEFAULT_IMAGE
 
 
 def test_an_image_measured_to_ship_no_fetch_tool_warns_before_submission():
     """The warning has to arrive before a host is rented, not after it bills."""
     with pytest.warns(UserWarning, match="curl"):
-        p = build_payload(image="ubuntu:22.04", command=["python", "train.py"])
+        p = build_payload(budget=1, image="ubuntu:22.04", command=["python", "train.py"])
     assert p["source"]["image"] == "ubuntu:22.04", "the brief is the caller's, not ours to rewrite"
 
 
@@ -151,7 +152,9 @@ def test_an_unmeasured_image_is_not_second_guessed():
     """Silence about images nobody measured: a guess would train callers to ignore it."""
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        build_payload(image="registry.example.com/team/trainer:2026-09", command=["./go"])
+        build_payload(
+            image="registry.example.com/team/trainer:2026-09", command=["./go"], budget=10
+        )
 
 
 # -- configuration ---------------------------------------------------------
@@ -241,7 +244,7 @@ def test_caller_supplied_idempotency_key_is_used_verbatim():
         return httpx.Response(202, json=WORKLOAD)
 
     with client_with(handler) as c:
-        c.run(model="x", idempotency_key="nightly-eval-2026-07-27")
+        c.run(model="x", budget=1, idempotency_key="nightly-eval-2026-07-27")
     assert seen["key"] == "nightly-eval-2026-07-27"
 
 
@@ -264,17 +267,20 @@ def test_run_without_a_budget_sends_no_cost_ceiling():
     The mirror of Go's TestRunWithoutABudgetSendsNoCostCeiling: the two clients
     submit the same bytes for the same brief, so neither can drift back into a
     private ceiling on somebody else's money. The empty outcome object still
-    ships, because that is what the Go client sends too.
+    ships, because that is what the Go client sends too. It is warned about
+    rather than filled in.
     """
-    outcome = _submitted_outcome(model="7B fine-tune", command=["python", "train.py"])
+    with pytest.warns(UserWarning, match="budget="):
+        outcome = _submitted_outcome(model="7B fine-tune", command=["python", "train.py"])
     assert "max_cost_usd" not in outcome, f"invented a ceiling: {outcome}"
     assert outcome == {}
 
 
 def test_run_sends_an_explicit_budget_as_the_cost_ceiling():
-    """Either spelling reaches the wire, with ``max_cost_usd`` winning."""
+    """``budget`` is the one name for the ceiling, and it reaches the wire."""
     assert _submitted_outcome(model="x", budget=25)["max_cost_usd"] == 25.0
-    assert _submitted_outcome(model="x", max_cost_usd=40, budget=25)["max_cost_usd"] == 40.0
+    with pytest.raises(TypeError):
+        _submitted_outcome(model="x", max_cost_usd=40)
 
 
 def test_workload_exposes_the_documented_attributes():
@@ -287,7 +293,9 @@ def test_workload_exposes_the_documented_attributes():
     assert wl.budget_usd == 400.0
     assert wl.route.sku == "nodus:a100-80-us-east"
     assert wl.route.compute_class is nodus.ComputeClass.ACCELERATOR
-    assert wl.route.offer_id == wl.route.sku  # wire-name alias
+    # sku is the only name for it. `offer_id` is the wire spelling read in
+    # Route.from_dict, not a second attribute to write code against.
+    assert not hasattr(wl.route, "offer_id")
     assert wl.stages[0].completed_units == 4
     assert wl.created_at is not None
 
@@ -562,14 +570,16 @@ def test_idempotency_conflict_is_not_retried():
 
     with client_with(handler, max_retries=3) as c:
         with pytest.raises(nodus.IdempotencyConflictError):
-            c.run(model="x")
+            c.run(model="x", budget=1)
     assert calls["n"] == 1
 
 
 # -- async -----------------------------------------------------------------
 
 
-def test_async_client_mirrors_the_sync_surface():
+def test_the_async_client_reads_the_same_wire_shape():
+    """That the two clients offer the same calls is pinned in test_api_surface."""
+
     async def go():
         c = nodus.AsyncClient(api_key="nk_live_test", base_url="https://nodus.invalid")
         c._http = httpx.AsyncClient(
@@ -604,3 +614,394 @@ def test_unknown_status_from_a_newer_control_plane_does_not_raise():
         wl = c.get("wl_abc")
     assert wl.status == "quiescing"
     assert not wl.is_terminal
+
+
+# -- a typo'd keyword is not a brief ---------------------------------------
+
+
+def test_a_typod_keyword_is_refused_rather_than_forwarded():
+    """``budget_usd=`` is not ``budget=``, and the difference is the spend cap.
+
+    The control plane drops keys it does not model, so a forwarded typo submits
+    an uncapped run and answers 202. The rejection names the key and the field
+    it was most likely meant to be.
+    """
+    with pytest.raises(TypeError) as exc:
+        build_payload(model="x", command=["a"], budget_usd=400)
+    message = str(exc.value)
+    assert "budget_usd" in message
+    assert "budget" in message
+
+
+def test_every_unknown_keyword_is_named_at_once():
+    with pytest.raises(TypeError) as exc:
+        build_payload(model="x", budget=1, runtime_hours=3, memory_gb=80)
+    message = str(exc.value)
+    assert "runtime_hours" in message and "memory_gb" in message
+
+
+def test_a_field_this_sdk_does_not_model_travels_in_extra():
+    """The escape hatch is deliberate and spelled, so a typo cannot use it."""
+    p = build_payload(model="x", budget=1, extra={"experimental_knob": 3})
+    assert p["experimental_knob"] == 3
+
+
+def test_a_typod_keyword_never_reaches_the_network():
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        return httpx.Response(202, json=SUBMIT_ACCEPTED)
+
+    with client_with(handler) as c:
+        with pytest.raises(TypeError) as exc:
+            c.run(model="x", budget_usd=400)
+    assert "budget" in str(exc.value)
+    assert not calls, "an uncapped workload was submitted from a typo"
+
+
+# -- what it is costing right now ------------------------------------------
+
+
+RUNNING_METERED = {
+    "id": "wl_abc",
+    "status": "running",
+    "revision": 1,
+    "spend_usd": 2.5,
+    "meter": {
+        "settled_usd": 2.5,
+        "accruing_usd": 6.0,
+        "accruing_rate_usd_hour": 6.0,
+        "total_now_usd": 8.5,
+        "as_of": "2026-07-27T11:00:00Z",
+    },
+}
+
+
+def test_a_running_workload_reports_what_it_is_costing_now():
+    """``spend_usd`` moves only when a lease closes, so it reads $0 mid-run.
+
+    Both the read and the list endpoint send a meter precisely so a running row
+    does not claim it cost nothing. Dropping it is the difference between a
+    customer seeing $8.50 and seeing $0.00.
+    """
+    with client_with(lambda r: httpx.Response(200, json=RUNNING_METERED)) as c:
+        wl = c.get("wl_abc")
+    assert wl.spend_usd == 2.5, "spend_usd stays settled-only"
+    assert wl.meter is not None
+    assert wl.meter.settled_usd == 2.5
+    assert wl.meter.accruing_rate_usd_hour == 6.0
+    assert wl.meter.as_of is not None
+    assert wl.cost_now_usd == 8.5
+
+
+def test_cost_now_falls_back_to_settled_spend_when_no_meter_is_sent():
+    with client_with(lambda r: httpx.Response(200, json=WORKLOAD)) as c:
+        wl = c.get("wl_abc")
+    assert wl.meter is None
+    assert wl.cost_now_usd == wl.spend_usd == 291.4
+
+
+def test_list_rows_carry_the_meter_too():
+    page = {"workloads": [RUNNING_METERED]}
+    with client_with(lambda r: httpx.Response(200, json=page)) as c:
+        assert c.list()[0].cost_now_usd == 8.5
+
+
+# -- what v1 does not offer ------------------------------------------------
+
+
+def test_there_is_no_module_level_run():
+    """One idiom: build a client, submit on it, wait on it.
+
+    The module-level helper closed its client before returning the handle, so
+    every follow-up call on what it handed back failed.
+    """
+    assert "run" not in nodus.__all__
+    assert not hasattr(nodus, "run")
+
+
+def test_the_price_book_is_gone():
+    """It resolved a path inside the monorepo, so it was dead for every install."""
+    import importlib.util
+
+    assert importlib.util.find_spec("nodus._pricebook") is None
+
+
+# -- errors say what to do about them --------------------------------------
+
+
+def _raised(status: int, body: dict, headers: dict | None = None) -> nodus.NodusError:
+    with client_with(lambda r: httpx.Response(status, json=body, headers=headers or {}),
+                     max_retries=0) as c:
+        with pytest.raises(nodus.NodusError) as exc:
+            c.run(model="x", budget=1)
+    return exc.value
+
+
+def test_an_error_says_what_to_do_and_which_request_it_was():
+    """A message naming only what failed leaves the reader where they started."""
+    err = _raised(
+        400,
+        {"error": "missing_source", "message": "source, framework, or stages required"},
+        {"X-Request-Id": "req_0192"},
+    )
+    message = str(err)
+    assert "source, framework, or stages required" in message
+    assert "image=" in message, "no remedy in the message"
+    assert "req_0192" in message, "the request id was captured and never rendered"
+
+
+@pytest.mark.parametrize(
+    "code,hint",
+    [
+        ("invalid_compute_class", "accelerator"),
+        ("invalid_continuity_mode", "checkpointed"),
+        ("invalid_complete_by", "finish_by"),
+        ("idempotency_conflict", "Idempotency-Key"),
+        ("capacity_unavailable", "interrupt_tolerance"),
+    ],
+)
+def test_every_rejection_the_control_plane_sends_carries_a_remedy(code, hint):
+    assert hint in str(_raised(400, {"error": code, "message": "no"}))
+
+
+def test_budget_refusal_exposes_the_arithmetic_as_numbers():
+    """The 402 body is the whole refusal; reading it should not be dict archaeology."""
+    err = _raised(
+        402,
+        {
+            "error": "budget_exceeded",
+            "monthly_spend_cap_usd": 2500,
+            "month_to_date_usd": 2400,
+            "estimated_cost_usd": 300,
+            "remaining_headroom_usd": 100,
+        },
+    )
+    assert isinstance(err, nodus.BudgetExceededError)
+    assert err.monthly_cap_usd == 2500.0
+    assert err.month_to_date_usd == 2400.0
+    assert err.estimated_cost_usd == 300.0
+    assert err.headroom_usd == 100.0
+
+
+def test_headroom_is_computed_when_the_server_did_not_send_it():
+    err = _raised(
+        402,
+        {"error": "budget_exceeded", "monthly_spend_cap_usd": 2500, "month_to_date_usd": 2400},
+    )
+    assert err.headroom_usd == 100.0
+
+
+def test_a_long_retry_after_is_clamped_rather_than_discarded():
+    """A 600-second hint is real; throwing it away retried in half a second."""
+    err = _raised(429, {"error": "rate_limited"}, {"Retry-After": "600"})
+    assert err.retry_after == 600.0, "the server's own number is what the caller reads"
+    assert err.retry_after_header == "600"
+    resp = httpx.Response(429, headers={"Retry-After": "600"})
+    assert nodus.Client._backoff(0, resp) == 300.0, "a backoff must not hold for ten minutes"
+
+
+def test_retry_after_in_http_date_form_is_understood():
+    from email.utils import format_datetime
+    from datetime import datetime, timedelta, timezone
+
+    when = datetime.now(timezone.utc) + timedelta(seconds=45)
+    err = _raised(429, {"error": "rate_limited"}, {"Retry-After": format_datetime(when)})
+    assert err.retry_after is not None and 30 <= err.retry_after <= 60
+
+
+# -- handles are identities, and a partial body is not a blank one ---------
+
+
+def test_two_handles_on_one_workload_are_two_handles():
+    """Blank handles used to compare equal, and no handle could go in a set."""
+    with client_with(lambda r: httpx.Response(200, json=WORKLOAD)) as c:
+        a, b = c.get("wl_abc"), c.get("wl_abc")
+    assert a == a and a != b
+    assert len({a, b}) == 2
+
+
+def test_a_partial_body_keeps_what_was_already_known():
+    """An absent field is not a field set to nothing.
+
+    Clobbering on a short body wiped ``status`` to None, and a wait polling that
+    never sees a terminal state runs until the caller's own bound.
+    """
+    bodies = [WORKLOAD, {"id": "wl_abc", "revision": 2}]
+    with client_with(lambda r: httpx.Response(200, json=bodies.pop(0))) as c:
+        wl = c.get("wl_abc")
+        wl.refresh()
+    assert wl.status is nodus.WorkloadStatus.COMPLETED
+    assert wl.route is not None
+    assert wl.spend_usd == 291.4
+    assert wl.revision == 2
+
+
+def test_an_empty_body_is_an_error_not_a_blank_workload():
+    with client_with(lambda r: httpx.Response(200, content=b""), max_retries=0) as c:
+        with pytest.raises(nodus.NodusError):
+            c.get("wl_abc")
+
+
+# -- briefs: commands, deadlines, ceilings ---------------------------------
+
+
+def test_a_string_command_is_split_the_way_a_shell_would():
+    p = build_payload(command='python train.py --name "my run"', budget=1)
+    assert p["source"]["command"] == ["python", "train.py", "--name", "my run"]
+
+
+def test_a_datetime_deadline_reaches_the_wire_as_rfc3339():
+    """``finish_by=datetime(...)`` used to die inside json.dumps."""
+    from datetime import datetime, timezone
+
+    p = build_payload(model="x", budget=1,
+                      finish_by=datetime(2026, 8, 1, 9, 0, tzinfo=timezone.utc))
+    assert p["outcome"]["complete_by"] == "2026-08-01T09:00:00Z"
+    json.dumps(p)
+
+
+def test_a_brief_with_no_budget_says_it_is_uncapped():
+    """Uncapped is a choice, and it should be one somebody made on purpose."""
+    with pytest.warns(UserWarning, match="budget="):
+        build_payload(model="x", command=["a"])
+
+
+def test_a_staged_brief_is_not_nagged_about_a_budget():
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        build_payload(stages=[{"id": "train"}])
+
+
+# -- pagination and event walking ------------------------------------------
+
+
+def test_list_says_it_is_one_page():
+    assert "first page" in (nodus.Client.list.__doc__ or "").splitlines()[0]
+
+
+def test_events_documents_the_server_cap():
+    assert "100" in (nodus.Client.events.__doc__ or "")
+
+
+def test_iter_events_walks_past_the_cap_the_server_returns():
+    batches = [
+        {"events": [{"id": i, "event_type": "workload.running"} for i in range(1, 101)]},
+        {"events": [{"id": 101, "event_type": "workload.completed"}]},
+        {"events": []},
+    ]
+    with client_with(lambda r: httpx.Response(200, json=batches.pop(0))) as c:
+        assert len(list(c.iter_events("wl_abc"))) == 101
+
+
+def test_iter_workloads_stops_when_the_offset_stops_advancing():
+    """A next_offset that does not move is a stall, not a next page."""
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        assert len(calls) <= 4, "iter_workloads never stopped"
+        return httpx.Response(
+            200, json={"workloads": [{"id": "wl_1", "status": "running"}], "next_offset": 0}
+        )
+
+    with client_with(handler) as c:
+        assert [w.id for w in c.iter_workloads(page_size=1)] == ["wl_1"]
+
+
+def test_streaming_asks_whether_it_is_over_only_when_a_batch_is_empty():
+    """Two requests per poll doubles the load on a stream that runs for hours."""
+    paths: list[str] = []
+    events = [{"events": [{"id": 1, "event_type": "workload.running"}]}, {"events": []}]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        if request.url.path.endswith("/events"):
+            return httpx.Response(200, json=events.pop(0) if events else {"events": []})
+        return httpx.Response(200, json=WORKLOAD)
+
+    with client_with(handler) as c:
+        assert [e.type for e in c.stream_events("wl_abc", poll_seconds=0)] == ["workload.running"]
+    assert paths.count("/v1/workloads/wl_abc") == 1
+
+
+# -- logs ------------------------------------------------------------------
+
+
+def _log_handler(seen: dict) -> object:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/logs"):
+            seen["params"] = dict(request.url.params)
+            return httpx.Response(200, text="step-1\nstep-2\n")
+        return httpx.Response(200, json=WORKLOAD)
+
+    return handler
+
+
+def test_generation_zero_is_still_a_filter():
+    """A caller computing generation 0 has a bug; silently reading the latest hides it."""
+    seen: dict = {}
+    with client_with(_log_handler(seen)) as c:
+        c.logs("wl_abc", generation=0)
+    assert seen["params"].get("generation") == "0"
+
+
+def test_a_handle_reads_its_own_logs():
+    seen: dict = {}
+    with client_with(_log_handler(seen)) as c:
+        assert c.get("wl_abc").logs().startswith("step-1")
+
+
+def test_the_async_client_waits_streams_and_reads_logs_like_the_sync_one():
+    """The async half is not a subset: same calls, same names, awaited."""
+
+    async def go():
+        seen: dict = {}
+        c = nodus.AsyncClient(api_key="nk_live_test", base_url="https://nodus.invalid")
+        c._http = httpx.AsyncClient(
+            base_url="https://nodus.invalid",
+            transport=httpx.MockTransport(_log_handler(seen)),
+        )
+        async with c:
+            wl = await c.wait("wl_abc", poll_seconds=0)
+            assert wl.succeeded
+            assert (await c.logs("wl_abc")).startswith("step-1")
+            assert (await wl.logs()).startswith("step-1")
+            assert [e.type async for e in c.stream_events("wl_abc", poll_seconds=0)] == []
+
+    asyncio.run(go())
+
+
+# -- deliberate membership -------------------------------------------------
+
+
+def test_the_terminal_sets_are_exported_or_they_are_private():
+    assert "TERMINAL" in nodus.__all__ and "TERMINAL_STATUSES" in nodus.__all__
+    assert "MEDIA_TAR" in types.__all__
+    assert "Meter" in nodus.__all__
+
+
+def test_everything_exported_actually_exists():
+    for name in nodus.__all__:
+        assert hasattr(nodus, name), name
+
+
+def test_the_version_is_read_from_the_package_metadata_not_repeated():
+    """Two copies of a version number are one release away from disagreeing."""
+    import pathlib
+    import re
+
+    root = pathlib.Path(nodus.__file__).parents[1]
+    declared = re.search(r'^version = "([^"]+)"', (root / "pyproject.toml").read_text(
+        encoding="utf-8"), re.M).group(1)
+    src = pathlib.Path(nodus.__file__).read_text(encoding="utf-8")
+    assert f'__version__ = "{declared}"' not in src, "the version is declared twice"
+    assert "importlib.metadata" in src
+    assert nodus.__version__
+
+
+def test_the_module_docstring_shows_one_idiom():
+    doc = nodus.__doc__ or ""
+    assert "client.wait(" in doc
+    assert "nodus.run(" not in doc

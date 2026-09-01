@@ -9,7 +9,11 @@ sync client, the async client, and the CLI so all three send the same bytes.
 
 from __future__ import annotations
 
+import difflib
+import inspect
+import shlex
 import warnings
+from datetime import datetime, timezone
 from typing import Any
 
 # The runner installs itself onto the rented host by fetching its artifact with
@@ -48,17 +52,65 @@ def _warn_if_it_cannot_bootstrap(image: str) -> None:
     )
 
 
+def _warn_if_it_is_uncapped(outcome: dict[str, Any]) -> None:
+    """Warn while the brief is still free, for a submission with no cost ceiling.
+
+    An omitted budget is not a small budget: the run is admitted against the
+    account cap alone and bills whatever it takes to finish.
+    """
+    if "max_cost_usd" in outcome:
+        return
+    warnings.warn(
+        "no budget= given, so this workload is capped only by the account spend "
+        "cap and will bill whatever it costs to finish. Pass budget=<usd> to "
+        "bound it.",
+        stacklevel=3,
+    )
+
+
 def _as_command(command: list[str] | str | None) -> list[str]:
+    """Argv for the workload. A string is split the way a shell would split it."""
     if isinstance(command, str):
-        return command.split()
+        return shlex.split(command)
     if command:
         return list(command)
     return []
 
 
+def _as_timestamp(value: datetime | str | None) -> str | None:
+    """RFC3339 for the wire. A naive datetime is read as local time, as Python does."""
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    return str(value)
+
+
 def _enum_value(v: Any) -> Any:
     """Accept an enum member or its wire string interchangeably."""
     return getattr(v, "value", v)
+
+
+def _reject_unknown(unknown: dict[str, Any], known: tuple[str, ...]) -> None:
+    """Refuse a keyword this SDK does not model, naming what it looked like.
+
+    The control plane ignores fields it does not know, so a forwarded typo is
+    accepted and runs: ``budget_usd=400`` submits a workload with no cost
+    ceiling at all and answers 202.
+    """
+    if not unknown:
+        return
+    parts = []
+    for name in sorted(unknown):
+        near = difflib.get_close_matches(name, known, n=1, cutoff=0.6)
+        parts.append(f"{name!r}" + (f" (did you mean {near[0]!r}?)" if near else ""))
+    raise TypeError(
+        "unknown brief field: "
+        + ", ".join(parts)
+        + ". The control plane ignores fields it does not model, so this would "
+        "have been submitted and silently dropped. Pass extra={...} to send a "
+        "field deliberately."
+    )
 
 
 def build_payload(
@@ -68,12 +120,11 @@ def build_payload(
     command: list[str] | str | None = None,
     requirements: dict[str, Any] | None = None,
     model: str | None = None,
-    compute_class: str | None = None,
+    compute_class: Any = None,
     peak_memory_gb: float | None = None,
     expected_runtime_hours: float | None = None,
     budget: float | None = None,
-    max_cost_usd: float | None = None,
-    finish_by: str | None = None,
+    finish_by: datetime | str | None = None,
     continuity: Any = None,
     interrupt_tolerance: Any = None,
     data_regions: list[str] | None = None,
@@ -82,9 +133,15 @@ def build_payload(
     stages: list[dict[str, Any]] | None = None,
     framework: str | None = None,
     policy: dict[str, Any] | None = None,
-    **extra: Any,
+    extra: dict[str, Any] | None = None,
+    **unknown: Any,
 ) -> dict[str, Any]:
-    """Build the ``POST /v1/workloads`` body from a flat brief."""
+    """Build the ``POST /v1/workloads`` body from a flat brief.
+
+    ``extra`` is merged last, for a field the control plane models and this SDK
+    version does not. Anything else is refused rather than forwarded.
+    """
+    _reject_unknown(unknown, BRIEF_FIELDS)
     req: dict[str, Any] = dict(requirements or {})
     if model is not None:
         req.setdefault("model", model)
@@ -100,11 +157,11 @@ def build_payload(
         req.setdefault("data_regions", list(data_regions))
 
     outcome: dict[str, Any] = {}
-    ceiling = max_cost_usd if max_cost_usd is not None else budget
-    if ceiling is not None:
-        outcome["max_cost_usd"] = float(ceiling)
-    if finish_by:
-        outcome["complete_by"] = finish_by
+    if budget is not None:
+        outcome["max_cost_usd"] = float(budget)
+    deadline = _as_timestamp(finish_by)
+    if deadline:
+        outcome["complete_by"] = deadline
 
     # Checkpointed by default: losing a long run to a reclaim is the expensive
     # failure, and the caller has to opt out of durability rather than into it.
@@ -130,6 +187,9 @@ def build_payload(
             if named:
                 _warn_if_it_cannot_bootstrap(named)
     else:
+        # Scoped to the single-source brief: that is where an omitted budget is
+        # an accident rather than a pipeline assembled against the schema.
+        _warn_if_it_is_uncapped(outcome)
         chosen = image or source or DEFAULT_IMAGE
         _warn_if_it_cannot_bootstrap(chosen)
         src: dict[str, Any] = {"image": chosen}
@@ -147,8 +207,17 @@ def build_payload(
     if policy:
         payload["policy"] = dict(policy)
 
-    payload.update(extra)
+    if extra:
+        payload.update(extra)
     return payload
+
+
+#: The keywords a brief may name, read off the translator so the two cannot drift.
+BRIEF_FIELDS: tuple[str, ...] = tuple(
+    name
+    for name, p in inspect.signature(build_payload).parameters.items()
+    if p.kind is inspect.Parameter.KEYWORD_ONLY
+)
 
 
 def status_filter(status: Any) -> str | None:

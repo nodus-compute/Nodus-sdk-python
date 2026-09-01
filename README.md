@@ -7,8 +7,9 @@ taken back — so a fine-tune that would have died at hour six finishes.
 ```python
 import nodus
 
-wl = nodus.run(command=["python", "train.py"], budget=20)
-print(nodus.Client().wait(wl.id).status)
+with nodus.Client() as client:
+    wl = client.run(command=["python", "train.py"], budget=20)
+    print(client.wait(wl.id).status)
 ```
 
 ## Install
@@ -53,7 +54,7 @@ with nodus.Client() as client:
     )
 
     done = client.wait(wl.id)       # polls until the run is over
-    print(done.status, done.spend_usd)
+    print(done.status, done.cost_now_usd)
 ```
 
 Only `command` is required. Everything else narrows the search or bounds the
@@ -83,7 +84,7 @@ for event in client.stream_events(wl.id):
     print(event.type, event.message)
 
 print(client.logs(wl.id))           # the job's own stdout and stderr
-print(client.ledger(wl.id))         # what it has cost so far
+print(wl.refresh().cost_now_usd)    # charged plus what is accruing right now
 ```
 
 ## Async
