@@ -115,6 +115,29 @@ def test_continuity_defaults_to_checkpointed_and_ephemeral_opts_out():
     assert eph == {"mode": "ephemeral", "resume_on_interruption": False}
 
 
+@pytest.mark.parametrize("mode", ["checkpointed", "restartable", "ephemeral"])
+def test_both_spellings_of_continuity_build_the_same_brief(mode):
+    """The dict form left resume_on_interruption out, and the server fills it in.
+
+    An absent resume flag is read as true by the control plane, so
+    continuity={"mode": "ephemeral"} -- the spelling that says losing this run
+    is acceptable -- submitted a workload that resumes on interruption and pays
+    for the durability the caller had just declined. The string form of the
+    same words sent the opposite.
+    """
+    assert (
+        build_payload(budget=1, continuity=mode)["continuity"]
+        == build_payload(budget=1, continuity={"mode": mode})["continuity"]
+    )
+
+
+def test_a_resume_flag_written_into_the_dict_is_still_the_callers_choice():
+    cont = build_payload(
+        budget=1, continuity={"mode": "ephemeral", "resume_on_interruption": True}
+    )["continuity"]
+    assert cont == {"mode": "ephemeral", "resume_on_interruption": True}
+
+
 def test_enums_and_strings_are_interchangeable():
     a = build_payload(budget=1, continuity=nodus.ContinuityMode.RESTARTABLE,
                       compute_class=nodus.ComputeClass.VM)

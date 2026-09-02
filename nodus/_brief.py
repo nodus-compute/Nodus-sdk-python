@@ -217,8 +217,14 @@ def build_payload(
     if continuity is None:
         cont: dict[str, Any] = {"mode": "checkpointed", "resume_on_interruption": True}
     elif isinstance(continuity, dict):
+        # The same default as the string form, because they are the same brief
+        # written two ways. Left out, the flag is read as true on arrival -- so
+        # the dict spelling of "ephemeral" asked for the durability the caller
+        # had just declined, and paid for it. A flag written here is kept.
         cont = dict(continuity)
-        cont["mode"] = _enum_value(cont.get("mode", "checkpointed"))
+        mode = _enum_value(cont.get("mode", "checkpointed"))
+        cont["mode"] = mode
+        cont.setdefault("resume_on_interruption", mode != "ephemeral")
     else:
         mode = _enum_value(continuity)
         cont = {"mode": mode, "resume_on_interruption": mode != "ephemeral"}
