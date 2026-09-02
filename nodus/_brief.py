@@ -17,6 +17,8 @@ import warnings
 from datetime import datetime, timezone
 from typing import Any
 
+from .types import WorkloadStatus
+
 _PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -317,15 +319,49 @@ BRIEF_FIELDS: tuple[str, ...] = tuple(
 )
 
 
+#: The presets the control plane expands into concrete statuses server-side.
+STATUS_PRESETS: tuple[str, ...] = ("active", "terminal")
+
+#: Every token a status filter may name.
+STATUS_FILTERS: tuple[str, ...] = tuple(
+    sorted({s.value for s in WorkloadStatus}.union(STATUS_PRESETS))
+)
+
+
+def _one_status(value: Any) -> str:
+    """One filter token, checked against the vocabulary the server expands.
+
+    Unrecognised tokens are dropped on arrival, and a filter that expands to
+    nothing is no filter at all -- so a misspelled status did not narrow the
+    list, it returned the whole account.
+    """
+    wire = str(_enum_value(value)).strip()
+    if wire in STATUS_FILTERS:
+        return wire
+    near = difflib.get_close_matches(wire, STATUS_FILTERS, n=1, cutoff=0.6)
+    raise ValueError(
+        f"{wire!r} is not a workload status"
+        + (f" (did you mean {near[0]!r}?)" if near else "")
+        + ". The control plane ignores a filter token it does not know, and a "
+        "filter that matches nothing is no filter, so this would have listed "
+        "every workload on the account. Statuses: " + ", ".join(STATUS_FILTERS) + "."
+    )
+
+
 def status_filter(status: Any) -> str | None:
     """Normalise a status filter into the wire form.
 
-    Accepts a member, a wire string, a list of either, or the presets
-    ``"active"`` and ``"terminal"`` that the control plane expands server-side.
+    Accepts a member, a wire string, a comma-joined string, a list of either,
+    or the presets ``"active"`` and ``"terminal"`` that the control plane
+    expands server-side. A token it could not expand is a ValueError here
+    rather than a listing of everything.
     """
     if status is None:
         return None
     if isinstance(status, (list, tuple, set, frozenset)):
-        parts = [str(_enum_value(s)) for s in status if s is not None]
-        return ",".join(parts) or None
-    return str(_enum_value(status))
+        tokens = [s for s in status if s is not None]
+    elif isinstance(status, str):
+        tokens = [t for t in status.split(",") if t.strip()]
+    else:
+        tokens = [status]
+    return ",".join(_one_status(t) for t in tokens) or None

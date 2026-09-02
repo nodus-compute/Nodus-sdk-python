@@ -14,6 +14,7 @@ import sys
 from typing import Any
 
 from . import Client, __version__
+from ._brief import STATUS_FILTERS
 from .errors import NodusError, NotFoundError
 from .types import ContinuityMode
 
@@ -224,7 +225,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     l = sub.add_parser("list", help="list workloads")
     l.add_argument("--limit", type=int, default=50)
-    l.add_argument("--status", default=None, help="active, terminal, or a concrete status")
+    # Spelled out rather than free text: the control plane ignores a token it
+    # does not know, so a typo here listed every workload on the account.
+    l.add_argument("--status", default=None, choices=STATUS_FILTERS,
+                   help="active, terminal, or a concrete status")
 
     g = sub.add_parser("get", help="show one workload")
     g.add_argument("workload_id")

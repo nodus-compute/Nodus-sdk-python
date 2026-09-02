@@ -149,7 +149,39 @@ def test_status_filter_accepts_presets_members_and_lists():
     assert status_filter("active") == "active"
     assert status_filter(nodus.WorkloadStatus.RUNNING) == "running"
     assert status_filter([nodus.WorkloadStatus.FAILED, "cancelled"]) == "failed,cancelled"
+    assert status_filter("running,failed") == "running,failed"
     assert status_filter(None) is None
+
+
+def test_a_status_the_server_cannot_expand_is_refused():
+    """A misspelled filter did not narrow anything -- it returned everything.
+
+    The control plane drops filter tokens it does not recognise, and a filter
+    that expands to nothing is no filter at all. So list(status="runnning")
+    answered with the whole account, and a script that acts on what it lists
+    acted on every workload there.
+    """
+    with pytest.raises(ValueError) as exc:
+        status_filter("runnning")
+    message = str(exc.value)
+    assert "runnning" in message
+    assert "running" in message, "the refusal should name the status it looked like"
+
+
+def test_one_bad_status_refuses_the_whole_list():
+    """Dropping the bad one silently would widen the filter, which is the bug."""
+    with pytest.raises(ValueError):
+        status_filter([nodus.WorkloadStatus.RUNNING, "compleeted"])
+    with pytest.raises(ValueError):
+        status_filter("running,compleeted")
+
+
+def test_the_command_offers_only_statuses_that_filter():
+    from nodus import cli
+
+    with pytest.raises(SystemExit):
+        cli.build_parser().parse_args(["list", "--status", "runnning"])
+    assert cli.build_parser().parse_args(["list", "--status", "active"]).status == "active"
 
 
 def test_data_regions_go_where_the_server_reads_them():
