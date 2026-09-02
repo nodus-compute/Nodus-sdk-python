@@ -9,31 +9,50 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
+import warnings
+import webbrowser
 from typing import Any
 
-from . import Client, __version__
+from . import Client, __version__, _is_header_safe, _redact, _resolve_base_url, config, login
 from ._brief import STATUS_FILTERS
 from .errors import NodusError, NotFoundError
-from .types import ContinuityMode
+from .types import ContinuityMode, _num
 
-# C0 and C1 controls, minus tab and newline. Nearly everything printed here was
-# written somewhere else, and a terminal acts on whatever escapes it is handed.
+# Nearly everything printed here was written somewhere else, and a terminal
+# acts on whatever escapes it is handed. The rule between the two cleaners:
+# _safe is only for values that may legitimately span lines, and every value
+# that is one line by definition goes through _safe_line. A newline in a
+# one-line value is not formatting -- it forges a whole row of output that
+# reads exactly like the tool's own. The --json dumps are the one exception:
+# json.dumps escapes every control character itself.
+#
+# C0 and C1 controls, minus tab and newline. This keeps them because it also
+# cleans a workload's own log, which is nothing but lines.
 _CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+
+# The same, sparing nothing: an id, a status, a SKU, a code, an address.
+_CONTROL_LINE = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 
 
 def _safe(text: Any) -> str:
-    """Text from elsewhere, with the characters a terminal acts on removed."""
+    """Many-line text from elsewhere, with what a terminal acts on removed."""
     return _CONTROL.sub("", str(text))
+
+
+def _safe_line(text: Any) -> str:
+    """A one-line value from elsewhere, with tab and newline gone too."""
+    return _CONTROL_LINE.sub("", str(text))
 
 
 def _fmt_workload(wl: Any) -> str:
     # cost_now_usd, not spend_usd and not the meter: settled charges do not move
     # while a lease is open, and the meter counts only this billing period.
-    route = _safe(wl.route.sku) if wl.route else "-"
-    status = _safe(getattr(wl.status, "value", wl.status))
-    return f"{_safe(wl.id)}  {status:<13} {route:<28} ${wl.cost_now_usd:.2f}"
+    route = _safe_line(wl.route.sku) if wl.route else "-"
+    status = _safe_line(getattr(wl.status, "value", wl.status))
+    return f"{_safe_line(wl.id)}  {status:<13} {route:<28} ${wl.cost_now_usd:.2f}"
 
 
 def _split_command(argv: list[str]) -> tuple[list[str], list[str]]:
@@ -58,7 +77,7 @@ def _cmd_run(args: argparse.Namespace, command: list[str]) -> int:
             data_regions=args.data_region or None,
             idempotency_key=args.idempotency_key,
         )
-        print(wl.id)
+        print(_safe_line(wl.id))
         if not args.wait:
             return 0
         wl.wait(poll_seconds=args.poll, timeout_seconds=args.timeout)
@@ -80,6 +99,8 @@ def _cmd_get(args: argparse.Namespace) -> int:
         if args.wait:
             wl.wait(poll_seconds=args.poll, timeout_seconds=args.timeout)
         if args.json:
+            # ensure_ascii (the default) escapes every control character, so
+            # raw wire text cannot reach the terminal through a dump.
             print(json.dumps(wl.raw, indent=2, default=str))
         else:
             print(_fmt_workload(wl))
@@ -90,10 +111,10 @@ def _cmd_events(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
         if args.follow:
             for ev in client.stream_events(args.workload_id, poll_seconds=args.poll):
-                print(f"{ev.seq:>5}  {_safe(ev.type)}")
+                print(f"{ev.seq:>5}  {_safe_line(ev.type)}")
         else:
             for ev in client.events(args.workload_id):
-                print(f"{ev.seq:>5}  {_safe(ev.type)}")
+                print(f"{ev.seq:>5}  {_safe_line(ev.type)}")
     return 0
 
 
@@ -104,19 +125,19 @@ def _cmd_artifacts(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
         for art in client.artifacts(args.workload_id):
             mark = "final" if art.final else "checkpoint"
-            print(f"{_safe(art.stage_id)}  gen{art.generation}/seq{art.sequence}"
-                  f"  {mark}  {_safe(art.manifest_id)}")
+            print(f"{_safe_line(art.stage_id)}  gen{art.generation}/seq{art.sequence}"
+                  f"  {mark}  {_safe_line(art.manifest_id)}")
             for name, out in sorted(art.outputs.items()):
-                print(f"    output {_safe(name)}  {_safe(out.sha256[:12])}  {out.bytes}B")
+                print(f"    output {_safe_line(name)}  {_safe_line(out.sha256[:12])}  {out.bytes}B")
             for f in art.files:
-                print(f"    file   {_safe(f.uri)}  {_safe(f.sha256[:12])}  {f.bytes}B")
+                print(f"    file   {_safe_line(f.uri)}  {_safe_line(f.sha256[:12])}  {f.bytes}B")
     return 0
 
 
 def _cmd_cancel(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
         client.cancel(args.workload_id)
-    print(f"cancel requested for {_safe(args.workload_id)}")
+    print(f"cancel requested for {_safe_line(args.workload_id)}")
     return 0
 
 
@@ -128,12 +149,12 @@ def _cmd_ledger(args: argparse.Namespace) -> int:
             return 0
         for e in led.entries:
             side, amount = ("debit", e.debit_usd) if e.debit_usd else ("credit", e.credit_usd)
-            print(f"  {_safe(e.entry_type):<18} {side:<7} ${amount:.6f}")
+            print(f"  {_safe_line(e.entry_type):<18} {side:<7} ${amount:.6f}")
         st = led.settlement
         # Both numbers, always: the charge is what the customer pays, the
         # balance is what closing left — exactly $0.00 when the books are square.
         print(f"  {'charged':<18} {'total':<7} ${led.charged_usd:.6f}")
-        print(f"  {'settlement':<18} {_safe(st.status):<7} balance ${st.balance_usd:.6f}")
+        print(f"  {'settlement':<18} {_safe_line(st.status):<7} balance ${st.balance_usd:.6f}")
     return 0
 
 
@@ -163,12 +184,14 @@ def _cmd_logs(args: argparse.Namespace) -> int:
 
 
 def _fmt_route(route: Any) -> list[str]:
-    mem = (route.resources or {}).get("device_memory_gb") or route.memory_gb
+    # resources is a raw wire object: coerced, so a non-numeric value the
+    # server chose cannot crash the {mem:g} format below.
+    mem = _num((route.resources or {}).get("device_memory_gb")) or route.memory_gb
     lines = [
-        f"{'catalog SKU':<22} {_safe(route.sku)}",
-        f"{'fit':<22} {_safe(route.fit_class)}"
+        f"{'catalog SKU':<22} {_safe_line(route.sku)}",
+        f"{'fit':<22} {_safe_line(route.fit_class)}"
         + (f"  |  {mem:g} GB" if mem else "")
-        + (f"  |  {_safe(route.region)}" if getattr(route, 'region', '') else ""),
+        + (f"  |  {_safe_line(route.region)}" if getattr(route, 'region', '') else ""),
         f"{'rate':<22} ${route.price_usd_hour:.4f}/h",
         f"{'expected hours':<22} {route.expected_hours:.2f}",
         f"{'expected cost':<22} ${route.expected_cost_usd:.2f}",
@@ -186,10 +209,10 @@ def _cmd_explain(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
         wl = client.get(args.workload_id)
         if not wl.route:
-            print(f"{_safe(wl.id)} has no route yet "
-                  f"(status {_safe(getattr(wl.status, 'value', wl.status))})")
+            print(f"{_safe_line(wl.id)} has no route yet "
+                  f"(status {_safe_line(getattr(wl.status, 'value', wl.status))})")
             return 1
-        print(f"workload  {_safe(wl.id)}")
+        print(f"workload  {_safe_line(wl.id)}")
         print()
         for line in _fmt_route(wl.route):
             print(f"  {line}")
@@ -199,11 +222,150 @@ def _cmd_explain(args: argparse.Namespace) -> int:
     return 0
 
 
+def _open_browser(url: str) -> bool:
+    """Best effort, and only for a web address that needed no cleaning.
+
+    The address arrives from the console, and ``webbrowser.open`` hands
+    whatever it is given to the platform's handler: a ``file:`` or
+    ``javascript:`` URL would be acted on locally. An address carrying a
+    control character is not opened in a cleaned-up form either -- cleaning it
+    makes it a different address, which is not the one anyone approved. The
+    range is :data:`_CONTROL_LINE`'s -- C0, DEL and C1, tab and newline
+    included -- because a URL is a one-line value like any other.
+    """
+    if _CONTROL_LINE.search(url):
+        return False
+    if not url.lower().startswith(("http://", "https://")):
+        return False
+    try:
+        return bool(webbrowser.open(url))
+    except Exception:
+        return False
+
+
+def _env_outranks(*names: str) -> list[str]:
+    """Which of these are set, and so beat anything in the config file."""
+    return [name for name in names if os.environ.get(name, "").strip()]
+
+
+def _cmd_login(args: argparse.Namespace) -> int:
+    base_url = _resolve_base_url(args.base_url)
+    # Before anything is minted: the console issues the key inside the call
+    # that releases it, so a file that cannot be written has to fail now.
+    config.ensure_writable()
+    with login.open_http(base_url) as http:
+        device = login.start_device_authorization(http)
+        print(f"Your sign-in code is {_safe_line(device.user_code)}")
+        print()
+        print(f"Enter it at: {_safe_line(device.verification_url)}")
+        if not args.no_browser and _open_browser(device.verification_url):
+            print("Opened that page in your browser.")
+        print()
+        print("Waiting for you to approve it...")
+        creds = login.poll_for_credentials(http, device, base_url)
+
+    # The same predicate that gates sending a key gates keeping one: a stored
+    # key the client cannot put in a header fails every later command, and by
+    # then it has only ever been shown redacted. config.save_credentials
+    # refuses such a key too; this refusal is the one that can say whose
+    # fault it is.
+    if not _is_header_safe(creds.api_key):
+        which = (
+            f"key {_safe_line(creds.key_id)}"
+            if creds.key_id
+            # No id to revoke by; how it was just minted is the next handle.
+            else "the key -- the console lists it as the most recent for this device"
+        )
+        print(
+            "The console sent an API key this client cannot use: a key must "
+            "be printable ASCII with no spaces to travel in a request "
+            f"header. Nothing was stored. Revoke {which} in the console and "
+            "sign in again.",
+            file=sys.stderr,
+        )
+        return 2
+
+    # A caveat about the file belongs in the sentence a person is reading, not
+    # in a UserWarning with a source line under it.
+    with warnings.catch_warnings(record=True) as caveats:
+        warnings.simplefilter("always")
+        try:
+            path = config.save_credentials(
+                creds.api_key,
+                creds.base_url,
+                key_id=creds.key_id,
+                tenant=creds.tenant,
+                expires_at=creds.expires_at,
+            )
+        except BaseException as exc:
+            # The key exists on the server whether or not this write worked,
+            # and the write can fail for reasons that are not the key's --
+            # a full disk, permissions, a foreign entry the dump refuses.
+            # Showing it once is the only way it is not lost while still
+            # live; repr stays copy-pasteable and cannot act on a terminal.
+            print(
+                f"Could not write {config.config_path()}: {_safe_line(exc)}. "
+                f"Your key, shown in quotes that are not part of it: "
+                f"{creds.api_key!r} - it will not be shown again. "
+                "Store it, or revoke it in the console.",
+                file=sys.stderr,
+            )
+            if isinstance(exc, Exception):
+                return 2
+            raise
+
+    # The redaction arm cannot carry a control character once the gate above
+    # has passed; wrapped anyway so both arms follow the one rule.
+    who = _safe_line(creds.tenant) if creds.tenant else _safe_line(_redact(creds.api_key))
+    print(f"Signed in as {who}.")
+    print(f"Wrote {path}")
+    for caveat in caveats:
+        print(f"Note: {_safe_line(caveat.message)}", file=sys.stderr)
+    for name in _env_outranks("NODUS_API_KEY", "NODUS_BASE_URL"):
+        print(
+            f"Note: {name} is set in this environment and outranks the file, "
+            "so it is what this client will use, not what was just written.",
+            file=sys.stderr,
+        )
+    return 0
+
+
+def _cmd_logout(args: argparse.Namespace) -> int:
+    path = config.config_path()
+    removed = config.clear_api_key()
+    if removed is None:
+        print(f"No stored key to remove: {path}")
+    else:
+        named = f" {_safe_line(removed['key_id'])}" if removed.get("key_id") else ""
+        print(f"Removed the stored key{named} from {path}")
+        print("That key still works until you revoke it in the console:")
+        print("deleting the local copy does not revoke it.")
+    for name in _env_outranks("NODUS_API_KEY"):
+        print(
+            f"Note: {name} is set in this environment and outranks the file, "
+            "so this client is still signed in with that key. Unset it to "
+            "finish logging out.",
+            file=sys.stderr,
+        )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="nodus", description="Submit and observe Nodus workloads.")
     p.add_argument("--version", action="version", version=f"nodus {__version__}")
     p.add_argument("--base-url", default=None, help="override NODUS_BASE_URL")
     sub = p.add_subparsers(dest="cmd", required=True)
+
+    # SUPPRESS, not None: a subparser default is copied over the namespace the
+    # top-level parser already filled, so `nodus --base-url X login` would lose
+    # its address to the subcommand that also offers the flag.
+    i = sub.add_parser("login", help="sign in and store an API key")
+    i.add_argument("--base-url", default=argparse.SUPPRESS,
+                   help="which deployment to sign in to")
+    i.add_argument("--no-browser", action="store_true",
+                   help="print the address instead of opening it")
+
+    sub.add_parser("logout", help="delete the stored API key")
 
     r = sub.add_parser("run", help="submit a brief")
     r.add_argument("--model", default=None, help="what the work is, e.g. '7B fine-tune'")
@@ -269,6 +431,8 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
     handlers = {
+        "login": lambda: _cmd_login(args),
+        "logout": lambda: _cmd_logout(args),
         "run": lambda: _cmd_run(args, command),
         "list": lambda: _cmd_list(args),
         "get": lambda: _cmd_get(args),

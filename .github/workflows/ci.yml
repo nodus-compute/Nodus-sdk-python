@@ -24,6 +24,28 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: python -m pytest -q
 
+  # The credential file is the one thing that behaves differently per OS: 0600
+  # exists on one and not the other, and each side has a test the other skips.
+  # Without this job the Windows half is never executed anywhere.
+  test-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both ends here too. The junction guard is Windows-only and the
+        # fallback TOML parser is 3.10-only, so on a 3.13-only Windows job the
+        # two never meet -- and a file written by one is read by the other.
+        python-version: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -e ".[dev]"
+      - run: python -m pytest -q
+
   build:
     runs-on: ubuntu-latest
     permissions:

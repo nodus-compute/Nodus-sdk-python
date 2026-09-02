@@ -9,7 +9,15 @@ are asking for, and authentication and validation failures never clear.
 
 from __future__ import annotations
 
+import re
 from typing import Any
+
+# Every C0 and C1 control. The server's own wording lands inside an error the
+# CLI prints, and a newline there forges whole lines of output that read
+# exactly like the tool's own -- on unauthenticated endpoints, before any
+# credential exists. The SDK's own remedy and request-id lines are added after
+# this and may still span lines.
+_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 
 __all__ = [
     "NodusError",
@@ -285,14 +293,17 @@ def error_from_response(
     if isinstance(body, dict):
         detail = body.get("message") or body.get("error")
         if isinstance(detail, str) and detail:
-            message = f"{message}: {detail}"
+            message = f"{message}: {_CONTROL.sub('', detail)}"
 
     code = body.get("error") if isinstance(body, dict) else None
     remedy = _REMEDIES.get(code) if isinstance(code, str) else None
     if remedy:
         message = f"{message}\n{remedy}"
     if request_id:
-        message = f"{message}\nrequest id: {request_id}"
+        # h11 passes every control byte but NUL, CR, LF, VT and FF through a
+        # header value, so this strip is the only defence for the message's
+        # copy. The attribute keeps the value verbatim for correlation.
+        message = f"{message}\nrequest id: {_CONTROL.sub('', request_id)}"
 
     # A signed-request rejection is a 401 like a bad key, but it means something
     # different to the caller: the credential is fine, the signature is not.
