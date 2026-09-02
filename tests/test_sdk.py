@@ -1016,6 +1016,36 @@ def test_a_brief_with_no_budget_says_it_is_uncapped():
         build_payload(model="x", command=["a"])
 
 
+def test_a_money_warning_blames_the_brief_that_caused_it(recwarn):
+    """Under the filter people actually run, the second one has to arrive too.
+
+    The default filter shows a warning once per source location. Blaming a line
+    inside the SDK makes every uncapped submission after the first one in a
+    process silent -- and a nightly job that submits in a loop gets told once,
+    on a run nobody was watching.
+    """
+    with client_with(lambda r: httpx.Response(202, json=SUBMIT_ACCEPTED)) as c:
+        with warnings.catch_warnings(record=True) as seen:
+            warnings.simplefilter("default")
+            c.run(model="first", command=["python", "train.py"])
+            c.run(model="second", command=["python", "train.py"])
+
+    uncapped = [w for w in seen if "budget=" in str(w.message)]
+    assert len(uncapped) == 2, [str(w.message) for w in seen]
+    for w in uncapped:
+        assert w.filename.endswith("test_sdk.py"), w.filename
+
+
+def test_a_money_warning_blames_a_direct_brief_too(recwarn):
+    """build_payload() sits one frame closer, and a hardcoded depth cannot be
+    right for both it and run()."""
+    with warnings.catch_warnings(record=True) as seen:
+        warnings.simplefilter("default")
+        build_payload(model="x", command=["a"])
+    assert len(seen) == 1
+    assert seen[0].filename.endswith("test_sdk.py"), seen[0].filename
+
+
 def test_a_staged_brief_is_not_nagged_about_a_budget():
     with warnings.catch_warnings():
         warnings.simplefilter("error")

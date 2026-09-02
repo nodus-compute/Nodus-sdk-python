@@ -11,10 +11,34 @@ from __future__ import annotations
 
 import difflib
 import inspect
+import os
 import shlex
 import warnings
 from datetime import datetime, timezone
 from typing import Any
+
+_PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def _caller_stacklevel() -> int:
+    """How far up the stack the code that wrote the brief is.
+
+    Counted rather than written down, because there is no one right number:
+    ``client.run()`` and ``build_payload()`` are different depths, and every
+    helper added between the brief and the warning moves them both. A warning
+    reported against the SDK's own source is worse than a wrong file name --
+    the default filter shows one warning per location, so the first uncapped
+    submission in a process is told and every one after it is silent.
+    """
+    frame = inspect.currentframe()
+    frame = frame.f_back if frame is not None else None  # the warning's own frame
+    level = 1
+    while frame is not None:
+        if os.path.dirname(os.path.abspath(frame.f_code.co_filename)) != _PACKAGE_DIR:
+            return level
+        frame = frame.f_back
+        level += 1
+    return level
 
 # The runner installs itself onto the rented host by fetching its artifact with
 # curl, then wget, then a stdlib python3. An image carrying none of the three
@@ -48,7 +72,7 @@ def _warn_if_it_cannot_bootstrap(image: str) -> None:
         f"image {image!r} ships no curl, wget or python3, so the Nodus runner cannot "
         "install itself onto the host: the workload is billed without ever starting. "
         f"Use an image carrying one of them, such as the default {DEFAULT_IMAGE!r}.",
-        stacklevel=3,
+        stacklevel=_caller_stacklevel(),
     )
 
 
@@ -64,7 +88,7 @@ def _warn_if_it_is_uncapped(outcome: dict[str, Any]) -> None:
         "no budget= given, so this workload is capped only by the account spend "
         "cap and will bill whatever it costs to finish. Pass budget=<usd> to "
         "bound it.",
-        stacklevel=3,
+        stacklevel=_caller_stacklevel(),
     )
 
 
