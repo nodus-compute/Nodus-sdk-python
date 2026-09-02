@@ -174,8 +174,15 @@ def build_payload(
         req.setdefault("expected_runtime_hours", expected_runtime_hours)
     if interrupt_tolerance is not None:
         req.setdefault("interrupt_tolerance", _enum_value(interrupt_tolerance))
+
+    # Data residency is a policy, not a requirement: the envelope is built from
+    # payload.Policy.DataRegions, and models.Requirements has no such field, so
+    # a brief that said where its data may live was answered 202 with the
+    # constraint dropped on arrival. An explicit policy= wins, because that is
+    # the schema itself and data_regions= is a shortcut into it.
+    pol: dict[str, Any] = dict(policy or {})
     if data_regions:
-        req.setdefault("data_regions", list(data_regions))
+        pol.setdefault("data_regions", list(data_regions))
 
     outcome: dict[str, Any] = {}
     if budget is not None:
@@ -233,8 +240,8 @@ def build_payload(
         payload["inputs"] = [inputs] if isinstance(inputs, dict) else list(inputs)
     if framework:
         payload["framework"] = framework
-    if policy:
-        payload["policy"] = dict(policy)
+    if pol:
+        payload["policy"] = pol
 
     _merge_extra(payload, extra)
     _warn_about_the_money(payload)

@@ -129,6 +129,32 @@ def test_status_filter_accepts_presets_members_and_lists():
     assert status_filter(None) is None
 
 
+def test_data_regions_go_where_the_server_reads_them():
+    """Data residency was sent under requirements, which nothing reads.
+
+    profile.go builds the envelope from ``payload.Policy.DataRegions``, and
+    models.Requirements has no such field -- so the constraint was dropped on
+    arrival and the submission answered 202. A brief that says where its data
+    may live got a run that was never restricted.
+    """
+    p = build_payload(model="x", budget=1, data_regions=["us-east-1", "us-west-2"])
+    assert p["policy"]["data_regions"] == ["us-east-1", "us-west-2"]
+    assert "data_regions" not in p["requirements"]
+
+
+def test_data_regions_merge_into_a_policy_the_caller_wrote():
+    p = build_payload(model="x", budget=1, data_regions=["us-east-1"],
+                      policy={"something_else": True})
+    assert p["policy"] == {"something_else": True, "data_regions": ["us-east-1"]}
+
+
+def test_an_explicit_policy_wins_over_the_shorthand():
+    """``policy=`` is the schema itself; ``data_regions=`` is a shortcut into it."""
+    p = build_payload(model="x", budget=1, data_regions=["us-east-1"],
+                      policy={"data_regions": ["eu-west-1"]})
+    assert p["policy"]["data_regions"] == ["eu-west-1"]
+
+
 def test_stages_replace_the_single_source():
     p = build_payload(budget=1,
                       stages=[{"id": "prepare"}, {"id": "train", "depends_on": ["prepare"]}])
