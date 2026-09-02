@@ -368,6 +368,14 @@ def _was_replayed(headers: dict[str, str]) -> bool:
     return False
 
 
+def _redact(key: str) -> str:
+    """A key as it should appear anywhere it might be read by someone else.
+
+    Enough of it to tell which credential is configured, never enough to use.
+    """
+    return f"{key[:6]}...{key[-4:]}" if len(key) > 12 else "***"
+
+
 def _headers(api_key: str) -> dict[str, str]:
     return {
         "Authorization": f"Bearer {api_key}",
@@ -569,10 +577,19 @@ class Client(_Transport):
         max_retries: int = 2,
     ):
         super().__init__(max_retries)
-        self.api_key, self.base_url = _resolve(api_key, base_url)
+        key, self.base_url = _resolve(api_key, base_url)
+        # The credential itself is handed to the transport and kept nowhere
+        # else: an attribute holding it is copied out by every automatic dump
+        # of this object -- a logged exception, a debugger, an error tracker.
+        self._api_key_shown = _redact(key)
         self._http = httpx.Client(
-            base_url=self.base_url, timeout=timeout, headers=_headers(self.api_key)
+            base_url=self.base_url, timeout=timeout, headers=_headers(key)
         )
+
+    @property
+    def api_key(self) -> str:
+        """The configured key, redacted. What was sent is in the transport."""
+        return self._api_key_shown
 
     def close(self) -> None:
         self._http.close()
@@ -1002,10 +1019,16 @@ class AsyncClient(_Transport):
         max_retries: int = 2,
     ):
         super().__init__(max_retries)
-        self.api_key, self.base_url = _resolve(api_key, base_url)
+        key, self.base_url = _resolve(api_key, base_url)
+        self._api_key_shown = _redact(key)
         self._http = httpx.AsyncClient(
-            base_url=self.base_url, timeout=timeout, headers=_headers(self.api_key)
+            base_url=self.base_url, timeout=timeout, headers=_headers(key)
         )
+
+    @property
+    def api_key(self) -> str:
+        """The configured key, redacted. What was sent is in the transport."""
+        return self._api_key_shown
 
     async def aclose(self) -> None:
         await self._http.aclose()

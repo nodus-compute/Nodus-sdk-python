@@ -47,6 +47,13 @@ def test_the_two_clients_take_the_same_arguments_for_the_same_call():
     for name in sorted(_own_public(nodus.Client) - set(CLIENT_ALIASES)):
         sync = getattr(nodus.Client, name)
         asyn = getattr(nodus.AsyncClient, name)
+        # A property is a name, not a call. Both halves still have to agree on
+        # which of the two it is.
+        if isinstance(sync, property) or isinstance(asyn, property):
+            assert isinstance(sync, property) and isinstance(asyn, property), (
+                f"{name} is a property on one client and a method on the other"
+            )
+            continue
         assert _params(sync) == _params(asyn), f"Client.{name} and AsyncClient.{name} disagree"
 
 

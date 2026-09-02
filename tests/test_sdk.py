@@ -231,6 +231,49 @@ def test_a_base_url_that_is_not_printable_ascii_is_a_configuration_error(url):
         nodus.Client(api_key="nk_live_test", base_url=url)
 
 
+SECRET = "nk_live_9f3a2b7c1d4e6f80"
+
+
+@pytest.mark.parametrize("client", [nodus.Client, nodus.AsyncClient])
+def test_the_key_is_not_sitting_in_the_clients_own_attributes(client):
+    """``vars(client)`` and ``repr(client)`` are what a crash reporter sends.
+
+    The key was stored as a plain attribute, so every automatic dump of a
+    client -- a logged exception, a debugger, an error tracker -- carried a
+    live credential out of the process.
+    """
+    c = client(api_key=SECRET, base_url="https://nodus.invalid")
+    assert SECRET not in repr(vars(c)), "the key is in the instance dictionary"
+    assert SECRET not in repr(c)
+    assert SECRET not in str(vars(c).values())
+
+
+def test_the_key_can_still_be_recognised_without_being_readable():
+    c = nodus.Client(api_key=SECRET, base_url="https://nodus.invalid")
+    assert c.api_key != SECRET
+    assert c.api_key.startswith("nk_liv")
+    assert "6f80" in c.api_key, "an operator has to be able to tell which key this is"
+
+
+def test_the_real_key_is_still_what_gets_sent():
+    """Redaction is for the attribute, not for the request."""
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["auth"] = request.headers.get("Authorization")
+        return httpx.Response(200, json=WORKLOAD)
+
+    c = nodus.Client(api_key=SECRET, base_url="https://nodus.invalid")
+    c._http = httpx.Client(
+        base_url="https://nodus.invalid",
+        transport=httpx.MockTransport(handler),
+        headers=nodus._headers(SECRET),
+    )
+    with c:
+        c.get("wl_abc")
+    assert seen["auth"] == f"Bearer {SECRET}"
+
+
 def test_a_cleartext_base_url_says_the_key_will_travel_in_the_open():
     """http:// to anywhere but this machine puts the API key on the wire."""
     with pytest.warns(UserWarning, match="http://"):
