@@ -359,6 +359,38 @@ def test_run_reads_the_legacy_submit_shape():
     assert wl.status == nodus.WorkloadStatus.ACCEPTED
 
 
+def test_a_second_cancel_is_a_second_request_not_a_replay():
+    """``cancel-{id}`` named one request for the life of the workload.
+
+    An idempotency record answers from what it stored, so a later cancel --
+    after a stage restarted, or from someone else on the account -- was
+    replayed rather than performed, and the workload kept running.
+    """
+    keys: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        keys.append(request.headers.get("Idempotency-Key"))
+        return httpx.Response(202, json={"status": "cancel_requested"})
+
+    with client_with(handler) as c:
+        c.cancel("wl_abc")
+        c.cancel("wl_abc")
+    assert keys[0] != keys[1], f"both cancels claimed the same key: {keys}"
+    assert all(k.startswith("cancel-wl_abc-") for k in keys), keys
+
+
+def test_a_caller_supplied_cancel_key_is_still_used_verbatim():
+    keys: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        keys.append(request.headers.get("Idempotency-Key"))
+        return httpx.Response(202, json={})
+
+    with client_with(handler) as c:
+        c.cancel("wl_abc", idempotency_key="stop-the-nightly-run")
+    assert keys == ["stop-the-nightly-run"]
+
+
 def test_a_replayed_submission_says_it_was_replayed():
     """A replay answers 202 with the original body; only the header tells them apart."""
     def handler(request: httpx.Request) -> httpx.Response:

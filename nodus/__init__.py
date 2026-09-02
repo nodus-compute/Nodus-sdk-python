@@ -818,7 +818,10 @@ class Client(_Transport):
         self._request(
             "POST",
             f"/v1/workloads/{_valid_id(workload_id)}/cancel",
-            idempotency_key=idempotency_key or f"cancel-{workload_id}",
+            # Fresh per call: a fixed key named one request for the life of the
+            # workload, so a later cancel was answered from the first one's
+            # record instead of being performed.
+            idempotency_key=idempotency_key or f"cancel-{workload_id}-{uuid.uuid4()}",
         )
 
     def events(self, workload_id: str, *, after: int = 0) -> list[Event]:
@@ -1237,7 +1240,10 @@ class AsyncClient(_Transport):
         await self._request(
             "POST",
             f"/v1/workloads/{_valid_id(workload_id)}/cancel",
-            idempotency_key=idempotency_key or f"cancel-{workload_id}",
+            # Fresh per call: a fixed key named one request for the life of the
+            # workload, so a later cancel was answered from the first one's
+            # record instead of being performed.
+            idempotency_key=idempotency_key or f"cancel-{workload_id}-{uuid.uuid4()}",
         )
 
     async def events(self, workload_id: str, *, after: int = 0) -> list[Event]:
