@@ -1033,12 +1033,48 @@ def test_budget_refusal_exposes_the_arithmetic_as_numbers():
     assert err.headroom_usd == 100.0
 
 
-def test_headroom_is_computed_when_the_server_did_not_send_it():
+def test_the_refusal_carries_the_money_that_is_not_settled_yet():
+    """Two of the four numbers the guard refused on were being dropped.
+
+    A cap is not measured against settled charges alone: the account is also on
+    the hook for what open leases are running up and what admitted work is
+    committed to spend. The 402 sends both, and they are most of the gap
+    between the cap and the refusal on a busy account.
+    """
     err = _raised(
         402,
-        {"error": "budget_exceeded", "monthly_spend_cap_usd": 2500, "month_to_date_usd": 2400},
+        {
+            "error": "budget_exceeded",
+            "monthly_spend_cap_usd": 2500,
+            "month_to_date_usd": 900,
+            "accruing_usd": 1200,
+            "in_flight_committed_usd": 300,
+            "remaining_headroom_usd": 100,
+            "estimated_cost_usd": 300,
+        },
     )
-    assert err.headroom_usd == 100.0
+    assert err.accruing_usd == 1200.0
+    assert err.in_flight_committed_usd == 300.0
+
+
+def test_headroom_is_the_servers_number_or_none_at_all():
+    """cap - month_to_date is not headroom, and guessing it overstates it.
+
+    The control plane subtracts accruing and committed money as well, so the
+    client-side subtraction reported comfortable headroom to an account that
+    had none -- and the caller resubmitted against a number nothing enforces.
+    """
+    err = _raised(
+        402,
+        {
+            "error": "budget_exceeded",
+            "message": "spend cap reached",
+            "monthly_spend_cap_usd": 2500,
+            "month_to_date_usd": 900,
+        },
+    )
+    assert err.headroom_usd is None
+    assert "spend cap reached" in str(err), "the server's own words are the answer"
 
 
 def test_a_long_retry_after_is_clamped_rather_than_discarded():
