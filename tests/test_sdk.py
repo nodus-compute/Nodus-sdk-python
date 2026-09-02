@@ -231,6 +231,29 @@ def test_a_base_url_that_is_not_printable_ascii_is_a_configuration_error(url):
         nodus.Client(api_key="nk_live_test", base_url=url)
 
 
+def test_a_cleartext_base_url_says_the_key_will_travel_in_the_open():
+    """http:// to anywhere but this machine puts the API key on the wire."""
+    with pytest.warns(UserWarning, match="http://"):
+        nodus.Client(api_key="nk_live_test", base_url="http://api.example.com")
+
+
+@pytest.mark.parametrize(
+    "url", ["http://127.0.0.1:8080", "http://localhost:8080", "http://[::1]:8080"]
+)
+def test_a_loopback_address_is_not_nagged(url):
+    """A local control plane is how the SDK is developed against; the key never
+    leaves the machine, so warning about it would train people to ignore it."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        nodus.Client(api_key="nk_live_test", base_url=url)
+
+
+def test_the_scheme_is_read_case_insensitively():
+    """A URL is not wrong for being shouted. HTTPS:// was refused outright."""
+    c = nodus.Client(api_key="nk_live_test", base_url="HTTPS://nodus.invalid")
+    assert c.base_url == "HTTPS://nodus.invalid"
+
+
 def test_a_non_ascii_idempotency_key_is_refused_rather_than_encoded():
     """It raised UnicodeEncodeError from inside the transport, mid-submit."""
     calls: list[str] = []

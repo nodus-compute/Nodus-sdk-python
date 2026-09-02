@@ -33,6 +33,7 @@ import os
 import re
 import time
 import uuid
+import warnings
 from dataclasses import dataclass, field
 from datetime import datetime
 from email.utils import parsedate_to_datetime
@@ -289,12 +290,26 @@ def _resolve(api_key: str | None, base_url: str | None) -> tuple[str, str]:
                 "newline picked up from a file, or a smart quote pasted from a "
                 "browser."
             )
-    if not url.startswith(("http://", "https://")):
+    scheme = url.split("://", 1)[0].lower()
+    if scheme not in ("http", "https"):
         raise ConfigurationError(
             f"base_url must start with http:// or https://, got {url!r}. "
             "It is the API address from https://nodus.run/console/."
         )
+    if scheme == "http" and not _is_loopback(url):
+        warnings.warn(
+            f"base_url {url!r} is http://, so the API key is sent in cleartext to "
+            "anyone on the path. Use https:// for anything but a control plane "
+            "running on this machine.",
+            stacklevel=3,
+        )
     return key, url
+
+
+def _is_loopback(url: str) -> bool:
+    """Whether this address never leaves the machine."""
+    host = (httpx.URL(url).host or "").lower()
+    return host in ("localhost", "::1") or host.startswith("127.")
 
 
 #: What an identifier may contain. Everything the control plane mints is inside
