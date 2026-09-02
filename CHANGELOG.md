@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.1 — unreleased
+## 0.1.1 — 2026-09-02
 
 Documentation and packaging; no change to what the client sends or raises.
 
