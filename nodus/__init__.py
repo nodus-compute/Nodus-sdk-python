@@ -394,7 +394,6 @@ class _WorkloadState:
     #: True when the control plane answered from an idempotency record: the
     #: submission already existed, this call did not create a second run.
     replayed: bool = False
-    error: str | None = None
     created_at: Any = None
     updated_at: Any = None
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
@@ -434,7 +433,6 @@ class _WorkloadState:
         self.revision = _int(d.get("revision"), self.revision) or self.revision
         if "stages" in d:
             self.stages = [StageRun.from_dict(s) for s in _rows(d.get("stages"))]
-        self.error = d.get("error") or d.get("error_message") or self.error
         self.created_at = _dt(d.get("created_at")) or self.created_at
         self.updated_at = _dt(d.get("updated_at")) or self.updated_at
         self.raw = d

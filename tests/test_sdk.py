@@ -1139,7 +1139,7 @@ def test_the_async_client_reads_the_same_wire_shape():
 
 def test_sync_and_async_handles_expose_the_same_attributes():
     shared = {"id", "status", "route", "spend_usd", "budget_usd", "stages",
-              "error", "replayed", "is_terminal", "succeeded", "created_at", "updated_at"}
+              "replayed", "is_terminal", "succeeded", "created_at", "updated_at"}
     for cls in (nodus.Workload, nodus.AsyncWorkload):
         for name in shared:
             assert hasattr(cls, name) or name in cls.__annotations__ or \
@@ -1147,6 +1147,32 @@ def test_sync_and_async_handles_expose_the_same_attributes():
 
 
 # -- unknown wire values ---------------------------------------------------
+
+
+def test_why_a_run_failed_is_in_its_events_not_in_a_field():
+    """``Workload.error`` could never hold anything.
+
+    models.Workload has no error field and never has, so a caller reading
+    ``wl.error`` to find out why a run failed read None every time -- and read
+    it as "nothing went wrong". The reason is in the events, which is where the
+    control plane writes it.
+    """
+    assert "error" not in nodus._WorkloadState.__annotations__
+
+    failed = {**WORKLOAD, "status": "failed"}
+    events = {"events": [{"id": 2, "event_type": "workload.failed",
+                          "payload": {"reason": "image pull failed"}}]}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/events"):
+            return httpx.Response(200, json=events)
+        return httpx.Response(200, json=failed)
+
+    with client_with(handler) as c:
+        wl = c.get("wl_abc")
+        assert not hasattr(wl, "error")
+        assert wl.is_terminal and not wl.succeeded
+        assert wl.events()[0].payload["reason"] == "image pull failed"
 
 
 def test_unknown_status_from_a_newer_control_plane_does_not_raise():
