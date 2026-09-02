@@ -9,11 +9,19 @@
 3. **Add a Trusted Publisher** so no API token ever exists to leak. On PyPI:
    *Your projects → Publishing → Add a new pending publisher*
    - PyPI project name: `nodus_compute`
-   - Owner: `nodus_compute`
+   - Owner: `Nodus-compute` — the GitHub org that owns the repository, not the
+     package name
    - Repository: `Nodus-sdk-python`
    - Workflow: `publish.yml`
    - Environment: `pypi`
-4. **Create the `pypi` environment** in the GitHub repo
+4. **Set the Environment to `pypi` on PyPI's side of the publisher.** The
+   environment field there is optional, and PyPI enforces only what is filled
+   in: with owner, repository and workflow alone, *any* run of `publish.yml` can
+   mint a publish token — including one that never passed through the protected
+   environment and its reviewers. Naming the environment on PyPI makes it
+   refuse a token minted outside `environment: pypi`, which is what turns the
+   next step into an actual gate.
+5. **Create the `pypi` environment** in the GitHub repo
    (*Settings → Environments*). Adding required reviewers there makes a release
    a deliberate act rather than a tag anyone can push.
 
