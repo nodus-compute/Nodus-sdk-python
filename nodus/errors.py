@@ -158,15 +158,24 @@ class BudgetExceededError(NodusError):
         return self._amount("estimated_cost_usd")
 
     @property
+    def accruing_usd(self) -> float | None:
+        """Money open leases are running up that no charge row exists for yet."""
+        return self._amount("accruing_usd")
+
+    @property
+    def in_flight_committed_usd(self) -> float | None:
+        """What already-admitted work is still committed to spend."""
+        return self._amount("in_flight_committed_usd")
+
+    @property
     def headroom_usd(self) -> float | None:
-        """What is left under the cap; derived when the server did not send it."""
-        stated = self._amount("remaining_headroom_usd")
-        if stated is not None:
-            return stated
-        cap, spent = self.monthly_cap_usd, self.month_to_date_usd
-        if cap is None or spent is None:
-            return None
-        return cap - spent
+        """What is left under the cap, as the control plane measured it.
+
+        Never derived: headroom nets settled, accruing and committed money, so
+        cap minus month-to-date overstates it. ``None`` means the refusal did
+        not carry it.
+        """
+        return self._amount("remaining_headroom_usd")
 
 
 class CapacityUnavailableError(NodusError):
@@ -216,8 +225,9 @@ _REMEDIES: dict[str, str] = {
     ),
     "budget_exceeded": (
         "Raise the cap in the console, or lower budget= or expected_runtime_hours "
-        "and resubmit; monthly_cap_usd, month_to_date_usd and headroom_usd on this "
-        "error carry the arithmetic."
+        "and resubmit; monthly_cap_usd, month_to_date_usd, accruing_usd, "
+        "in_flight_committed_usd and headroom_usd on this error carry the "
+        "arithmetic the refusal was made from."
     ),
     "capacity_unavailable": (
         "No route fits this brief right now. Retry, or widen it: raise "

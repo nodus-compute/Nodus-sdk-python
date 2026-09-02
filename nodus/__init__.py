@@ -271,6 +271,18 @@ def _resolve(api_key: str | None, base_url: str | None) -> tuple[str, str]:
     return key, url
 
 
+def _was_replayed(headers: dict[str, str]) -> bool:
+    """Whether the control plane answered from an idempotency record.
+
+    Anything but a case-insensitive "true" reads as a fresh submission:
+    claiming a replay that did not happen is the reading that loses a run.
+    """
+    for name, value in headers.items():
+        if name.lower() == "idempotent-replayed":
+            return value.strip().lower() == "true"
+    return False
+
+
 def _headers(api_key: str) -> dict[str, str]:
     return {
         "Authorization": f"Bearer {api_key}",
@@ -295,6 +307,9 @@ class _WorkloadState:
     meter: Meter | None = None
     revision: int = 1
     stages: list[StageRun] = field(default_factory=list)
+    #: True when the control plane answered from an idempotency record: the
+    #: submission already existed, this call did not create a second run.
+    replayed: bool = False
     error: str | None = None
     created_at: Any = None
     updated_at: Any = None
@@ -343,11 +358,13 @@ class _WorkloadState:
     def cost_now_usd(self) -> float:
         """What this workload has cost as of the last read.
 
-        A charge is booked when a lease closes, so ``spend_usd`` does not move
-        while the work runs. The meter is what the control plane sends so a
-        running row does not read $0.00; without one this is the settled figure.
+        ``meter.settled_usd`` counts only the current billing period and
+        ``spend_usd`` lags a settling lease, so what has been charged is the
+        larger of the two; ``meter.accruing_usd`` is open leases' money on top.
         """
-        return self.meter.total_now_usd if self.meter is not None else self.spend_usd
+        if self.meter is None:
+            return self.spend_usd
+        return max(self.spend_usd, self.meter.settled_usd) + self.meter.accruing_usd
 
     @property
     def is_terminal(self) -> bool:
@@ -395,6 +412,26 @@ class _Transport:
             if hinted:
                 return hinted
         return min(8.0, 0.5 * (2**attempt))
+
+    @staticmethod
+    def _unreached(
+        cls: type[NodusError], message: str, idempotency_key: str | None
+    ) -> NodusError:
+        """A failure that leaves the caller unable to say what happened.
+
+        The request may have arrived, in which case the workload exists and is
+        billing. The key travels on the error so a retry can be the same
+        submission instead of a second paid one.
+        """
+        if not idempotency_key:
+            return cls(message)
+        return cls(
+            f"{message}\nIt may still have reached the control plane, in which case "
+            "the workload exists and is billing. Retry with "
+            f"idempotency_key={idempotency_key!r} so the retry is the same "
+            "submission rather than a second paid one.",
+            body={"idempotency_key": idempotency_key},
+        )
 
     @staticmethod
     def _one(body: Any, method: str, path: str) -> dict[str, Any]:
@@ -448,6 +485,7 @@ class Client(_Transport):
         idempotency_key: str | None = None,
         params: dict[str, Any] | None = None,
         text: bool = False,
+        headers_out: dict[str, str] | None = None,
     ) -> Any:
         headers = {"Idempotency-Key": idempotency_key} if idempotency_key else {}
         attempt = 0
@@ -461,13 +499,19 @@ class Client(_Transport):
                     time.sleep(self._backoff(attempt, None))
                     attempt += 1
                     continue
-                raise APITimeoutError(f"{method} {path} timed out") from exc
+                raise self._unreached(
+                    APITimeoutError, f"{method} {path} timed out", idempotency_key
+                ) from exc
             except httpx.HTTPError as exc:
                 if attempt < self.max_retries:
                     time.sleep(self._backoff(attempt, None))
                     attempt += 1
                     continue
-                raise APIConnectionError(f"{method} {path} failed to connect: {exc}") from exc
+                raise self._unreached(
+                    APIConnectionError,
+                    f"{method} {path} failed to connect: {exc}",
+                    idempotency_key,
+                ) from exc
 
             if resp.status_code >= 400:
                 if self._should_retry(method, resp.status_code, attempt):
@@ -476,6 +520,8 @@ class Client(_Transport):
                     continue
                 self._raise(method, path, resp)
 
+            if headers_out is not None:
+                headers_out.update(resp.headers)
             if not resp.content:
                 return "" if text else None
             # The log endpoint answers text/plain, because its whole purpose is
@@ -523,6 +569,10 @@ class Client(_Transport):
         this call's own retries and nothing beyond it. To make an
         application-level retry loop safe, pass a key derived from the thing you
         are running so a resubmission cannot become a second paid workload.
+
+        A raised :class:`APITimeoutError` or :class:`APIConnectionError` does
+        not mean nothing was submitted. Retry with the key on ``err.payload`` —
+        the one that was sent — so the retry cannot become a second paid run.
         """
         payload = build_payload(
             command=command,
@@ -545,14 +595,17 @@ class Client(_Transport):
             extra=extra,
             **unknown,
         )
+        answered: dict[str, str] = {}
         res = self._request(
             "POST",
             "/v1/workloads",
             json=payload,
             idempotency_key=idempotency_key or f"nodus-{uuid.uuid4()}",
+            headers_out=answered,
         )
         wl = Workload(self)
         wl._absorb(res or {})
+        wl.replayed = _was_replayed(answered)
         if not wl.id:
             raise NodusError("submit returned no workload id", body=res)
         return wl
@@ -829,6 +882,7 @@ class AsyncClient(_Transport):
         idempotency_key: str | None = None,
         params: dict[str, Any] | None = None,
         text: bool = False,
+        headers_out: dict[str, str] | None = None,
     ) -> Any:
         headers = {"Idempotency-Key": idempotency_key} if idempotency_key else {}
         attempt = 0
@@ -842,13 +896,19 @@ class AsyncClient(_Transport):
                     await asyncio.sleep(self._backoff(attempt, None))
                     attempt += 1
                     continue
-                raise APITimeoutError(f"{method} {path} timed out") from exc
+                raise self._unreached(
+                    APITimeoutError, f"{method} {path} timed out", idempotency_key
+                ) from exc
             except httpx.HTTPError as exc:
                 if attempt < self.max_retries:
                     await asyncio.sleep(self._backoff(attempt, None))
                     attempt += 1
                     continue
-                raise APIConnectionError(f"{method} {path} failed to connect: {exc}") from exc
+                raise self._unreached(
+                    APIConnectionError,
+                    f"{method} {path} failed to connect: {exc}",
+                    idempotency_key,
+                ) from exc
 
             if resp.status_code >= 400:
                 if self._should_retry(method, resp.status_code, attempt):
@@ -857,6 +917,8 @@ class AsyncClient(_Transport):
                     continue
                 self._raise(method, path, resp)
 
+            if headers_out is not None:
+                headers_out.update(resp.headers)
             if not resp.content:
                 return "" if text else None
             # The log endpoint answers text/plain, because its whole purpose is
@@ -909,14 +971,17 @@ class AsyncClient(_Transport):
             extra=extra,
             **unknown,
         )
+        answered: dict[str, str] = {}
         res = await self._request(
             "POST",
             "/v1/workloads",
             json=payload,
             idempotency_key=idempotency_key or f"nodus-{uuid.uuid4()}",
+            headers_out=answered,
         )
         wl = AsyncWorkload(self)
         wl._absorb(res or {})
+        wl.replayed = _was_replayed(answered)
         if not wl.id:
             raise NodusError("submit returned no workload id", body=res)
         return wl

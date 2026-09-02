@@ -11,10 +11,31 @@ from __future__ import annotations
 
 import difflib
 import inspect
+import os
 import shlex
 import warnings
 from datetime import datetime, timezone
 from typing import Any
+
+_PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def _caller_stacklevel() -> int:
+    """How far up the stack the code that wrote the brief is.
+
+    Counted, not hardcoded: ``run()`` and ``build_payload()`` sit at different
+    depths, and the default filter shows one warning per location — a warning
+    blamed on SDK source silences every submission after the first.
+    """
+    frame = inspect.currentframe()
+    frame = frame.f_back if frame is not None else None  # the warning's own frame
+    level = 1
+    while frame is not None:
+        if os.path.dirname(os.path.abspath(frame.f_code.co_filename)) != _PACKAGE_DIR:
+            return level
+        frame = frame.f_back
+        level += 1
+    return level
 
 # The runner installs itself onto the rented host by fetching its artifact with
 # curl, then wget, then a stdlib python3. An image carrying none of the three
@@ -48,7 +69,7 @@ def _warn_if_it_cannot_bootstrap(image: str) -> None:
         f"image {image!r} ships no curl, wget or python3, so the Nodus runner cannot "
         "install itself onto the host: the workload is billed without ever starting. "
         f"Use an image carrying one of them, such as the default {DEFAULT_IMAGE!r}.",
-        stacklevel=3,
+        stacklevel=_caller_stacklevel(),
     )
 
 
@@ -64,7 +85,7 @@ def _warn_if_it_is_uncapped(outcome: dict[str, Any]) -> None:
         "no budget= given, so this workload is capped only by the account spend "
         "cap and will bill whatever it costs to finish. Pass budget=<usd> to "
         "bound it.",
-        stacklevel=3,
+        stacklevel=_caller_stacklevel(),
     )
 
 
@@ -181,18 +202,26 @@ def build_payload(
     }
 
     if stages:
+        # A staged brief has a source per stage, so a top-level one has nowhere
+        # to go: dropping it would run something other than what the brief says.
+        discarded = sorted(
+            name
+            for name, value in (
+                ("image", image), ("command", command), ("env", env), ("source", source)
+            )
+            if value
+        )
+        if discarded:
+            raise TypeError(
+                "stages= replaces the top-level source, so "
+                + ", ".join(f"{n}=" for n in discarded)
+                + " would be dropped rather than run. Put them on the stage that "
+                "needs them: stages=[{'id': ..., 'source': {'image': ..., "
+                "'command': [...]}}]."
+            )
         payload["stages"] = [dict(s) for s in stages]
-        for stage in payload["stages"]:
-            named = (stage.get("source") or {}).get("image")
-            if named:
-                _warn_if_it_cannot_bootstrap(named)
     else:
-        # Scoped to the single-source brief: that is where an omitted budget is
-        # an accident rather than a pipeline assembled against the schema.
-        _warn_if_it_is_uncapped(outcome)
-        chosen = image or source or DEFAULT_IMAGE
-        _warn_if_it_cannot_bootstrap(chosen)
-        src: dict[str, Any] = {"image": chosen}
+        src: dict[str, Any] = {"image": image or source or DEFAULT_IMAGE}
         cmd = _as_command(command)
         if cmd:
             src["command"] = cmd
@@ -207,9 +236,47 @@ def build_payload(
     if policy:
         payload["policy"] = dict(policy)
 
-    if extra:
-        payload.update(extra)
+    _merge_extra(payload, extra)
+    _warn_about_the_money(payload)
     return payload
+
+
+def _merge_extra(payload: dict[str, Any], extra: dict[str, Any] | None) -> None:
+    """Add fields this SDK version does not model. Never replace one it does.
+
+    A key that collides with the built brief would overwrite it — ``outcome``
+    included, which is where the cost ceiling lives.
+    """
+    if not extra:
+        return
+    clashes = sorted(set(extra) & set(payload))
+    if clashes:
+        raise TypeError(
+            "extra= would replace "
+            + ", ".join(repr(k) for k in clashes)
+            + ", which this brief already built"
+            + (", including the cost ceiling in 'outcome'" if "outcome" in clashes else "")
+            + ". Pass the value through the keyword that builds it, or drop it "
+            "from extra=; extra is for fields the control plane models and this "
+            "SDK version does not."
+        )
+    payload.update(extra)
+
+
+def _warn_about_the_money(payload: dict[str, Any]) -> None:
+    """Money warnings, read off the payload as it will be sent.
+
+    After the merge, not before: a warning drawn from a draft can describe a
+    submission that never happens.
+    """
+    _warn_if_it_is_uncapped(payload.get("outcome") or {})
+    source = payload.get("source") or {}
+    if source.get("image"):
+        _warn_if_it_cannot_bootstrap(source["image"])
+    for stage in payload.get("stages") or []:
+        named = (stage.get("source") or {}).get("image")
+        if named:
+            _warn_if_it_cannot_bootstrap(named)
 
 
 #: The keywords a brief may name, read off the translator so the two cannot drift.

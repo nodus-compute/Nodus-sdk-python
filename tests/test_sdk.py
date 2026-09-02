@@ -48,27 +48,45 @@ SUBMIT_ACCEPTED = {
     "revision": 1,
 }
 
+# GET /v1/workloads/{id} as internal/api marshals it — every read carries a
+# meter. This run finished in a past billing period, so the meter is all zeros
+# while spend_usd holds every charge the workload ever took.
 WORKLOAD = {
     "id": "wl_abc",
+    "tenant_id": "tn_acme",
     "status": "completed",
     "spend_usd": 291.4,
     "revision": 1,
     "created_at": "2026-07-27T10:00:00Z",
     "updated_at": "2026-07-27T11:00:00Z",
-    "payload": {"outcome": {"max_cost_usd": 400}},
+    "payload": {
+        "source": {"image": "python:3.11-slim", "command": ["python", "train.py"]},
+        "requirements": {"model": "7B fine-tune", "peak_memory_gb": 80},
+        "outcome": {"max_cost_usd": 400},
+        "continuity": {"mode": "checkpointed", "resume_on_interruption": True},
+    },
     "route": {
         "offer_id": "nodus:a100-80-us-east",
         "compute_class": "accelerator",
         "fit_class": "a100-80",
         "region": "us-east",
+        "price_usd_hour": 2.5,
         "expected_cost_usd": 300.0,
         "expected_hours": 18.0,
+        "remaining_budget_usd": 100.0,
         "interruptible": True,
     },
     "stages": [
         {"id": "main", "status": "completed", "continuity_mode": "checkpointed",
          "completed_units": 4, "total_units": 4}
     ],
+    "meter": {
+        "settled_usd": 0.0,
+        "accruing_usd": 0.0,
+        "accruing_rate_usd_hour": 0.0,
+        "total_now_usd": 0.0,
+        "as_of": "2026-09-01T12:00:00Z",
+    },
 }
 
 
@@ -112,7 +130,8 @@ def test_status_filter_accepts_presets_members_and_lists():
 
 
 def test_stages_replace_the_single_source():
-    p = build_payload(stages=[{"id": "prepare"}, {"id": "train", "depends_on": ["prepare"]}])
+    p = build_payload(budget=1,
+                      stages=[{"id": "prepare"}, {"id": "train", "depends_on": ["prepare"]}])
     assert "source" not in p
     assert [s["id"] for s in p["stages"]] == ["prepare", "train"]
 
@@ -145,7 +164,7 @@ def test_an_image_measured_to_ship_no_fetch_tool_warns_before_submission():
 def test_a_stage_naming_that_image_warns_too():
     """A staged brief rents the same hosts; the image lives one level down."""
     with pytest.warns(UserWarning, match="curl"):
-        build_payload(stages=[{"id": "train", "source": {"image": "ubuntu:22.04"}}])
+        build_payload(budget=1, stages=[{"id": "train", "source": {"image": "ubuntu:22.04"}}])
 
 
 def test_an_unmeasured_image_is_not_second_guessed():
@@ -233,6 +252,41 @@ def test_run_reads_the_legacy_submit_shape():
         wl = c.run(model="7B fine-tune", peak_memory_gb=80, budget=400)
     assert wl.id == "wl_abc"
     assert wl.status == nodus.WorkloadStatus.ACCEPTED
+
+
+def test_a_replayed_submission_says_it_was_replayed():
+    """A replay answers 202 with the original body; only the header tells them apart."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            202, json=SUBMIT_ACCEPTED, headers={"Idempotent-Replayed": "true"}
+        )
+
+    with client_with(handler) as c:
+        wl = c.run(model="x", budget=1, idempotency_key="nightly-2026-09-01")
+    assert wl.replayed is True
+
+
+def test_a_fresh_submission_is_not_marked_replayed():
+    with client_with(lambda r: httpx.Response(202, json=SUBMIT_ACCEPTED)) as c:
+        wl = c.run(model="x", budget=1)
+    assert wl.replayed is False
+
+
+def test_the_async_client_reports_a_replay_too():
+    async def go():
+        c = nodus.AsyncClient(api_key="nk_live_test", base_url="https://nodus.invalid")
+        c._http = httpx.AsyncClient(
+            base_url="https://nodus.invalid",
+            transport=httpx.MockTransport(
+                lambda r: httpx.Response(
+                    202, json=SUBMIT_ACCEPTED, headers={"Idempotent-Replayed": "true"}
+                )
+            ),
+        )
+        async with c:
+            return (await c.run(model="x", budget=1, idempotency_key="k")).replayed
+
+    assert asyncio.run(go()) is True
 
 
 def test_caller_supplied_idempotency_key_is_used_verbatim():
@@ -448,15 +502,66 @@ def test_artifacts_map_the_manifest_row_shape():
     assert not hasattr(art, "verified")
 
 
+# GET /v1/workloads/{id}/ledger as internal/api/pilot.go writes it: a
+# customer_charge is a CREDIT, and settlement carries the balance settle_close
+# leaves — exactly $0.00 when healthy.
+LEDGER = {
+    "workload_id": "wl_abc",
+    "entries": [
+        {
+            "id": "led_1",
+            "correlation_id": "cor_1",
+            "entry_type": "customer_charge",
+            "debit_usd": 0.0,
+            "credit_usd": 5.0,
+            "currency": "USD",
+            "evidence": {"hours": 2.0},
+            "created_at": "2026-07-27T11:00:00Z",
+        },
+        {
+            "id": "led_2",
+            "correlation_id": "settle_1",
+            "entry_type": "settle_close",
+            "debit_usd": 5.0,
+            "credit_usd": 0.0,
+            "currency": "USD",
+            "evidence": {"reason": "settle_close_balance"},
+            "created_at": "2026-07-27T11:05:00Z",
+        },
+    ],
+    "settlement": {
+        "status": "closed",
+        "balance_usd": 0.0,
+        "correlation_id": "settle_1",
+        "closed_at": "2026-07-27T11:05:00Z",
+    },
+}
+
+
 def test_ledger_parses_entries_and_settlement():
-    payload = {
-        "entries": [{"id": "le_1", "entry_type": "customer_charge", "debit_usd": 5.0}],
-        "settlement": {"status": "settled", "total_usd": 5.0},
-    }
-    with client_with(lambda r: httpx.Response(200, json=payload)) as c:
+    with client_with(lambda r: httpx.Response(200, json=LEDGER)) as c:
         led = c.ledger("wl_abc")
-    assert led.entries[0].debit_usd == 5.0
-    assert led.settlement.status == "settled"
+    assert led.entries[0].credit_usd == 5.0
+    assert led.settlement.status == "closed"
+    assert led.settlement.balance_usd == 0.0
+    assert led.settlement.closed_at is not None
+
+
+def test_the_ledger_totals_what_the_customer_was_charged():
+    """The charge is the sum of customer_charge credits, not the settlement balance."""
+    with client_with(lambda r: httpx.Response(200, json=LEDGER)) as c:
+        led = c.ledger("wl_abc")
+    assert led.charged_usd == 5.0
+
+
+def test_a_settlement_carries_no_total_the_server_never_sends():
+    """A settlement's amount comes only from ``balance_usd``, the key pilot.go writes."""
+    assert not hasattr(nodus.Settlement(), "total_usd")
+    # A stray money key in the body is ignored, not read as the amount.
+    st = nodus.Settlement.from_dict(
+        {"status": "closed", "balance_usd": 0.0, "total_usd": 99.0}
+    )
+    assert st.balance_usd == 0.0
 
 
 # -- errors ----------------------------------------------------------------
@@ -560,6 +665,61 @@ def test_client_errors_are_not_retried():
     assert calls["n"] == 1
 
 
+def test_a_submit_that_times_out_hands_back_the_key_that_makes_the_retry_safe():
+    """A timeout is not a refusal: the workload may exist and be billing, and
+    the key on the error is what makes a retry the same submission."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectTimeout("too slow", request=request)
+
+    with client_with(handler, max_retries=0) as c:
+        with pytest.raises(nodus.APITimeoutError) as exc:
+            c.run(model="x", budget=1, idempotency_key="nightly-2026-09-01")
+    assert exc.value.payload.get("idempotency_key") == "nightly-2026-09-01"
+    assert "idempotency_key" in str(exc.value)
+
+
+def test_a_submit_that_cannot_connect_hands_back_its_generated_key():
+    """The key run() minted for itself is the one the caller never saw."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("no route", request=request)
+
+    with client_with(handler, max_retries=0) as c:
+        with pytest.raises(nodus.APIConnectionError) as exc:
+            c.run(model="x", budget=1)
+    key = exc.value.payload.get("idempotency_key")
+    assert key and key.startswith("nodus-")
+
+
+def test_an_async_submit_that_times_out_hands_back_its_key_too():
+    async def go():
+        c = nodus.AsyncClient(api_key="nk_live_test", base_url="https://nodus.invalid",
+                              max_retries=0)
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise httpx.ConnectTimeout("too slow", request=request)
+
+        c._http = httpx.AsyncClient(
+            base_url="https://nodus.invalid", transport=httpx.MockTransport(handler)
+        )
+        async with c:
+            with pytest.raises(nodus.APITimeoutError) as exc:
+                await c.run(model="x", budget=1, idempotency_key="k-1")
+        return exc.value.payload.get("idempotency_key")
+
+    assert asyncio.run(go()) == "k-1"
+
+
+def test_a_read_that_times_out_says_nothing_about_keys():
+    """A GET creates nothing, so there is no resubmission to make safe."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectTimeout("too slow", request=request)
+
+    with client_with(handler, max_retries=0) as c:
+        with pytest.raises(nodus.APITimeoutError) as exc:
+            c.get("wl_abc")
+    assert exc.value.payload == {}
+
+
 def test_idempotency_conflict_is_not_retried():
     """Retrying a 409 cannot help: the key already names a different payload."""
     calls = {"n": 0}
@@ -598,7 +758,7 @@ def test_the_async_client_reads_the_same_wire_shape():
 
 def test_sync_and_async_handles_expose_the_same_attributes():
     shared = {"id", "status", "route", "spend_usd", "budget_usd", "stages",
-              "error", "is_terminal", "succeeded", "created_at", "updated_at"}
+              "error", "replayed", "is_terminal", "succeeded", "created_at", "updated_at"}
     for cls in (nodus.Workload, nodus.AsyncWorkload):
         for name in shared:
             assert hasattr(cls, name) or name in cls.__annotations__ or \
@@ -646,6 +806,21 @@ def test_a_field_this_sdk_does_not_model_travels_in_extra():
     assert p["experimental_knob"] == 3
 
 
+def test_extra_cannot_overwrite_the_brief_that_was_just_built():
+    """``extra`` adds fields; it does not get to delete the cost ceiling."""
+    with pytest.raises(TypeError) as exc:
+        build_payload(model="x", budget=400, extra={"outcome": {"note": "hi"}})
+    message = str(exc.value)
+    assert "outcome" in message
+    assert "extra" in message
+
+
+def test_extra_still_carries_a_field_alongside_the_brief():
+    p = build_payload(model="x", budget=400, extra={"experimental_knob": 3})
+    assert p["experimental_knob"] == 3
+    assert p["outcome"]["max_cost_usd"] == 400.0
+
+
 def test_a_typod_keyword_never_reaches_the_network():
     calls = []
 
@@ -663,17 +838,37 @@ def test_a_typod_keyword_never_reaches_the_network():
 # -- what it is costing right now ------------------------------------------
 
 
+# A list row as store.WorkloadListItem marshals it: one closed lease at $2.50,
+# one open lease six dollars into its hour, all in this billing period.
 RUNNING_METERED = {
     "id": "wl_abc",
     "status": "running",
     "revision": 1,
     "spend_usd": 2.5,
+    "created_at": "2026-09-01T10:00:00Z",
+    "updated_at": "2026-09-01T11:00:00Z",
     "meter": {
         "settled_usd": 2.5,
         "accruing_usd": 6.0,
         "accruing_rate_usd_hour": 6.0,
         "total_now_usd": 8.5,
-        "as_of": "2026-07-27T11:00:00Z",
+        "as_of": "2026-09-01T12:00:00Z",
+    },
+}
+
+# The same run started in the period before this one: half its $200 of charges
+# fall outside the meter's window, and the open lease has $6 accruing.
+RUNNING_ACROSS_A_PERIOD_BOUNDARY = {
+    "id": "wl_abc",
+    "status": "running",
+    "revision": 1,
+    "spend_usd": 200.0,
+    "meter": {
+        "settled_usd": 100.0,
+        "accruing_usd": 6.0,
+        "accruing_rate_usd_hour": 6.0,
+        "total_now_usd": 106.0,
+        "as_of": "2026-09-01T12:00:00Z",
     },
 }
 
@@ -695,8 +890,29 @@ def test_a_running_workload_reports_what_it_is_costing_now():
     assert wl.cost_now_usd == 8.5
 
 
-def test_cost_now_falls_back_to_settled_spend_when_no_meter_is_sent():
+def test_a_workload_charged_in_an_earlier_period_still_reports_what_it_cost():
+    """A finished run is not free because the month rolled over: the meter
+    counts the billing period, ``spend_usd`` counts the workload."""
     with client_with(lambda r: httpx.Response(200, json=WORKLOAD)) as c:
+        wl = c.get("wl_abc")
+    assert wl.meter is not None and wl.meter.total_now_usd == 0.0
+    assert wl.cost_now_usd == 291.4
+
+
+def test_a_run_that_crossed_a_period_boundary_counts_both_halves():
+    """What is settled and what is accruing are two scopes, and both are owed:
+    $200 charged, $6 running up, $206 owed."""
+    body = RUNNING_ACROSS_A_PERIOD_BOUNDARY
+    with client_with(lambda r: httpx.Response(200, json=body)) as c:
+        wl = c.get("wl_abc")
+    assert wl.cost_now_usd == 206.0
+
+
+def test_cost_now_falls_back_to_settled_spend_when_no_meter_is_sent():
+    """Defensive only: every live endpoint sends a meter, so this is a shape no
+    current control plane returns. It is the answer for an older one."""
+    body = {"id": "wl_abc", "status": "completed", "spend_usd": 291.4, "revision": 1}
+    with client_with(lambda r: httpx.Response(200, json=body)) as c:
         wl = c.get("wl_abc")
     assert wl.meter is None
     assert wl.cost_now_usd == wl.spend_usd == 291.4
@@ -785,12 +1001,38 @@ def test_budget_refusal_exposes_the_arithmetic_as_numbers():
     assert err.headroom_usd == 100.0
 
 
-def test_headroom_is_computed_when_the_server_did_not_send_it():
+def test_the_refusal_carries_the_money_that_is_not_settled_yet():
+    """The 402 carries all four numbers the guard refused on, accruing and
+    committed money included."""
     err = _raised(
         402,
-        {"error": "budget_exceeded", "monthly_spend_cap_usd": 2500, "month_to_date_usd": 2400},
+        {
+            "error": "budget_exceeded",
+            "monthly_spend_cap_usd": 2500,
+            "month_to_date_usd": 900,
+            "accruing_usd": 1200,
+            "in_flight_committed_usd": 300,
+            "remaining_headroom_usd": 100,
+            "estimated_cost_usd": 300,
+        },
     )
-    assert err.headroom_usd == 100.0
+    assert err.accruing_usd == 1200.0
+    assert err.in_flight_committed_usd == 300.0
+
+
+def test_headroom_is_the_servers_number_or_none_at_all():
+    """cap - month_to_date is not headroom, and guessing it overstates it."""
+    err = _raised(
+        402,
+        {
+            "error": "budget_exceeded",
+            "message": "spend cap reached",
+            "monthly_spend_cap_usd": 2500,
+            "month_to_date_usd": 900,
+        },
+    )
+    assert err.headroom_usd is None
+    assert "spend cap reached" in str(err), "the server's own words are the answer"
 
 
 def test_a_long_retry_after_is_clamped_rather_than_discarded():
@@ -868,10 +1110,48 @@ def test_a_brief_with_no_budget_says_it_is_uncapped():
         build_payload(model="x", command=["a"])
 
 
-def test_a_staged_brief_is_not_nagged_about_a_budget():
+def test_a_money_warning_blames_the_brief_that_caused_it(recwarn):
+    """The default filter is one warning per location: blamed on the caller,
+    both briefs are told; blamed on the SDK, only the first would be."""
+    with client_with(lambda r: httpx.Response(202, json=SUBMIT_ACCEPTED)) as c:
+        with warnings.catch_warnings(record=True) as seen:
+            warnings.simplefilter("default")
+            c.run(model="first", command=["python", "train.py"])
+            c.run(model="second", command=["python", "train.py"])
+
+    uncapped = [w for w in seen if "budget=" in str(w.message)]
+    assert len(uncapped) == 2, [str(w.message) for w in seen]
+    for w in uncapped:
+        assert w.filename.endswith("test_sdk.py"), w.filename
+
+
+def test_a_money_warning_blames_a_direct_brief_too(recwarn):
+    """build_payload() sits one frame closer, and a hardcoded depth cannot be
+    right for both it and run()."""
+    with warnings.catch_warnings(record=True) as seen:
+        warnings.simplefilter("default")
+        build_payload(model="x", command=["a"])
+    assert len(seen) == 1
+    assert seen[0].filename.endswith("test_sdk.py"), seen[0].filename
+
+
+def test_a_staged_brief_is_warned_about_a_budget_like_any_other():
+    """A staged pipeline is the brief with the most to spend, not the least."""
+    with pytest.warns(UserWarning, match="budget="):
+        build_payload(stages=[{"id": "train"}])
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        build_payload(stages=[{"id": "train"}])
+        build_payload(stages=[{"id": "train"}], budget=50)
+
+
+def test_stages_refuse_the_source_they_would_throw_away():
+    """``stages=`` replaces the top-level source, so image= alongside it is a lie."""
+    with pytest.raises(TypeError) as exc:
+        build_payload(stages=[{"id": "train"}], budget=1, image="ubuntu:22.04",
+                      command=["python", "train.py"])
+    message = str(exc.value)
+    assert "image" in message and "command" in message
+    assert "stages" in message
 
 
 # -- pagination and event walking ------------------------------------------
