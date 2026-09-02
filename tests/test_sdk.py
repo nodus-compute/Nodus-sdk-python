@@ -48,27 +48,49 @@ SUBMIT_ACCEPTED = {
     "revision": 1,
 }
 
+# GET /v1/workloads/{id} as internal/api marshals it: models.Workload's fields
+# plus a meter, which is a value and not a pointer — every read carries one, so
+# a fixture without a meter is a shape the control plane cannot produce.
+#
+# This one finished in July and is read in September, which is the case the
+# money surface has to survive: the meter counts the BILLING PERIOD, so it is
+# all zeros, while spend_usd is every customer_charge this workload ever took.
 WORKLOAD = {
     "id": "wl_abc",
+    "tenant_id": "tn_acme",
     "status": "completed",
     "spend_usd": 291.4,
     "revision": 1,
     "created_at": "2026-07-27T10:00:00Z",
     "updated_at": "2026-07-27T11:00:00Z",
-    "payload": {"outcome": {"max_cost_usd": 400}},
+    "payload": {
+        "source": {"image": "python:3.11-slim", "command": ["python", "train.py"]},
+        "requirements": {"model": "7B fine-tune", "peak_memory_gb": 80},
+        "outcome": {"max_cost_usd": 400},
+        "continuity": {"mode": "checkpointed", "resume_on_interruption": True},
+    },
     "route": {
         "offer_id": "nodus:a100-80-us-east",
         "compute_class": "accelerator",
         "fit_class": "a100-80",
         "region": "us-east",
+        "price_usd_hour": 2.5,
         "expected_cost_usd": 300.0,
         "expected_hours": 18.0,
+        "remaining_budget_usd": 100.0,
         "interruptible": True,
     },
     "stages": [
         {"id": "main", "status": "completed", "continuity_mode": "checkpointed",
          "completed_units": 4, "total_units": 4}
     ],
+    "meter": {
+        "settled_usd": 0.0,
+        "accruing_usd": 0.0,
+        "accruing_rate_usd_hour": 0.0,
+        "total_now_usd": 0.0,
+        "as_of": "2026-09-01T12:00:00Z",
+    },
 }
 
 
@@ -663,17 +685,39 @@ def test_a_typod_keyword_never_reaches_the_network():
 # -- what it is costing right now ------------------------------------------
 
 
+# A list row as store.WorkloadListItem marshals it, running inside the billing
+# period that has charged it: one closed lease at $2.50, one open lease six
+# dollars into its hour.
 RUNNING_METERED = {
     "id": "wl_abc",
     "status": "running",
     "revision": 1,
     "spend_usd": 2.5,
+    "created_at": "2026-09-01T10:00:00Z",
+    "updated_at": "2026-09-01T11:00:00Z",
     "meter": {
         "settled_usd": 2.5,
         "accruing_usd": 6.0,
         "accruing_rate_usd_hour": 6.0,
         "total_now_usd": 8.5,
-        "as_of": "2026-07-27T11:00:00Z",
+        "as_of": "2026-09-01T12:00:00Z",
+    },
+}
+
+# The same run, still going, but started in the period BEFORE this one: $100 of
+# it has already been charged and fell out of the meter's window, and the lease
+# running now has put $6 on top of that.
+RUNNING_ACROSS_A_PERIOD_BOUNDARY = {
+    "id": "wl_abc",
+    "status": "running",
+    "revision": 1,
+    "spend_usd": 200.0,
+    "meter": {
+        "settled_usd": 100.0,
+        "accruing_usd": 6.0,
+        "accruing_rate_usd_hour": 6.0,
+        "total_now_usd": 106.0,
+        "as_of": "2026-09-01T12:00:00Z",
     },
 }
 
@@ -695,8 +739,37 @@ def test_a_running_workload_reports_what_it_is_costing_now():
     assert wl.cost_now_usd == 8.5
 
 
-def test_cost_now_falls_back_to_settled_spend_when_no_meter_is_sent():
+def test_a_workload_charged_in_an_earlier_period_still_reports_what_it_cost():
+    """A finished run is not free because the month rolled over.
+
+    The meter counts the billing period; ``spend_usd`` counts the workload. A
+    July run read in September sends a meter of zeros, and a client that reports
+    the meter alone tells the customer their $291.40 job cost $0.00.
+    """
     with client_with(lambda r: httpx.Response(200, json=WORKLOAD)) as c:
+        wl = c.get("wl_abc")
+    assert wl.meter is not None and wl.meter.total_now_usd == 0.0
+    assert wl.cost_now_usd == 291.4
+
+
+def test_a_run_that_crossed_a_period_boundary_counts_both_halves():
+    """What is settled and what is accruing are two scopes, and both are owed.
+
+    The meter's settled half stops at the period boundary while its accruing
+    half does not, so neither number alone is the price of a run that has been
+    going since last month: $200 charged, $6 running up, $206 owed.
+    """
+    body = RUNNING_ACROSS_A_PERIOD_BOUNDARY
+    with client_with(lambda r: httpx.Response(200, json=body)) as c:
+        wl = c.get("wl_abc")
+    assert wl.cost_now_usd == 206.0
+
+
+def test_cost_now_falls_back_to_settled_spend_when_no_meter_is_sent():
+    """Defensive only: every live endpoint sends a meter, so this is a shape no
+    current control plane returns. It is the answer for an older one."""
+    body = {"id": "wl_abc", "status": "completed", "spend_usd": 291.4, "revision": 1}
+    with client_with(lambda r: httpx.Response(200, json=body)) as c:
         wl = c.get("wl_abc")
     assert wl.meter is None
     assert wl.cost_now_usd == wl.spend_usd == 291.4

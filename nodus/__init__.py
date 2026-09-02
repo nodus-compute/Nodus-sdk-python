@@ -343,11 +343,18 @@ class _WorkloadState:
     def cost_now_usd(self) -> float:
         """What this workload has cost as of the last read.
 
-        A charge is booked when a lease closes, so ``spend_usd`` does not move
-        while the work runs. The meter is what the control plane sends so a
-        running row does not read $0.00; without one this is the settled figure.
+        Two scopes are added, because neither field alone is the price of a run.
+        ``meter.settled_usd`` counts the current billing period, so a workload
+        charged last month meters at zero; ``spend_usd`` counts every charge the
+        workload ever took, but it is a projection written when a lease settles,
+        so it lags one. The larger of the two is what has been charged. Then
+        ``meter.accruing_usd`` — an open lease's money, which no charge row
+        exists for yet, and which is not period-scoped — is what is being spent
+        on top of it right now.
         """
-        return self.meter.total_now_usd if self.meter is not None else self.spend_usd
+        if self.meter is None:
+            return self.spend_usd
+        return max(self.spend_usd, self.meter.settled_usd) + self.meter.accruing_usd
 
     @property
     def is_terminal(self) -> bool:
