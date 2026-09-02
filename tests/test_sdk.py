@@ -573,6 +573,12 @@ def test_the_ledger_totals_what_the_customer_was_charged():
 def test_a_settlement_carries_no_total_the_server_never_sends():
     """``total_usd`` was read from two keys the control plane has never sent."""
     assert not hasattr(nodus.Settlement(), "total_usd")
+    # A body carrying the old spelling must not resurrect it: the amount comes
+    # from the key pilot.go writes, and from no other.
+    st = nodus.Settlement.from_dict(
+        {"status": "closed", "balance_usd": 0.0, "total_usd": 99.0}
+    )
+    assert st.balance_usd == 0.0
 
 
 # -- errors ----------------------------------------------------------------
