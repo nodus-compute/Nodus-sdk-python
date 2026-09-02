@@ -71,8 +71,9 @@ _GONE_MESSAGE = (
     "declined, or already been collected. Run: nodus login"
 )
 _TIMEOUT_MESSAGE = (
-    "the sign-in code was not approved before the console's deadline for it. "
-    "Run: nodus login"
+    "the sign-in code was not approved before this client's "
+    f"{_MAX_TTL / 60:.0f}-minute limit or the console's deadline for the code, "
+    "whichever came first. Run: nodus login"
 )
 
 
@@ -92,8 +93,8 @@ class Credentials:
     """What ``/token`` released.
 
     Only ``api_key`` and ``base_url`` are needed to make a request. ``key_id``
-    is the handle the console revokes by, and ``expires_at`` is kept as the
-    server spelled it rather than parsed. Each is empty when none was sent.
+    is the handle the console revokes by, and ``expires_at`` is kept as text
+    and never parsed. Each is empty when none was sent.
     """
 
     api_key: str

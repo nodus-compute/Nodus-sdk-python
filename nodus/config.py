@@ -11,8 +11,8 @@ One section, five keys, all text::
 
 Building a client reads ``api_key`` and ``base_url`` and nothing else. The rest
 names the key, so ``nodus logout`` can say which one is left to revoke;
-``expires_at`` is kept exactly as the server spelled it and is never parsed
-here, because no two runtimes agree on what a timestamp may contain.
+``expires_at`` is kept as text and never parsed here, because no two runtimes
+agree on what a timestamp may contain.
 
 Every key already in the file survives a rewrite, in any section. **Comments
 and layout do not** — the file is rewritten from what was parsed, so a comment
@@ -23,8 +23,10 @@ treated as absent.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
+import stat
 import sys
 import tempfile
 import warnings
@@ -79,18 +81,17 @@ def _parse_simple_toml(text: str, where: str | os.PathLike[str]) -> dict[str, An
         if line.startswith("[") and line.endswith("]"):
             table = data
             for part in line[1:-1].split("."):
-                name = part.strip().strip('"').strip("'")
-                if not name:
-                    raise _unreadable(where, number, raw)
+                name = _read_key(part.strip(), where, number, raw)
                 nested = table.setdefault(name, {})
                 if not isinstance(nested, dict):
                     raise _unreadable(where, number, raw)
                 table = nested
             continue
-        key, sep, value = line.partition("=")
-        key, value = key.strip().strip('"').strip("'"), value.strip()
-        if not sep or not key or len(value) < 2 or value[0] != value[-1]:
+        head, sep, value = line.partition("=")
+        value = value.strip()
+        if not sep or len(value) < 2 or value[0] != value[-1]:
             raise _unreadable(where, number, raw)
+        key = _read_key(head.strip(), where, number, raw)
         if value[0] == '"':
             table[key] = _unescape(value[1:-1], where, number, raw)
         elif value[0] == "'":
@@ -98,6 +99,21 @@ def _parse_simple_toml(text: str, where: str | os.PathLike[str]) -> dict[str, An
         else:
             raise _unreadable(where, number, raw)
     return data
+
+
+def _read_key(text: str, where: str | os.PathLike[str], number: int, raw: str) -> str:
+    """One key, bare or quoted the way :func:`_key` writes it.
+
+    A quoted key is unescaped like a value. Reading it verbatim instead is how
+    a foreign key gains a backslash on every rewrite until nothing can read it.
+    """
+    if len(text) >= 2 and text[0] == text[-1] == '"':
+        return _unescape(text[1:-1], where, number, raw)
+    if len(text) >= 2 and text[0] == text[-1] == "'":
+        return text[1:-1]
+    if not _BARE_KEY.match(text):
+        raise _unreadable(where, number, raw)
+    return text
 
 
 def _unescape(body: str, where: str | os.PathLike[str], number: int, raw: str) -> str:
@@ -256,15 +272,34 @@ def _restrict(path: Path) -> None:
         os.chmod(path, 0o700 if path.is_dir() else 0o600)
 
 
+def _redirects(path: Path) -> bool:
+    """Whether this entry sends writes somewhere other than where it sits.
+
+    ``is_symlink`` is False for an NTFS junction, and ``mklink /J`` builds one
+    with no privilege at all — so on Windows the reparse-point attribute is
+    what has to be asked, not the symlink question.
+    """
+    if path.is_symlink():
+        return True
+    if os.name != "nt":
+        return False
+    try:
+        attributes = os.lstat(path).st_file_attributes
+    except (AttributeError, OSError):
+        return False
+    return bool(attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT)
+
+
 def _prepare_directory(path: Path) -> None:
     """Make ``~/.nodus`` exist, be a real directory, and be ours to write in."""
     parent = path.parent
-    if parent.is_symlink():
-        # chmod and open both follow the link, so what is narrowed to 0700 and
-        # what receives the key need not be the same directory.
+    if _redirects(parent):
+        # chmod and open both follow the redirect, so what is narrowed to 0700
+        # and what receives the key need not be the same directory.
         raise ConfigurationError(
-            f"{parent} is a symbolic link, and the SDK will not write a "
-            "credential through one. Replace it with a real directory."
+            f"{parent} redirects elsewhere (a link or a junction), and the SDK "
+            "will not write a credential through one. Replace it with a real "
+            "directory."
         )
     try:
         parent.mkdir(parents=True, exist_ok=True)
@@ -300,17 +335,28 @@ def _write_atomic(path: Path, text: str) -> None:
         raise
 
 
-def _rewrite(path: Path, edit: Callable[[dict[str, Any]], None]) -> None:
-    data = _load(path)
+def _writable_profile(data: dict[str, Any], path: Path) -> dict[str, Any]:
+    """The ``[default]`` table, or a refusal if something else holds that name.
+
+    ``default = "hello"`` is a valid TOML entry that re-serialises cleanly, so
+    nothing upstream of this notices it; only the attempt to store a key under
+    it fails. That has to be found before a key exists, not after.
+    """
     section = data.get(PROFILE)
     if section is None:
         section = data[PROFILE] = {}
     if not isinstance(section, dict):
         raise ConfigurationError(
-            f"{path} has a [{PROFILE}] entry that is not a section. "
-            "Delete the file and run: nodus login"
+            f"{path} has a [{PROFILE}] entry that is not a section, so there "
+            "is nowhere to store the credentials. Delete the file and run: "
+            "nodus login"
         )
-    edit(section)
+    return section
+
+
+def _rewrite(path: Path, edit: Callable[[dict[str, Any]], None]) -> None:
+    data = _load(path)
+    edit(_writable_profile(data, path))
     _write_atomic(path, _dump(data, path))
 
 
@@ -336,8 +382,11 @@ def ensure_writable() -> None:
             f"{path} is not writable. Fix its permissions, or delete it and "
             "run: nodus login"
         )
-    # Parses the file and proves every key in it can be written back.
-    _dump(_load(path), path)
+    # Parses the file, proves [default] can hold a credential, and proves
+    # every key already in it can be written back.
+    data = _load(path)
+    _writable_profile(data, path)
+    _dump(data, path)
     try:
         handle, probe = tempfile.mkstemp(
             dir=str(path.parent), prefix=".probe-", suffix=".toml"
@@ -347,8 +396,15 @@ def ensure_writable() -> None:
             f"{path.parent} cannot be written to: {exc}\n"
             "Fix its permissions and run: nodus login"
         ) from exc
-    os.close(handle)
-    os.unlink(probe)
+    # The probe proved the point the moment it was created; failing to tidy it
+    # away is not a reason to refuse a login, and must not escape as a
+    # traceback or leave the file behind.
+    try:
+        with contextlib.suppress(OSError):
+            os.close(handle)
+    finally:
+        with contextlib.suppress(OSError):
+            os.unlink(probe)
 
 
 def save_credentials(

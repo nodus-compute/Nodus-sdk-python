@@ -10,8 +10,8 @@
   not yet run against a deployed control plane.**
 - The config file is proven writable *before* the exchange starts, because the
   console mints the key inside the call that releases it — a write that failed
-  afterwards would leave a live 90-day key nobody had a copy of. If a write
-  fails anyway, the key is printed once so it can be stored or revoked.
+  afterwards would leave a live key nobody had a copy of. If a write fails
+  anyway, the key is printed once so it can be stored or revoked.
 - Both commands say so on stderr when `NODUS_API_KEY` (or `NODUS_BASE_URL`) is
   set: it outranks the file, so "signed in" and "logged out" would otherwise
   both be wrong.

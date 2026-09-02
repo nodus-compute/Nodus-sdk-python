@@ -23,12 +23,24 @@ from .types import ContinuityMode
 
 # C0 and C1 controls, minus tab and newline. Nearly everything printed here was
 # written somewhere else, and a terminal acts on whatever escapes it is handed.
+# Tab and newline stay because this also cleans a workload's own log, and a log
+# with its line breaks stripped is one long unreadable line.
 _CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+
+# For values that are one line by definition -- a code, an address, a tenant.
+# There a newline is never formatting: it forges a whole extra line of output,
+# and a fake "Enter it at: ..." is indistinguishable from the real one.
+_CONTROL_LINE = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 
 
 def _safe(text: Any) -> str:
     """Text from elsewhere, with the characters a terminal acts on removed."""
     return _CONTROL.sub("", str(text))
+
+
+def _safe_line(text: Any) -> str:
+    """A single-line value from elsewhere, with tab and newline gone too."""
+    return _CONTROL_LINE.sub("", str(text))
 
 
 def _fmt_workload(wl: Any) -> str:
@@ -207,11 +219,13 @@ def _open_browser(url: str) -> bool:
 
     The address arrives from the console, and ``webbrowser.open`` hands
     whatever it is given to the platform's handler: a ``file:`` or
-    ``javascript:`` URL would be acted on locally. An address carrying control
-    characters is not opened in a cleaned-up form either -- cleaning it makes
-    it a different address, which is not the one anyone approved.
+    ``javascript:`` URL would be acted on locally. An address carrying a
+    control character is not opened in a cleaned-up form either -- cleaning it
+    makes it a different address, which is not the one anyone approved. Tab
+    and newline count here even though :data:`_CONTROL` spares them; a URL is
+    one line by definition.
     """
-    if _safe(url) != url:
+    if any(char < " " or char == "\x7f" for char in url):
         return False
     if not url.lower().startswith(("http://", "https://")):
         return False
@@ -233,9 +247,9 @@ def _cmd_login(args: argparse.Namespace) -> int:
     config.ensure_writable()
     with login.open_http(base_url) as http:
         device = login.start_device_authorization(http)
-        print(f"Your sign-in code is {_safe(device.user_code)}")
+        print(f"Your sign-in code is {_safe_line(device.user_code)}")
         print()
-        print(f"Enter it at: {_safe(device.verification_url)}")
+        print(f"Enter it at: {_safe_line(device.verification_url)}")
         if not args.no_browser and _open_browser(device.verification_url):
             print("Opened that page in your browser.")
         print()
@@ -267,11 +281,11 @@ def _cmd_login(args: argparse.Namespace) -> int:
                 return 2
             raise
 
-    who = _safe(creds.tenant) if creds.tenant else _redact(creds.api_key)
+    who = _safe_line(creds.tenant) if creds.tenant else _redact(creds.api_key)
     print(f"Signed in as {who}.")
     print(f"Wrote {path}")
     for caveat in caveats:
-        print(f"Note: {_safe(caveat.message)}", file=sys.stderr)
+        print(f"Note: {_safe_line(caveat.message)}", file=sys.stderr)
     for name in _env_outranks("NODUS_API_KEY", "NODUS_BASE_URL"):
         print(
             f"Note: {name} is set in this environment and outranks the file, "
@@ -287,7 +301,7 @@ def _cmd_logout(args: argparse.Namespace) -> int:
     if removed is None:
         print(f"No stored key to remove: {path}")
     else:
-        named = f" {_safe(removed['key_id'])}" if removed.get("key_id") else ""
+        named = f" {_safe_line(removed['key_id'])}" if removed.get("key_id") else ""
         print(f"Removed the stored key{named} from {path}")
         print("That key still works until you revoke it in the console:")
         print("deleting the local copy does not revoke it.")

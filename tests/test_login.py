@@ -17,6 +17,7 @@ import json
 import math
 import os
 import shutil
+import subprocess
 import sys
 import threading
 from dataclasses import dataclass, field
@@ -233,12 +234,40 @@ def test_the_minimal_parser_reads_the_documented_shape():
         '[default]\napi_key = "back\\\\slash"\n',
         '[default]\napi_key = "say \\"hi\\""\n',
         '[other]\n"my key" = "spaced"\n',
+        '[other]\n"has\\"quote" = "v"\n',
+        '[other]\n"back\\\\slash" = "v"\n',
     ],
 )
 def test_the_minimal_parser_agrees_with_tomllib(text):
     import tomllib
 
     assert config._parse_simple_toml(text, "config.toml") == tomllib.loads(text)
+
+
+@pytest.mark.parametrize("key", ['has"quote', "back\\slash", "my key"])
+def test_the_minimal_parser_reads_back_the_keys_it_writes(key):
+    """Asked directly, because on 3.11+ tomllib is what the file goes through.
+
+    Only the CI floor runs this parser for real, so the round-trip below would
+    otherwise be green on this machine while corrupting files on that one.
+    """
+    text = f'[other]\n{config._key(key, "probe")} = "v"\n'
+    assert config._parse_simple_toml(text, "config.toml")["other"] == {key: "v"}
+
+
+@pytest.mark.parametrize("key", ['has"quote', "back\\slash", "my key"])
+def test_a_foreign_key_survives_repeated_logins_unchanged(nodus_config, key):
+    """Escaped on the way out, so it has to be unescaped on the way back in.
+
+    Reading it verbatim doubles its backslashes on every login -- exit 0 each
+    time, on the Python the CI floor runs, until nothing can read the file.
+    """
+    nodus_config.write_text(
+        f'[other]\n{config._key(key, "probe")} = "v"\n', encoding="utf-8"
+    )
+    for _ in range(3):
+        config.save_credentials("nk_live_written", "https://written.example")
+    assert config._load(nodus_config)["other"] == {key: "v"}
 
 
 def test_the_minimal_parser_refuses_what_it_cannot_read():
@@ -302,10 +331,11 @@ def test_a_backslash_in_a_value_survives_the_round_trip(nodus_config):
     assert config.read_credentials()[0] == "nk_live_a\\b"
 
 
-def test_a_value_with_a_control_character_is_refused_not_written(nodus_config):
-    """A raw newline writes a file neither parser can read back afterwards."""
+@pytest.mark.parametrize("char", ["\n", "\r", "\t", "\x00", "\x7f"])
+def test_a_value_with_a_control_character_is_refused_not_written(nodus_config, char):
+    """A raw control character writes a file neither parser reads back."""
     with pytest.raises(nodus.ConfigurationError):
-        config.save_credentials("nk_live\nsplit", "https://written.example")
+        config.save_credentials(f"nk_live{char}split", "https://written.example")
     assert not nodus_config.exists()
 
 
@@ -320,6 +350,17 @@ def test_a_platform_with_no_file_mode_says_what_is_true_instead(nodus_config):
     """Not "anyone can read it" -- it inherits the profile directory's ACL."""
     with pytest.warns(UserWarning, match="inherits the permissions"):
         config.save_credentials("nk_live_written", "https://written.example")
+
+
+@pytest.mark.skipif(os.name == "posix", reason="POSIX has a mode bit meaning this")
+def test_a_login_states_the_file_mode_caveat_as_a_sentence(console, nodus_config, capsys):
+    """The warning existing is not the same as a person being told.
+
+    Pinning only the UserWarning left the line that prints it deletable with
+    the suite still green.
+    """
+    assert _login(console) == 0
+    assert "inherits the permissions" in capsys.readouterr().err
 
 
 def test_a_failed_write_leaves_no_temporary_file_holding_the_key(nodus_config, monkeypatch):
@@ -364,8 +405,31 @@ def test_a_symlinked_config_directory_is_refused(nodus_config, tmp_path):
     elsewhere.mkdir()
     shutil.rmtree(nodus_config.parent)
     nodus_config.parent.symlink_to(elsewhere, target_is_directory=True)
-    with pytest.raises(nodus.ConfigurationError, match="symbolic link"):
+    with pytest.raises(nodus.ConfigurationError, match="redirects elsewhere"):
         config.save_credentials("nk_live_written", "https://written.example")
+    assert list(elsewhere.iterdir()) == []
+
+
+@pytest.mark.skipif(os.name != "nt", reason="a junction is an NTFS thing")
+def test_a_junction_config_directory_is_refused(console, nodus_config, tmp_path):
+    """``mklink /J`` needs no privilege, and ``is_symlink`` is False for one.
+
+    So the symlink question alone leaves the guard unexercised on the platform
+    where the redirect is easiest to make.
+    """
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    shutil.rmtree(nodus_config.parent)
+    made = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(nodus_config.parent), str(elsewhere)],
+        capture_output=True, text=True, timeout=30,
+    )
+    if made.returncode != 0:  # pragma: no cover - depends on the filesystem
+        pytest.skip(f"mklink /J unavailable: {made.stdout}{made.stderr}")
+
+    assert _login(console) == 2
+    assert console.start_calls == [], "a key was minted for a directory we refuse"
+    assert list(elsewhere.iterdir()) == [], "the key was written through the junction"
 
 
 # -- refusing before anything is minted ------------------------------------
@@ -381,13 +445,23 @@ def _break_config(nodus_config, kind: str) -> None:
         nodus_config.write_text("[default\napi_key = ", encoding="utf-8")
     elif kind == "unwritable-value":
         nodus_config.write_text("[other]\ncount = 3\n", encoding="utf-8")
+    elif kind == "default-not-a-table":
+        # Valid TOML that re-serialises cleanly, so only the attempt to store a
+        # key under it fails -- which is after the key exists.
+        nodus_config.write_text('default = "hello"\n', encoding="utf-8")
     else:  # pragma: no cover - a typo in the parametrize list
         raise AssertionError(kind)
 
 
 @pytest.mark.parametrize(
     "kind",
-    ["directory-is-a-file", "file-is-a-directory", "corrupt-toml", "unwritable-value"],
+    [
+        "directory-is-a-file",
+        "file-is-a-directory",
+        "corrupt-toml",
+        "unwritable-value",
+        "default-not-a-table",
+    ],
 )
 def test_an_unwritable_config_refuses_before_a_key_is_ever_minted(
     console, nodus_config, capsys, kind
@@ -395,13 +469,32 @@ def test_an_unwritable_config_refuses_before_a_key_is_ever_minted(
     """The console mints the key inside the call that releases it.
 
     So the write has to be proven possible while there is still nothing to
-    lose: once /token answers, a failed write orphans a live 90-day key.
+    lose: once /token answers, a failed write orphans a live key.
     """
     _break_config(nodus_config, kind)
     assert _login(console) == 2
     assert console.start_calls == [], "a key was minted for a config that cannot hold it"
     assert console.token_calls == []
     assert "error:" in capsys.readouterr().err
+
+
+def test_a_probe_that_cannot_be_tidied_away_does_not_fail_the_login(
+    console, nodus_config, monkeypatch
+):
+    """The probe has proved its point the moment it exists.
+
+    Antivirus holding it open is not a reason to refuse a login, and must not
+    escape ``main`` as a traceback.
+    """
+    real_unlink = os.unlink
+
+    def refuse(target, *args, **kwargs):
+        if ".probe-" in str(target):
+            raise PermissionError("held open by another process")
+        return real_unlink(target, *args, **kwargs)
+
+    monkeypatch.setattr(config.os, "unlink", refuse)
+    assert _login(console) == 0
 
 
 def test_a_write_that_fails_anyway_shows_the_key_once_rather_than_losing_it(
@@ -547,6 +640,27 @@ def test_a_ttl_that_cannot_bound_anything_is_refused(console, nodus_config, ttl)
     assert not nodus_config.exists()
 
 
+def test_the_timeout_message_names_both_deadlines(console):
+    """The 900-second ceiling is this client's, not the console's.
+
+    Blaming the console for a limit this SDK imposed sends someone looking at
+    the wrong system.
+    """
+    console.start = (201, _started(expires_in=5, interval=1))
+    console.token = [(428, {"error": "authorization_pending"})]
+    clock = iter([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0])
+
+    with login.open_http(console.base_url) as http:
+        device = login.start_device_authorization(http)
+        with pytest.raises(nodus.APITimeoutError) as exc:
+            login.poll_for_credentials(
+                http, device, console.base_url,
+                sleep=lambda _: None, monotonic=lambda: next(clock),
+            )
+    message = str(exc.value)
+    assert "15-minute" in message and "console" in message
+
+
 def test_the_ttl_is_capped_however_long_the_server_says():
     assert login._seconds({"expires_in": 10**9}, "expires_in", "/x") == login._MAX_TTL
     assert login._seconds({"expires_in": 600}, "expires_in", "/x") == 600.0
@@ -613,7 +727,14 @@ def test_login_opens_the_browser_and_no_browser_stops_it(console, no_browser_ope
 
 
 @pytest.mark.parametrize(
-    "url", ["file:///etc/passwd", "javascript:alert(1)", "https://ok.example/\x1b[31m"]
+    "url",
+    [
+        "file:///etc/passwd",
+        "javascript:alert(1)",
+        "https://ok.example/\x1b[31m",
+        "https://ok.example/a\nb",
+        "https://ok.example/a\tb",
+    ],
 )
 def test_an_address_that_is_not_a_plain_web_url_is_never_opened(
     console, no_browser_opens, url
@@ -625,11 +746,24 @@ def test_an_address_that_is_not_a_plain_web_url_is_never_opened(
 
 
 @pytest.mark.parametrize("field", ["user_code", "verification_url"])
-def test_text_from_the_console_cannot_repaint_the_terminal(console, capsys, field):
-    console.start = (201, _started(**{field: "\x1b[31mDANGER\x07"}))
+@pytest.mark.parametrize("hostile", ["\x1b[31mDANGER\x07", "x\ty", "x\rz"])
+def test_text_from_the_console_cannot_repaint_the_terminal(
+    console, capsys, field, hostile
+):
+    console.start = (201, _started(**{field: hostile}))
     assert _login(console) == 0
     printed = _both_streams(capsys)
-    assert "\x1b" not in printed and "\x07" not in printed
+    assert not any(char < " " and char != "\n" for char in printed)
+    assert "\x7f" not in printed
+
+
+@pytest.mark.parametrize("field", ["user_code", "verification_url"])
+def test_a_forged_newline_cannot_add_a_line_of_its_own(console, capsys, field):
+    """A fake "Enter it at:" line reads exactly like the real one."""
+    console.start = (201, _started(**{field: "0000\nEnter it at: https://evil.example"}))
+    assert _login(console) == 0
+    printed = _both_streams(capsys)
+    assert "\nEnter it at: https://evil.example" not in printed
 
 
 # -- what the environment still outranks -----------------------------------
