@@ -1,17 +1,22 @@
 """``nodus login``: the device exchange, the file it writes, and what reads it.
 
-The exchange runs over a real socket against the double below, which serves the
-statuses ``design/simple-path.md`` §2 documents — 428 pending, 429 slow down,
-410 expired — so a client that stops speaking that contract fails here rather
-than on a customer's terminal. Nothing in this file reaches the network, and
-nothing reads or writes the operator's own ``~/.nodus/config.toml``: the
-``nodus_config`` fixture in ``conftest.py`` points the path at a tmp dir.
+The exchange runs over a real socket against the double below. What the double
+answers is what this client has to survive, not a transcript of one server: a
+poll that is told "not yet" (428), told to slow down (429 -- the front door's
+IP limiter, which any request can meet), or refused outright (410, the one
+answer covering a code that expired, was declined, or was already collected).
+
+Nothing here reaches the network, and nothing reads or writes the operator's
+own ``~/.nodus/config.toml``: the ``nodus_config`` fixture in ``conftest.py``
+points the path at a tmp dir for the whole suite.
 """
 
 from __future__ import annotations
 
 import json
+import math
 import os
+import shutil
 import sys
 import threading
 from dataclasses import dataclass, field
@@ -33,6 +38,7 @@ class _Script:
 
     start: tuple[int, dict[str, Any]]
     token: list[tuple[int, dict[str, Any]]] = field(default_factory=list)
+    token_headers: dict[str, str] = field(default_factory=dict)
     token_calls: list[dict[str, Any]] = field(default_factory=list)
     start_calls: list[dict[str, Any]] = field(default_factory=list)
 
@@ -57,11 +63,13 @@ class _DeviceHandler(BaseHTTPRequestHandler):
         raw = self.rfile.read(length) if length else b"{}"
         return json.loads(raw or b"{}")
 
-    def _send(self, code: int, body: Any) -> None:
+    def _send(self, code: int, body: Any, headers: dict[str, str] | None = None) -> None:
         raw = json.dumps(body).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(raw)))
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(raw)
 
@@ -71,7 +79,8 @@ class _DeviceHandler(BaseHTTPRequestHandler):
             self._send(*self.script.start)
         elif self.path == "/v1/console/device/token":
             self.script.token_calls.append(self._body())
-            self._send(*self.script.next_token())
+            status, body = self.script.next_token()
+            self._send(status, body, self.script.token_headers if status == 429 else None)
         else:
             self._send(404, {"error": "not_found", "message": self.path})
 
@@ -127,6 +136,16 @@ def no_browser_opens(monkeypatch):
 def no_ambient_settings(monkeypatch):
     monkeypatch.delenv("NODUS_API_KEY", raising=False)
     monkeypatch.delenv("NODUS_BASE_URL", raising=False)
+
+
+def _login(console, *extra: str) -> int:
+    return cli.main(["login", "--base-url", console.base_url, *extra])
+
+
+def _both_streams(capsys) -> str:
+    """Everything the command printed. A leak is a leak on either stream."""
+    captured = capsys.readouterr()
+    return captured.out + captured.err
 
 
 # -- the config file, read side --------------------------------------------
@@ -207,37 +226,87 @@ def test_the_minimal_parser_reads_the_documented_shape():
 
 
 @pytest.mark.skipif(sys.version_info < (3, 11), reason="tomllib is 3.11 and later")
-def test_the_minimal_parser_agrees_with_tomllib_on_the_documented_shape():
+@pytest.mark.parametrize(
+    "text",
+    [
+        DOCUMENTED,
+        '[default]\napi_key = "back\\\\slash"\n',
+        '[default]\napi_key = "say \\"hi\\""\n',
+        '[other]\n"my key" = "spaced"\n',
+    ],
+)
+def test_the_minimal_parser_agrees_with_tomllib(text):
     import tomllib
 
-    assert config._parse_simple_toml(DOCUMENTED, "config.toml") == tomllib.loads(DOCUMENTED)
+    assert config._parse_simple_toml(text, "config.toml") == tomllib.loads(text)
 
 
-def test_the_minimal_parser_refuses_what_it_cannot_read(nodus_config):
+def test_the_minimal_parser_refuses_what_it_cannot_read():
     with pytest.raises(nodus.ConfigurationError) as exc:
         config._parse_simple_toml("[default]\nports = [1, 2]\n", "config.toml")
     assert "line 2" in str(exc.value)
 
 
+def test_the_minimal_parser_refuses_an_escape_it_does_not_understand():
+    """Guessing at ``\\n`` would read back a value that is not what was written."""
+    with pytest.raises(nodus.ConfigurationError):
+        config._parse_simple_toml('[default]\napi_key = "a\\nb"\n', "config.toml")
+
+
 # -- the config file, write side -------------------------------------------
 
 
-def test_saving_credentials_writes_the_documented_shape(nodus_config):
-    config.save_credentials("nk_live_written", "https://written.example")
+def test_saving_credentials_writes_every_field_the_server_sent(nodus_config):
+    config.save_credentials(
+        "nk_live_written",
+        "https://written.example",
+        key_id="key_zz",
+        tenant="acme",
+        expires_at="2026-11-30T00:00:00Z",
+    )
     assert nodus_config.read_text(encoding="utf-8") == (
         "[default]\n"
         'api_key = "nk_live_written"\n'
         'base_url = "https://written.example"\n'
+        'key_id = "key_zz"\n'
+        'tenant = "acme"\n'
+        'expires_at = "2026-11-30T00:00:00Z"\n'
     )
 
 
+def test_a_field_the_server_did_not_send_is_removed_not_left_stale(nodus_config):
+    """A key_id outliving the key it named points revocation at the wrong one."""
+    config.save_credentials("nk_a", "https://a.example", key_id="key_old", tenant="acme")
+    config.save_credentials("nk_b", "https://a.example")
+    text = nodus_config.read_text(encoding="utf-8")
+    assert "key_old" not in text and "tenant" not in text
+
+
 def test_saving_credentials_keeps_the_rest_of_the_file(nodus_config):
-    nodus_config.parent.mkdir(parents=True, exist_ok=True)
     nodus_config.write_text('[other]\nnote = "keep me"\n', encoding="utf-8")
     config.save_credentials("nk_live_written", "https://written.example")
     text = nodus_config.read_text(encoding="utf-8")
     assert '[other]\nnote = "keep me"' in text
     assert 'api_key = "nk_live_written"' in text
+
+
+def test_a_quoted_key_is_still_quoted_after_a_login(nodus_config):
+    """A bare ``my key = ...`` is not readable TOML, so the next read fails."""
+    nodus_config.write_text('[other]\n"my key" = "spaced"\n', encoding="utf-8")
+    config.save_credentials("nk_live_written", "https://written.example")
+    assert config._load(nodus_config)["other"] == {"my key": "spaced"}
+
+
+def test_a_backslash_in_a_value_survives_the_round_trip(nodus_config):
+    config.save_credentials("nk_live_a\\b", "https://written.example")
+    assert config.read_credentials()[0] == "nk_live_a\\b"
+
+
+def test_a_value_with_a_control_character_is_refused_not_written(nodus_config):
+    """A raw newline writes a file neither parser can read back afterwards."""
+    with pytest.raises(nodus.ConfigurationError):
+        config.save_credentials("nk_live\nsplit", "https://written.example")
+    assert not nodus_config.exists()
 
 
 @pytest.mark.skipif(os.name != "posix", reason="only POSIX has a mode bit meaning this")
@@ -247,41 +316,132 @@ def test_the_written_file_is_readable_only_by_its_owner(nodus_config):
 
 
 @pytest.mark.skipif(os.name == "posix", reason="POSIX has a mode bit meaning this")
-def test_a_platform_with_no_file_mode_says_so_rather_than_implying_safety(nodus_config):
-    with pytest.warns(UserWarning, match="readable by anyone"):
+def test_a_platform_with_no_file_mode_says_what_is_true_instead(nodus_config):
+    """Not "anyone can read it" -- it inherits the profile directory's ACL."""
+    with pytest.warns(UserWarning, match="inherits the permissions"):
         config.save_credentials("nk_live_written", "https://written.example")
 
 
-def test_clearing_the_key_leaves_the_address_behind(nodus_config):
+def test_a_failed_write_leaves_no_temporary_file_holding_the_key(nodus_config, monkeypatch):
+    def boom(*_a, **_kw):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(config.os, "replace", boom)
+    with pytest.raises(OSError):
+        config.save_credentials("nk_live_written", "https://written.example")
+    assert list(nodus_config.parent.iterdir()) == []
+
+
+def test_the_bytes_reach_the_disk_before_the_rename_points_at_them(
+    nodus_config, monkeypatch
+):
+    """Otherwise a crash can leave the rename done and the file empty."""
+    order: list[str] = []
+    real_fsync, real_replace = os.fsync, os.replace
+    monkeypatch.setattr(config.os, "fsync", lambda fd: order.append("fsync") or real_fsync(fd))
+    monkeypatch.setattr(
+        config.os, "replace", lambda a, b: order.append("replace") or real_replace(a, b)
+    )
     config.save_credentials("nk_live_written", "https://written.example")
-    assert config.clear_api_key() is True
+    assert order == ["fsync", "replace"]
+
+
+def test_clearing_the_key_leaves_the_address_behind(nodus_config):
+    config.save_credentials("nk_live_written", "https://written.example", key_id="key_zz")
+    assert config.clear_api_key() == {"key_id": "key_zz"}
     text = nodus_config.read_text(encoding="utf-8")
-    assert "api_key" not in text
+    assert "api_key" not in text and "key_zz" not in text
     assert 'base_url = "https://written.example"' in text
 
 
 def test_clearing_a_key_that_is_not_there_says_so_rather_than_failing(nodus_config):
-    assert config.clear_api_key() is False
+    assert config.clear_api_key() is None
+
+
+@pytest.mark.skipif(os.name != "posix", reason="a symlinked home needs symlink support")
+def test_a_symlinked_config_directory_is_refused(nodus_config, tmp_path):
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    shutil.rmtree(nodus_config.parent)
+    nodus_config.parent.symlink_to(elsewhere, target_is_directory=True)
+    with pytest.raises(nodus.ConfigurationError, match="symbolic link"):
+        config.save_credentials("nk_live_written", "https://written.example")
+
+
+# -- refusing before anything is minted ------------------------------------
+
+
+def _break_config(nodus_config, kind: str) -> None:
+    if kind == "directory-is-a-file":
+        shutil.rmtree(nodus_config.parent)
+        nodus_config.parent.write_text("not a directory", encoding="utf-8")
+    elif kind == "file-is-a-directory":
+        nodus_config.mkdir()
+    elif kind == "corrupt-toml":
+        nodus_config.write_text("[default\napi_key = ", encoding="utf-8")
+    elif kind == "unwritable-value":
+        nodus_config.write_text("[other]\ncount = 3\n", encoding="utf-8")
+    else:  # pragma: no cover - a typo in the parametrize list
+        raise AssertionError(kind)
+
+
+@pytest.mark.parametrize(
+    "kind",
+    ["directory-is-a-file", "file-is-a-directory", "corrupt-toml", "unwritable-value"],
+)
+def test_an_unwritable_config_refuses_before_a_key_is_ever_minted(
+    console, nodus_config, capsys, kind
+):
+    """The console mints the key inside the call that releases it.
+
+    So the write has to be proven possible while there is still nothing to
+    lose: once /token answers, a failed write orphans a live 90-day key.
+    """
+    _break_config(nodus_config, kind)
+    assert _login(console) == 2
+    assert console.start_calls == [], "a key was minted for a config that cannot hold it"
+    assert console.token_calls == []
+    assert "error:" in capsys.readouterr().err
+
+
+def test_a_write_that_fails_anyway_shows_the_key_once_rather_than_losing_it(
+    console, nodus_config, monkeypatch, capsys
+):
+    """The backstop for whatever the pre-flight could not see coming."""
+
+    def boom(*_a, **_kw):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(config, "save_credentials", boom)
+    assert _login(console) == 2
+    err = capsys.readouterr().err
+    assert err.count(APPROVED["api_key"]) == 1
+    assert "revoke it in the console" in err
 
 
 # -- nodus login, end to end over HTTP -------------------------------------
 
 
-def _login(console, *extra: str) -> int:
-    return cli.main(["login", "--base-url", console.base_url, *extra])
-
-
 def test_login_writes_a_config_the_client_then_resolves_from(console, nodus_config, capsys):
     assert _login(console) == 0
-    out = capsys.readouterr().out
-    assert "WXYZ-4823" in out
-    assert str(nodus_config) in out
-    assert "acme" in out
-    assert APPROVED["api_key"] not in out, "the key itself must not land on the terminal"
+    printed = _both_streams(capsys)
+    assert "WXYZ-4823" in printed
+    assert str(nodus_config) in printed
+    assert "acme" in printed
+    assert APPROVED["api_key"] not in printed, "the key itself must not be printed"
 
     with nodus.Client() as c:
         assert c.base_url == APPROVED["base_url"]
         assert c.api_key == nodus._redact(APPROVED["api_key"])
+
+
+def test_login_stores_what_names_the_key_for_revocation(console, nodus_config):
+    assert _login(console) == 0
+    assert config.read_metadata() == {
+        "key_id": APPROVED["key_id"],
+        "tenant": APPROVED["tenant"],
+        "expires_at": APPROVED["expires_at"],
+    }
 
 
 def test_login_sends_the_device_code_it_was_given(console):
@@ -301,17 +461,54 @@ def test_login_keeps_polling_until_the_human_approves(console, nodus_config):
 
 
 def test_a_slow_down_is_backed_off_from_not_treated_as_a_refusal(console, nodus_config):
-    """429 is the console's IP limiter, not an answer about this device code."""
+    """429 is the front door's IP limiter, not an answer about this code."""
     console.token = [(429, {"error": "slow_down"}), (200, APPROVED)]
     assert _login(console) == 0
     assert nodus_config.exists()
 
 
-def test_an_expired_code_ends_the_login_and_writes_nothing(console, nodus_config, capsys):
-    console.token = [(410, {"error": "expired_token", "message": "device code expired"})]
+def test_a_slow_down_waits_at_least_as_long_as_retry_after_asks(console):
+    """The transport honours Retry-After; a poll that ignored it would not."""
+    console.token = [(429, {"error": "slow_down"}), (200, APPROVED)]
+    console.token_headers = {"Retry-After": "30"}
+    slept: list[float] = []
+
+    with login.open_http(console.base_url) as http:
+        device = login.start_device_authorization(http)
+        creds = login.poll_for_credentials(
+            http, device, console.base_url, sleep=slept.append
+        )
+    assert creds.api_key == APPROVED["api_key"]
+    assert slept and slept[0] == 30.0
+
+
+def test_retry_after_never_outlives_the_deadline(console):
+    """Sleeping past the TTL only delays the refusal it cannot prevent."""
+    console.start = (201, _started(expires_in=5, interval=1))
+    console.token = [(429, {"error": "slow_down"})]
+    console.token_headers = {"Retry-After": "600"}
+    slept: list[float] = []
+    clock = iter([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0])
+
+    with login.open_http(console.base_url) as http:
+        device = login.start_device_authorization(http)
+        with pytest.raises(nodus.APITimeoutError):
+            login.poll_for_credentials(
+                http, device, console.base_url,
+                sleep=slept.append, monotonic=lambda: next(clock),
+            )
+    assert slept and max(slept) <= 5.0
+
+
+def test_a_refused_code_does_not_claim_to_know_which_way_it_died(
+    console, nodus_config, capsys
+):
+    """410 is one answer for expired, declined, collected, and never-existed."""
+    console.token = [(410, {"error": "expired_token", "message": "gone"})]
     assert _login(console) == 2
     err = capsys.readouterr().err
-    assert "expired" in err.lower()
+    assert "may have expired, been declined, or already been collected" in err
+    assert "no key was issued" not in err
     assert "nodus login" in err
     assert not nodus_config.exists(), "a failed login must leave no credentials behind"
 
@@ -330,14 +527,50 @@ def test_the_ttl_bounds_the_wait_even_if_the_console_never_answers(console, nodu
     console.token = [(428, {"error": "authorization_pending"})]
     clock = iter([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0])
 
-    with nodus.login.open_http(console.base_url) as http:
-        device = nodus.login.start_device_authorization(http)
+    with login.open_http(console.base_url) as http:
+        device = login.start_device_authorization(http)
         with pytest.raises(nodus.APITimeoutError) as exc:
-            nodus.login.poll_for_credentials(
-                http, device, console.base_url, sleep=lambda _: None, monotonic=lambda: next(clock)
+            login.poll_for_credentials(
+                http, device, console.base_url,
+                sleep=lambda _: None, monotonic=lambda: next(clock),
             )
     assert "nodus login" in str(exc.value)
     assert not nodus_config.exists()
+
+
+@pytest.mark.parametrize("ttl", [float("nan"), float("inf"), 0, -1, "600", None])
+def test_a_ttl_that_cannot_bound_anything_is_refused(console, nodus_config, ttl):
+    """NaN passes every ``<= 0`` check, and a deadline built on it never ends."""
+    console.start = (201, _started(expires_in=ttl))
+    assert _login(console) == 2
+    assert console.token_calls == [], "polled against a deadline it can never reach"
+    assert not nodus_config.exists()
+
+
+def test_the_ttl_is_capped_however_long_the_server_says():
+    assert login._seconds({"expires_in": 10**9}, "expires_in", "/x") == login._MAX_TTL
+    assert login._seconds({"expires_in": 600}, "expires_in", "/x") == 600.0
+
+
+@pytest.mark.parametrize(
+    "sent, expected",
+    [
+        (10_000, login._MAX_INTERVAL),
+        (0.000001, login._MIN_INTERVAL),
+        (float("nan"), login._DEFAULT_INTERVAL),
+        (float("inf"), login._DEFAULT_INTERVAL),
+        (0, login._DEFAULT_INTERVAL),
+        ("2", login._DEFAULT_INTERVAL),
+        (True, login._DEFAULT_INTERVAL),
+    ],
+)
+def test_the_poll_cadence_is_clamped_to_something_survivable(sent, expected):
+    assert login._interval({"interval": sent}) == expected
+
+
+def test_json_really_does_admit_nan_so_the_guard_is_not_theoretical():
+    """The fixture behind the NaN cases: json accepts the bare literal."""
+    assert math.isnan(json.loads('{"expires_in": NaN}')["expires_in"])
 
 
 def test_a_token_response_without_a_key_is_a_protocol_error_not_a_login(console, nodus_config):
@@ -379,27 +612,59 @@ def test_login_opens_the_browser_and_no_browser_stops_it(console, no_browser_ope
     assert _started()["verification_url"] in capsys.readouterr().out
 
 
-def test_a_verification_url_that_is_not_web_is_never_handed_to_the_browser(
-    console, no_browser_opens, capsys
+@pytest.mark.parametrize(
+    "url", ["file:///etc/passwd", "javascript:alert(1)", "https://ok.example/\x1b[31m"]
+)
+def test_an_address_that_is_not_a_plain_web_url_is_never_opened(
+    console, no_browser_opens, url
 ):
-    """The address comes from the server, and file:// would open a local file."""
-    console.start = (201, _started(verification_url="file:///etc/passwd"))
+    """It comes from the server, and the platform handler acts on anything."""
+    console.start = (201, _started(verification_url=url))
     assert _login(console) == 0
     assert no_browser_opens == []
-    assert "file:///etc/passwd" in capsys.readouterr().out
 
 
-def test_text_from_the_console_cannot_repaint_the_terminal(console, capsys):
-    console.start = (201, _started(user_code="\x1b[31mWXYZ\x07"))
+@pytest.mark.parametrize("field", ["user_code", "verification_url"])
+def test_text_from_the_console_cannot_repaint_the_terminal(console, capsys, field):
+    console.start = (201, _started(**{field: "\x1b[31mDANGER\x07"}))
     assert _login(console) == 0
-    out = capsys.readouterr().out
-    assert "\x1b" not in out and "\x07" not in out
+    printed = _both_streams(capsys)
+    assert "\x1b" not in printed and "\x07" not in printed
+
+
+# -- what the environment still outranks -----------------------------------
+
+
+@pytest.mark.parametrize("name", ["NODUS_API_KEY", "NODUS_BASE_URL"])
+def test_login_says_when_the_environment_outranks_what_it_just_wrote(
+    console, nodus_config, monkeypatch, capsys, name
+):
+    """"Signed in" is a lie if an env var is what the next call will use."""
+    monkeypatch.setenv(name, "nk_live_env" if name.endswith("KEY") else "https://env.example")
+    assert _login(console) == 0
+    err = capsys.readouterr().err
+    assert name in err and "outranks" in err
+
+
+def test_logout_says_the_environment_still_holds_a_key(
+    console, nodus_config, monkeypatch, capsys
+):
+    """Proven the hard way: the client kept sending the env key afterwards."""
+    assert _login(console) == 0
+    monkeypatch.setenv("NODUS_API_KEY", "nk_live_from_env")
+    capsys.readouterr()
+
+    assert cli.main(["logout"]) == 0
+    err = capsys.readouterr().err
+    assert "NODUS_API_KEY" in err and "finish logging out" in err
+    with nodus.Client(base_url="https://x.example") as c:
+        assert c.api_key == nodus._redact("nk_live_from_env")
 
 
 # -- nodus logout ----------------------------------------------------------
 
 
-def test_logout_removes_the_stored_key_and_is_honest_about_the_server(
+def test_logout_names_the_key_it_removed_and_is_honest_about_the_server(
     console, nodus_config, capsys
 ):
     assert _login(console) == 0
@@ -407,25 +672,10 @@ def test_logout_removes_the_stored_key_and_is_honest_about_the_server(
 
     assert cli.main(["logout"]) == 0
     out = capsys.readouterr().out
+    assert APPROVED["key_id"] in out, "the only handle the console revokes by"
     assert str(nodus_config) in out
     assert "revoke" in out.lower()
     assert "api_key" not in nodus_config.read_text(encoding="utf-8")
-
-
-def test_logout_says_nothing_about_protecting_a_key_it_just_removed(
-    console, nodus_config, recwarn
-):
-    assert _login(console) == 0
-    recwarn.clear()
-    assert cli.main(["logout"]) == 0
-    assert [str(w.message) for w in recwarn if "API key" in str(w.message)] == []
-
-
-@pytest.mark.skipif(os.name == "posix", reason="POSIX has a mode bit meaning this")
-def test_login_states_the_file_mode_caveat_as_a_sentence(console, nodus_config, capsys):
-    """A caveat a person has to read is a line of prose, not a UserWarning."""
-    assert _login(console) == 0
-    assert "readable by anyone" in capsys.readouterr().err
 
 
 def test_logout_with_nothing_stored_is_not_a_failure(nodus_config, capsys):

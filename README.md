@@ -35,6 +35,9 @@ your clipboard. `--no-browser` prints the address instead of opening it.
 `NODUS_BASE_URL` once and you can drop the flag. There is no built-in address:
 a guessed one is either nobody's deployment or somebody else's.
 
+> **Status:** verified against a local test double; not yet run against a
+> deployed control plane. The console endpoints it calls are being built.
+
 ```bash
 nodus logout
 ```

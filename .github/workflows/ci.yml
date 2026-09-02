@@ -24,6 +24,21 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: python -m pytest -q
 
+  # The credential file is the one thing that behaves differently per OS: 0600
+  # exists on one and not the other, and each side has a test the other skips.
+  # Without this job the Windows half is never executed anywhere.
+  test-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -e ".[dev]"
+      - run: python -m pytest -q
+
   build:
     runs-on: ubuntu-latest
     permissions:

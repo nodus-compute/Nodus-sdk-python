@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 import warnings
@@ -202,12 +203,16 @@ def _cmd_explain(args: argparse.Namespace) -> int:
 
 
 def _open_browser(url: str) -> bool:
-    """Best effort, and only for a web address.
+    """Best effort, and only for a web address that needed no cleaning.
 
     The address arrives from the console, and ``webbrowser.open`` hands
     whatever it is given to the platform's handler: a ``file:`` or
-    ``javascript:`` URL would be acted on locally.
+    ``javascript:`` URL would be acted on locally. An address carrying control
+    characters is not opened in a cleaned-up form either -- cleaning it makes
+    it a different address, which is not the one anyone approved.
     """
+    if _safe(url) != url:
+        return False
     if not url.lower().startswith(("http://", "https://")):
         return False
     try:
@@ -216,8 +221,16 @@ def _open_browser(url: str) -> bool:
         return False
 
 
+def _env_outranks(*names: str) -> list[str]:
+    """Which of these are set, and so beat anything in the config file."""
+    return [name for name in names if os.environ.get(name, "").strip()]
+
+
 def _cmd_login(args: argparse.Namespace) -> int:
     base_url = _resolve_base_url(args.base_url)
+    # Before anything is minted: the console issues the key inside the call
+    # that releases it, so a file that cannot be written has to fail now.
+    config.ensure_writable()
     with login.open_http(base_url) as http:
         device = login.start_device_authorization(http)
         print(f"Your sign-in code is {_safe(device.user_code)}")
@@ -228,27 +241,63 @@ def _cmd_login(args: argparse.Namespace) -> int:
         print()
         print("Waiting for you to approve it...")
         creds = login.poll_for_credentials(http, device, base_url)
+
     # A caveat about the file belongs in the sentence a person is reading, not
     # in a UserWarning with a source line under it.
     with warnings.catch_warnings(record=True) as caveats:
         warnings.simplefilter("always")
-        path = config.save_credentials(creds.api_key, creds.base_url)
+        try:
+            path = config.save_credentials(
+                creds.api_key,
+                creds.base_url,
+                key_id=creds.key_id,
+                tenant=creds.tenant,
+                expires_at=creds.expires_at,
+            )
+        except BaseException as exc:
+            # The key exists on the server whether or not this write worked.
+            # Showing it once is the only way it is not lost while still live.
+            print(
+                f"Could not write {config.config_path()}: {exc}. Your key is: "
+                f"{creds.api_key} - it will not be shown again. Store it, or "
+                "revoke it in the console.",
+                file=sys.stderr,
+            )
+            if isinstance(exc, Exception):
+                return 2
+            raise
+
     who = _safe(creds.tenant) if creds.tenant else _redact(creds.api_key)
     print(f"Signed in as {who}.")
     print(f"Wrote {path}")
     for caveat in caveats:
         print(f"Note: {_safe(caveat.message)}", file=sys.stderr)
+    for name in _env_outranks("NODUS_API_KEY", "NODUS_BASE_URL"):
+        print(
+            f"Note: {name} is set in this environment and outranks the file, "
+            "so it is what this client will use, not what was just written.",
+            file=sys.stderr,
+        )
     return 0
 
 
 def _cmd_logout(args: argparse.Namespace) -> int:
     path = config.config_path()
-    if not config.clear_api_key():
+    removed = config.clear_api_key()
+    if removed is None:
         print(f"No stored key to remove: {path}")
-        return 0
-    print(f"Removed the stored key from {path}")
-    print("That key still works until you revoke it in the console: deleting the")
-    print("local copy does not revoke it.")
+    else:
+        named = f" {_safe(removed['key_id'])}" if removed.get("key_id") else ""
+        print(f"Removed the stored key{named} from {path}")
+        print("That key still works until you revoke it in the console:")
+        print("deleting the local copy does not revoke it.")
+    for name in _env_outranks("NODUS_API_KEY"):
+        print(
+            f"Note: {name} is set in this environment and outranks the file, "
+            "so this client is still signed in with that key. Unset it to "
+            "finish logging out.",
+            file=sys.stderr,
+        )
     return 0
 
 

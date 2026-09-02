@@ -14,6 +14,7 @@ that quietly reads the wrong field writes a credential nobody can trace.
 
 from __future__ import annotations
 
+import math
 import platform
 import time
 from dataclasses import dataclass
@@ -21,8 +22,14 @@ from typing import Any, Callable
 
 import httpx
 
-from . import __version__
-from .errors import APIConnectionError, APITimeoutError, NodusError, error_from_response
+from . import __version__, _retry_after
+from .errors import (
+    APIConnectionError,
+    APITimeoutError,
+    AuthenticationError,
+    NodusError,
+    error_from_response,
+)
 
 __all__ = [
     "START_PATH",
@@ -37,11 +44,16 @@ __all__ = [
 START_PATH = "/v1/console/device/start"
 TOKEN_PATH = "/v1/console/device/token"
 
-# The three answers the poll is allowed to continue or stop on. Every other
-# 4xx is terminal: a code this device cannot use does not become usable.
+# 428 is the console's "not yet"; 410 is its one refusal, and covers a code
+# that expired, was declined, was already collected, or never existed. Every
+# other 4xx is terminal too: a code this device cannot use does not become
+# usable by asking again.
 _PENDING = 428
+_GONE = 410
+# Not a device-flow signal. It is the front door's IP limiter, which any
+# request can meet, so the poll waits longer rather than reading it as an
+# answer about this code.
 _SLOW_DOWN = 429
-_EXPIRED = 410
 
 _DEFAULT_INTERVAL = 2.0
 # The ceiling backoff grows to, and how long someone can stare at "waiting"
@@ -50,10 +62,17 @@ _MAX_INTERVAL = 5.0
 # A floor under whatever the server asks for: interval 0 would spend the whole
 # TTL hammering the console.
 _MIN_INTERVAL = 0.01
+# The longest wait this client will hold open whatever TTL comes back. A
+# server that says a year is not a reason to sit in a poll loop for one.
+_MAX_TTL = 900.0
 
-_EXPIRED_MESSAGE = (
-    "the sign-in code expired before it was approved, so no key was issued "
-    "and nothing was written. Run: nodus login"
+_GONE_MESSAGE = (
+    "that sign-in code is no longer valid - it may have expired, been "
+    "declined, or already been collected. Run: nodus login"
+)
+_TIMEOUT_MESSAGE = (
+    "the sign-in code was not approved before the console's deadline for it. "
+    "Run: nodus login"
 )
 
 
@@ -70,11 +89,18 @@ class DeviceCode:
 
 @dataclass(frozen=True)
 class Credentials:
-    """What ``/token`` released. ``tenant`` is empty when the server sent none."""
+    """What ``/token`` released.
+
+    Only ``api_key`` and ``base_url`` are needed to make a request. ``key_id``
+    is the handle the console revokes by, and ``expires_at`` is kept as the
+    server spelled it rather than parsed. Each is empty when none was sent.
+    """
 
     api_key: str
     base_url: str
-    tenant: str
+    key_id: str = ""
+    tenant: str = ""
+    expires_at: str = ""
 
 
 def client_name() -> str:
@@ -121,20 +147,40 @@ def _text(body: dict[str, Any], name: str, path: str) -> str:
     return value.strip()
 
 
+def _optional_text(body: dict[str, Any], name: str) -> str:
+    value = body.get(name)
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _finite(value: Any) -> bool:
+    """A real number, not a bool, and not one JSON let through as NaN.
+
+    ``json`` accepts the literals ``NaN`` and ``Infinity``, and every ordering
+    comparison against NaN is False — so an unguarded ``value <= 0`` admits it
+    and a deadline built from it is never reached.
+    """
+    return (
+        not isinstance(value, bool)
+        and isinstance(value, (int, float))
+        and math.isfinite(value)
+        and value > 0
+    )
+
+
 def _seconds(body: dict[str, Any], name: str, path: str) -> float:
     value = body.get(name)
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+    if not _finite(value):
         raise NodusError(
-            f"POST {path} did not return {name!r} as a positive number of "
-            "seconds, so there is no deadline to bound the wait by.",
+            f"POST {path} did not return {name!r} as a positive, finite number "
+            "of seconds, so there is no deadline to bound the wait by.",
             body=body,
         )
-    return float(value)
+    return min(float(value), _MAX_TTL)
 
 
 def _interval(body: dict[str, Any]) -> float:
     value = body.get("interval")
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+    if not _finite(value):
         return _DEFAULT_INTERVAL
     return min(max(float(value), _MIN_INTERVAL), _MAX_INTERVAL)
 
@@ -179,23 +225,32 @@ def poll_for_credentials(
     interval = device.interval
     while True:
         if monotonic() >= deadline:
-            raise APITimeoutError(_EXPIRED_MESSAGE)
+            raise APITimeoutError(_TIMEOUT_MESSAGE)
         resp = _post(http, TOKEN_PATH, {"device_code": device.device_code})
         status = resp.status_code
-        if status == _EXPIRED:
-            raise APITimeoutError(_EXPIRED_MESSAGE, status_code=status, body=_body(resp))
+        if status == _GONE:
+            raise AuthenticationError(
+                _GONE_MESSAGE, status_code=status, body=_body(resp)
+            )
         if status < 400:
             body = _mapping(resp, TOKEN_PATH)
-            issued = body.get("base_url")
-            tenant = body.get("tenant")
+            issued = _optional_text(body, "base_url")
             return Credentials(
                 api_key=_text(body, "api_key", TOKEN_PATH),
-                base_url=issued.strip() if isinstance(issued, str) and issued.strip() else base_url,
-                tenant=tenant.strip() if isinstance(tenant, str) else "",
+                base_url=issued or base_url,
+                key_id=_optional_text(body, "key_id"),
+                tenant=_optional_text(body, "tenant"),
+                expires_at=_optional_text(body, "expires_at"),
             )
-        if status == _SLOW_DOWN:
-            interval = min(interval * 2, _MAX_INTERVAL)
-        elif status != _PENDING:
+        if status not in (_PENDING, _SLOW_DOWN):
             raise error_from_response("POST", TOKEN_PATH, status, _body(resp))
-        sleep(min(interval, max(0.0, deadline - monotonic())))
-        interval = min(interval * 1.5, _MAX_INTERVAL)
+        wait = interval = min(
+            interval * (2.0 if status == _SLOW_DOWN else 1.5), _MAX_INTERVAL
+        )
+        if status == _SLOW_DOWN:
+            asked = _retry_after(resp)
+            if asked is not None:
+                # The limiter's number outranks our cadence for this one wait.
+                wait = max(wait, min(asked, _MAX_TTL))
+        # Never past the deadline: sleeping through it only delays the refusal.
+        sleep(min(wait, max(0.0, deadline - monotonic())))

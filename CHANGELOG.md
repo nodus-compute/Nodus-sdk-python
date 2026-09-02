@@ -5,8 +5,16 @@
 - `nodus login`: approve a short code in the browser once and the SDK writes
   `~/.nodus/config.toml` itself — no key to copy and no address to look up.
   `--no-browser` prints the address instead of opening it; `nodus logout`
-  deletes the stored key and says that revoking it is a separate act in the
-  console.
+  removes the stored key, names the `key_id` to revoke, and says that revoking
+  it is a separate act in the console. **Verified against a local test double;
+  not yet run against a deployed control plane.**
+- The config file is proven writable *before* the exchange starts, because the
+  console mints the key inside the call that releases it — a write that failed
+  afterwards would leave a live 90-day key nobody had a copy of. If a write
+  fails anyway, the key is printed once so it can be stored or revoked.
+- Both commands say so on stderr when `NODUS_API_KEY` (or `NODUS_BASE_URL`) is
+  set: it outranks the file, so "signed in" and "logged out" would otherwise
+  both be wrong.
 - `Client()` and `AsyncClient()` read that file when nothing else supplies a
   setting. Precedence is resolved per setting, highest first: explicit
   argument, environment, then the file — so a stale login cannot outrank what
