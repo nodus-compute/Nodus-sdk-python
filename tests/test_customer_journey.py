@@ -308,32 +308,36 @@ def test_the_whole_journey(client, plane):
         budget=25,
     )
 
-    # Submitted and identified. The id is what every later call is about.
-    assert workload.id.startswith("wl_")
-    assert not workload.is_terminal
+    # From here the workload exists and, on a live plane, is costing money — so
+    # the cancel must run even when an assertion between here and there fails.
+    try:
+        # Submitted and identified. The id is what every later call is about.
+        assert workload.id.startswith("wl_")
+        assert not workload.is_terminal
 
-    # Read back: the budget the brief asked for comes back on the workload, so a
-    # customer can see the ceiling their run is being held to.
-    fetched = client.get(workload.id)
-    assert fetched.id == workload.id
-    assert fetched.budget_usd == 25.0
+        # Read back: the budget the brief asked for comes back on the workload,
+        # so a customer can see the ceiling their run is being held to.
+        fetched = client.get(workload.id)
+        assert fetched.id == workload.id
+        assert fetched.budget_usd == 25.0
 
-    # It appears in their own list.
-    assert workload.id in [w.id for w in client.list(limit=50)]
+        # It appears in their own list.
+        assert workload.id in [w.id for w in client.list(limit=50)]
 
-    # "Is it running?" is answered by events, in order, from the first one.
-    events = workload.events()
-    assert [e.type for e in events][:1] == ["workload.accepted"]
-    assert events[0].seq >= 1
+        # "Is it running?" is answered by events, in order, from the first one.
+        events = workload.events()
+        assert [e.type for e in events][:1] == ["workload.accepted"]
+        assert events[0].seq >= 1
 
-    # Logs before anything has been committed: a clear refusal, not an empty
-    # string that reads like a program which printed nothing.
-    with pytest.raises(nodus.NotFoundError) as exc:
-        client.logs(workload.id)
-    assert "log" in str(exc.value).lower()
-
-    # Cancelling is a customer action, and it sticks.
-    workload.cancel()
+        # Logs before anything has been committed: a clear refusal, not an
+        # empty string that reads like a program which printed nothing.
+        with pytest.raises(nodus.NotFoundError) as exc:
+            client.logs(workload.id)
+        assert "log" in str(exc.value).lower()
+    finally:
+        # Cancelling is a customer action, and it sticks. It is also the
+        # cleanup: a failed assertion must not leave a paid run going.
+        workload.cancel()
     done = workload.wait(poll_seconds=0.2, timeout_seconds=60)
     assert done.is_terminal
     assert nodus.WorkloadStatus.coerce(done.status) == nodus.WorkloadStatus.CANCELLED

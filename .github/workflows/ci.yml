@@ -8,6 +8,8 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -24,6 +26,8 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -34,3 +38,15 @@ jobs:
       # twine check is what catches a README PyPI will not render, before a
       # release rather than after it.
       - run: python -m twine check dist/*
+      # The wheel is the artifact customers download, and a suite run from a
+      # source checkout never imports it. Install it into a clean venv and run
+      # the tests from outside the tree, so `import nodus` can only resolve to
+      # the installed wheel.
+      - name: test the installed wheel
+        run: |
+          python -m venv "$RUNNER_TEMP/wheel-venv"
+          "$RUNNER_TEMP/wheel-venv/bin/pip" install dist/*.whl pytest
+          mkdir "$RUNNER_TEMP/wheel-run"
+          cp -r tests "$RUNNER_TEMP/wheel-run/tests"
+          cd "$RUNNER_TEMP/wheel-run"
+          "$RUNNER_TEMP/wheel-venv/bin/python" -m pytest -q tests

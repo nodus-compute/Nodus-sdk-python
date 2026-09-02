@@ -20,4 +20,6 @@ jobs:
       - run: pip install build twine
       - run: python -m build
       - run: python -m twine check dist/*
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      # Pinned to the release's commit: a floating branch ref would let a
+      # compromised action publish as us before anyone noticed the ref moved.
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
