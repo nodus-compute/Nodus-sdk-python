@@ -21,6 +21,7 @@ __all__ = [
     "RateLimitError",
     "BudgetExceededError",
     "CapacityUnavailableError",
+    "SpendCheckUnavailableError",
     "SignatureError",
     "APIError",
     "APIConnectionError",
@@ -178,17 +179,28 @@ class BudgetExceededError(NodusError):
         return self._amount("remaining_headroom_usd")
 
 
-class CapacityUnavailableError(NodusError):
-    """503. No feasible route for this brief right now.
+class SpendCheckUnavailableError(NodusError):
+    """503 on submit. The account's spend could not be measured, so nothing ran.
 
-    Retryable, and more likely to succeed with a wider brief: raising
-    ``interrupt_tolerance`` or dropping ``finish_by`` admits routes the
-    deadline excluded.
+    Admission fails closed: nothing was created, nothing was charged, and the
+    same brief is retryable exactly as sent.
+    """
+
+
+class CapacityUnavailableError(NodusError):
+    """Reserved. No control plane path raises this today.
+
+    Kept because removing an exported name breaks ``except`` clauses somebody
+    wrote. A brief no route fits is refused at submit as a validation problem;
+    a 503 is :class:`SpendCheckUnavailableError`.
     """
 
 
 class SignatureError(NodusError):
-    """401 on a signed request. Stale timestamp, altered body, or wrong secret."""
+    """401 on a signed request. Stale timestamp, altered body, or wrong secret.
+
+    The code is ``invalid_signature``, which webhook delivery sends.
+    """
 
 
 class APIError(NodusError):
@@ -229,9 +241,10 @@ _REMEDIES: dict[str, str] = {
         "in_flight_committed_usd and headroom_usd on this error carry the "
         "arithmetic the refusal was made from."
     ),
-    "capacity_unavailable": (
-        "No route fits this brief right now. Retry, or widen it: raise "
-        "interrupt_tolerance, or drop finish_by."
+    "spend_check_unavailable": (
+        "The account spend check could not be reached, so the submission was "
+        "refused rather than admitted without one: nothing was created and "
+        "nothing was charged. Retry in a moment with the same brief."
     ),
     "idempotency_conflict": (
         "That Idempotency-Key already names a different payload. Resend the "
@@ -250,7 +263,6 @@ _BY_STATUS: dict[int, type[NodusError]] = {
     409: IdempotencyConflictError,
     422: ValidationError,
     429: RateLimitError,
-    503: CapacityUnavailableError,
 }
 
 
@@ -284,8 +296,13 @@ def error_from_response(
 
     # A signed-request rejection is a 401 like a bad key, but it means something
     # different to the caller: the credential is fine, the signature is not.
-    if status_code == 401 and code in {"invalid_signature", "signature_error"}:
+    # Only the code the API actually writes counts.
+    if status_code == 401 and code == "invalid_signature":
         cls: type[NodusError] = SignatureError
+    elif status_code == 503 and code == "spend_check_unavailable":
+        # The only 503 the control plane sends. Anything else at this status is
+        # an infrastructure answer, not a statement about this brief.
+        cls = SpendCheckUnavailableError
     else:
         cls = _BY_STATUS.get(status_code, APIError)
 

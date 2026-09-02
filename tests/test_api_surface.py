@@ -1,11 +1,9 @@
 """The shape of the public API, asserted rather than hoped for.
 
 Two clients and two handles are four surfaces that have to say the same thing.
-The async half used to be a subset of the sync one — no ``wait()``, no
-``stream_events()``, no ``logs()``, no webhooks — and nothing failed, because the
-test that claimed to check it called a single method. These assertions compare
-the surfaces name by name and parameter by parameter, so a method added to one
-half and forgotten on the other is a red suite rather than a discovery.
+These assertions compare them name by name and parameter by parameter, so a
+method added to one half and forgotten on the other is a red suite rather than
+a discovery -- which a test that calls one method of each cannot do.
 """
 
 from __future__ import annotations
@@ -47,6 +45,13 @@ def test_the_two_clients_take_the_same_arguments_for_the_same_call():
     for name in sorted(_own_public(nodus.Client) - set(CLIENT_ALIASES)):
         sync = getattr(nodus.Client, name)
         asyn = getattr(nodus.AsyncClient, name)
+        # A property is a name, not a call. Both halves still have to agree on
+        # which of the two it is.
+        if isinstance(sync, property) or isinstance(asyn, property):
+            assert isinstance(sync, property) and isinstance(asyn, property), (
+                f"{name} is a property on one client and a method on the other"
+            )
+            continue
         assert _params(sync) == _params(asyn), f"Client.{name} and AsyncClient.{name} disagree"
 
 
@@ -69,11 +74,8 @@ BRIEF_PARAMETERS = {
     "budget",
     "compute_class",
     "continuity",
-    "interrupt_tolerance",
     "finish_by",
     "data_regions",
-    "env",
-    "inputs",
     "stages",
     "framework",
     "policy",
@@ -97,6 +99,38 @@ def test_the_package_ships_its_types():
 
 
 # -- the command ------------------------------------------------------------
+
+
+def test_the_command_prints_only_ascii():
+    """A console on a legacy code page cannot encode a typographic dash.
+
+    Only what reaches a screen matters: constants are checked, docstrings are
+    exempt because nothing prints them.
+    """
+    import ast
+    import pathlib
+
+    tree = ast.parse(pathlib.Path(cli.__file__).read_text(encoding="utf-8"))
+    documented = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            first = node.body[0] if node.body else None
+            if (
+                isinstance(first, ast.Expr)
+                and isinstance(first.value, ast.Constant)
+                and isinstance(first.value.value, str)
+            ):
+                documented.add(id(first.value))
+
+    offenders = [
+        (node.lineno, node.value)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and id(node) not in documented
+        and not node.value.isascii()
+    ]
+    assert not offenders, f"non-ASCII text the command can print: {offenders}"
 
 
 def _subcommands() -> set[str]:
@@ -175,6 +209,73 @@ def test_the_ledger_command_prints_what_the_run_charged(monkeypatch, capsys):
     assert "5.00" in out, f"the charge is not on the screen: {out!r}"
     assert "closed" in out
     assert "0.00" in out, "a zero balance is a fact, not a reason to print nothing"
+
+
+HOSTILE = "\x1b[2J\x1b]0;pwned\x07wl_abc\rerror: everything is fine"
+
+
+def _has_control_characters(text: str) -> bool:
+    return any(ch in text for ch in "\x1b\x07\r\x00")
+
+
+def test_text_from_the_server_cannot_repaint_the_terminal(monkeypatch, capsys):
+    """Ids, statuses, routes and logs are written by something other than us,
+    and a terminal obeys whatever escape sequences it is handed."""
+
+    class _Fake:
+        def __init__(self, *a, **kw):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return None
+
+        def get(self, workload_id):
+            wl = nodus.Workload.__new__(nodus.Workload)
+            nodus._WorkloadState.__init__(wl)
+            wl._client = self
+            wl._absorb(
+                {
+                    "id": HOSTILE,
+                    "status": HOSTILE,
+                    "route": {"offer_id": HOSTILE, "fit_class": HOSTILE, "region": HOSTILE},
+                }
+            )
+            return wl
+
+        def events(self, workload_id, **kw):
+            return [nodus.Event.from_dict({"id": 1, "event_type": HOSTILE})]
+
+        def logs(self, workload_id, *, stage=None, generation=None):
+            return f"step-1\n{HOSTILE}\nstep-2"
+
+    monkeypatch.setattr(cli, "Client", _Fake)
+    for argv in (["get", "wl_abc"], ["events", "wl_abc"], ["logs", "wl_abc"],
+                 ["explain", "wl_abc"]):
+        cli.main(argv)
+        out = capsys.readouterr().out
+        assert not _has_control_characters(out), f"{argv} passed an escape through: {out!r}"
+
+
+def test_an_error_message_from_the_server_is_cleaned_too(monkeypatch, capsys):
+    class _Fake:
+        def __init__(self, *a, **kw):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return None
+
+        def get(self, workload_id):
+            raise nodus.NotFoundError(f"no such workload {HOSTILE}", status_code=404)
+
+    monkeypatch.setattr(cli, "Client", _Fake)
+    assert cli.main(["get", "wl_abc"]) == 2
+    assert not _has_control_characters(capsys.readouterr().err)
 
 
 def test_explain_still_reads_the_route_out_of_the_control_plane(monkeypatch, capsys):

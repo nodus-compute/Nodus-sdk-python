@@ -28,9 +28,12 @@ API address already in it:
 from __future__ import annotations
 
 import asyncio
+import math
 import os
+import re
 import time
 import uuid
+import warnings
 from dataclasses import dataclass, field
 from datetime import datetime
 from email.utils import parsedate_to_datetime
@@ -53,6 +56,7 @@ from .errors import (
     NotFoundError,
     RateLimitError,
     SignatureError,
+    SpendCheckUnavailableError,
     ValidationError,
     error_from_response,
 )
@@ -112,6 +116,7 @@ __all__ = [
     "RateLimitError",
     "BudgetExceededError",
     "CapacityUnavailableError",
+    "SpendCheckUnavailableError",
     "SignatureError",
     "APIError",
     "APIConnectionError",
@@ -131,6 +136,11 @@ _RETRY_METHODS = frozenset({"GET", "PUT", "DELETE", "POST"})
 _RETRY_AFTER_CAP = 300.0
 
 
+# Ceiling on one log read: the endpoint sends whatever the job printed, so
+# without one the caller's memory is sized by someone else's print statements.
+_LOG_MAX_BYTES = 64 * 1024 * 1024
+
+
 def _retry_after(resp: httpx.Response) -> float | None:
     """Seconds the server asked for, in either spelling the header allows.
 
@@ -141,9 +151,13 @@ def _retry_after(resp: httpx.Response) -> float | None:
     if not raw:
         return None
     try:
-        return max(0.0, float(raw))
+        seconds = float(raw)
     except ValueError:
         pass
+    else:
+        # float() accepts "inf" and "nan"; honouring either turns a header the
+        # server chooses into a hang. Only finite seconds count.
+        return max(0.0, seconds) if math.isfinite(seconds) else None
     try:
         when = parsedate_to_datetime(raw)
     except (TypeError, ValueError):
@@ -253,6 +267,15 @@ def _setup_help(missing: list[str]) -> str:
     )
 
 
+def _is_header_safe(value: str) -> bool:
+    """Whether this can travel verbatim in a header or a URL.
+
+    Printable ASCII, no spaces: a control character is a header injection, and
+    non-ASCII raises from inside the transport long after the setting was read.
+    """
+    return bool(value) and value.isascii() and value.isprintable() and " " not in value
+
+
 def _resolve(api_key: str | None, base_url: str | None) -> tuple[str, str]:
     key = (api_key or os.environ.get("NODUS_API_KEY") or "").strip()
     url = (base_url or os.environ.get("NODUS_BASE_URL") or "").strip().rstrip("/")
@@ -263,12 +286,70 @@ def _resolve(api_key: str | None, base_url: str | None) -> tuple[str, str]:
     ]
     if missing:
         raise ConfigurationError(_setup_help(missing))
-    if not url.startswith(("http://", "https://")):
+    for name, value in (("NODUS_BASE_URL", url), ("NODUS_API_KEY", key)):
+        if not _is_header_safe(value):
+            raise ConfigurationError(
+                f"{name} contains a character that cannot be sent: it must be "
+                "printable ASCII with no spaces or line breaks. Check for a "
+                "newline picked up from a file, or a smart quote pasted from a "
+                "browser."
+            )
+    scheme = url.split("://", 1)[0].lower()
+    if scheme not in ("http", "https"):
         raise ConfigurationError(
             f"base_url must start with http:// or https://, got {url!r}. "
             "It is the API address from https://nodus.run/console/."
         )
+    if scheme == "http" and not _is_loopback(url):
+        warnings.warn(
+            f"base_url {url!r} is http://, so the API key is sent in cleartext to "
+            "anyone on the path. Use https:// for anything but a control plane "
+            "running on this machine.",
+            stacklevel=3,
+        )
     return key, url
+
+
+def _is_loopback(url: str) -> bool:
+    """Whether this address never leaves the machine."""
+    host = (httpx.URL(url).host or "").lower()
+    return host in ("localhost", "::1") or host.startswith("127.")
+
+
+#: What an identifier may contain. Everything the control plane mints is inside
+#: this; everything outside it is a URL, not an id.
+_WORKLOAD_ID = re.compile(r"\A[A-Za-z0-9_-]+\Z")
+
+
+def _valid_id(workload_id: Any) -> str:
+    """One path segment, checked before it can become part of a URL.
+
+    httpx resolves dot segments, so an id carrying ``/`` or ``..`` addresses a
+    different endpoint — the webhook secret included. Server-supplied ids are
+    checked too: a handle refreshes on the id it is holding.
+    """
+    if isinstance(workload_id, str) and _WORKLOAD_ID.match(workload_id):
+        return workload_id
+    raise ValidationError(
+        f"{workload_id!r} is not a workload id: an id is letters, digits, "
+        "underscores and hyphens. It becomes one segment of /v1/workloads/{id}, "
+        "where a slash or a dot segment addresses a different endpoint entirely."
+    )
+
+
+def _valid_idempotency_key(key: str) -> str:
+    """A key that can survive being a header.
+
+    Non-ASCII cannot be encoded into one and CRLF makes a header the server
+    rejects on every attempt — either failure surfaces from inside the
+    transport, after the retry budget, naming neither the key nor the call.
+    """
+    if _is_header_safe(key):
+        return key
+    raise ValidationError(
+        f"idempotency_key {key!r} cannot be sent as a header: it must be "
+        "printable ASCII with no spaces or line breaks."
+    )
 
 
 def _was_replayed(headers: dict[str, str]) -> bool:
@@ -281,6 +362,11 @@ def _was_replayed(headers: dict[str, str]) -> bool:
         if name.lower() == "idempotent-replayed":
             return value.strip().lower() == "true"
     return False
+
+
+def _redact(key: str) -> str:
+    """Enough of the key to tell which credential is configured, never enough to use."""
+    return f"{key[:6]}...{key[-4:]}" if len(key) > 12 else "***"
 
 
 def _headers(api_key: str) -> dict[str, str]:
@@ -310,7 +396,6 @@ class _WorkloadState:
     #: True when the control plane answered from an idempotency record: the
     #: submission already existed, this call did not create a second run.
     replayed: bool = False
-    error: str | None = None
     created_at: Any = None
     updated_at: Any = None
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
@@ -327,29 +412,25 @@ class _WorkloadState:
         claiming the workload has none — worse for ``status``, where None is
         never terminal and a wait polling it can never end.
         """
-        from .types import _dt  # local import: internal helper
+        from .types import _dt, _int, _num, _obj, _rows  # local import: internal helpers
 
-        # Submit answers with "workload_id"; every read endpoint answers with
-        # "id". Accepting both is what makes run() work against the real
-        # control plane: the SDK read only "id", so client.run() raised
-        # "submit returned no workload id" on a 202 that had in fact created
-        # the workload. Unit tests missed it because the fixtures used a shape
-        # POST /v1/workloads has never returned.
+        # Submit answers with "workload_id" and every read endpoint with "id".
+        # Both spellings name the same workload.
+        d = _obj(d)
         self.id = d.get("id") or d.get("workload_id") or self.id
         if "status" in d:
             self.status = WorkloadStatus.coerce(d.get("status"))
         self.route = Route.from_dict(d.get("route")) or self.route
         if "spend_usd" in d:
-            self.spend_usd = float(d.get("spend_usd") or 0.0)
+            self.spend_usd = _num(d.get("spend_usd"))
         self.meter = Meter.from_dict(d.get("meter")) or self.meter
-        outcome = (d.get("payload") or {}).get("outcome") or {}
+        outcome = _obj(_obj(d.get("payload")).get("outcome"))
         ceiling = d.get("budget_usd") or outcome.get("max_cost_usd")
         if ceiling is not None:
-            self.budget_usd = float(ceiling)
-        self.revision = int(d.get("revision") or self.revision)
+            self.budget_usd = _num(ceiling, self.budget_usd)
+        self.revision = _int(d.get("revision"), self.revision) or self.revision
         if "stages" in d:
-            self.stages = [StageRun.from_dict(s) for s in (d.get("stages") or [])]
-        self.error = d.get("error") or d.get("error_message") or self.error
+            self.stages = [StageRun.from_dict(s) for s in _rows(d.get("stages"))]
         self.created_at = _dt(d.get("created_at")) or self.created_at
         self.updated_at = _dt(d.get("updated_at")) or self.updated_at
         self.raw = d
@@ -413,6 +494,25 @@ class _Transport:
                 return hinted
         return min(8.0, 0.5 * (2**attempt))
 
+    def _hold(self, attempt: int, resp: httpx.Response | None, slept: float) -> float | None:
+        """Seconds to wait before the next attempt, or None to stop retrying.
+
+        The ceiling bounds the whole call, not each sleep inside it: a cap a
+        retry loop can multiply is not a cap.
+        """
+        left = _RETRY_AFTER_CAP - slept
+        if left <= 0:
+            return None
+        return min(self._backoff(attempt, resp), left)
+
+    @staticmethod
+    def _too_big(path: str, max_bytes: int) -> NodusError:
+        return NodusError(
+            f"the log at {path} is larger than {max_bytes} bytes and was not read. "
+            "Narrow it with stage= and generation=, which is one attempt's output "
+            "rather than every attempt's."
+        )
+
     @staticmethod
     def _unreached(
         cls: type[NodusError], message: str, idempotency_key: str | None
@@ -462,10 +562,18 @@ class Client(_Transport):
         max_retries: int = 2,
     ):
         super().__init__(max_retries)
-        self.api_key, self.base_url = _resolve(api_key, base_url)
+        key, self.base_url = _resolve(api_key, base_url)
+        # The credential lives only in the transport: an attribute holding it
+        # is copied out by every automatic dump — logs, debuggers, trackers.
+        self._api_key_shown = _redact(key)
         self._http = httpx.Client(
-            base_url=self.base_url, timeout=timeout, headers=_headers(self.api_key)
+            base_url=self.base_url, timeout=timeout, headers=_headers(key)
         )
+
+    @property
+    def api_key(self) -> str:
+        """The configured key, redacted. What was sent is in the transport."""
+        return self._api_key_shown
 
     def close(self) -> None:
         self._http.close()
@@ -486,17 +594,40 @@ class Client(_Transport):
         params: dict[str, Any] | None = None,
         text: bool = False,
         headers_out: dict[str, str] | None = None,
+        max_bytes: int | None = None,
     ) -> Any:
-        headers = {"Idempotency-Key": idempotency_key} if idempotency_key else {}
+        headers = {"Idempotency-Key": _valid_idempotency_key(idempotency_key)} if idempotency_key else {}
         attempt = 0
+        # One waiting budget for the whole call, spent across every retry.
+        slept = 0.0
         while True:
+            delay: float | None = None
+            capped: str | None = None
             try:
-                resp = self._http.request(
-                    method, path, json=json, headers=headers, params=params
-                )
+                if max_bytes is None:
+                    resp = self._http.request(
+                        method, path, json=json, headers=headers, params=params
+                    )
+                else:
+                    with self._http.stream(
+                        method, path, json=json, headers=headers, params=params
+                    ) as resp:
+                        if resp.status_code < 400:
+                            chunks, total = [], 0
+                            for chunk in resp.iter_bytes():
+                                total += len(chunk)
+                                if total > max_bytes:
+                                    raise self._too_big(path, max_bytes)
+                                chunks.append(chunk)
+                            capped = b"".join(chunks).decode("utf-8", "replace")
+                        else:
+                            resp.read()
             except httpx.TimeoutException as exc:
                 if attempt < self.max_retries:
-                    time.sleep(self._backoff(attempt, None))
+                    delay = self._hold(attempt, None, slept)
+                if delay is not None:
+                    time.sleep(delay)
+                    slept += delay
                     attempt += 1
                     continue
                 raise self._unreached(
@@ -504,7 +635,10 @@ class Client(_Transport):
                 ) from exc
             except httpx.HTTPError as exc:
                 if attempt < self.max_retries:
-                    time.sleep(self._backoff(attempt, None))
+                    delay = self._hold(attempt, None, slept)
+                if delay is not None:
+                    time.sleep(delay)
+                    slept += delay
                     attempt += 1
                     continue
                 raise self._unreached(
@@ -515,13 +649,18 @@ class Client(_Transport):
 
             if resp.status_code >= 400:
                 if self._should_retry(method, resp.status_code, attempt):
-                    time.sleep(self._backoff(attempt, resp))
-                    attempt += 1
-                    continue
+                    delay = self._hold(attempt, resp, slept)
+                    if delay is not None:
+                        time.sleep(delay)
+                        slept += delay
+                        attempt += 1
+                        continue
                 self._raise(method, path, resp)
 
             if headers_out is not None:
                 headers_out.update(resp.headers)
+            if capped is not None:
+                return capped
             if not resp.content:
                 return "" if text else None
             # The log endpoint answers text/plain, because its whole purpose is
@@ -541,11 +680,8 @@ class Client(_Transport):
         budget: float | None = None,
         compute_class: ComputeClass | str | None = None,
         continuity: ContinuityMode | str | dict[str, Any] | None = None,
-        interrupt_tolerance: InterruptTolerance | str | None = None,
         finish_by: datetime | str | None = None,
         data_regions: list[str] | None = None,
-        env: dict[str, str] | None = None,
-        inputs: list[dict[str, Any]] | dict[str, Any] | None = None,
         stages: list[dict[str, Any]] | None = None,
         framework: str | None = None,
         policy: dict[str, Any] | None = None,
@@ -583,11 +719,8 @@ class Client(_Transport):
             budget=budget,
             compute_class=compute_class,
             continuity=continuity,
-            interrupt_tolerance=interrupt_tolerance,
             finish_by=finish_by,
             data_regions=data_regions,
-            env=env,
-            inputs=inputs,
             stages=stages,
             framework=framework,
             policy=policy,
@@ -611,7 +744,7 @@ class Client(_Transport):
         return wl
 
     def get(self, workload_id: str) -> "Workload":
-        path = f"/v1/workloads/{workload_id}"
+        path = f"/v1/workloads/{_valid_id(workload_id)}"
         wl = Workload(self)
         wl._absorb(self._one(self._request("GET", path), "GET", path))
         return wl
@@ -661,8 +794,10 @@ class Client(_Transport):
     def cancel(self, workload_id: str, *, idempotency_key: str | None = None) -> None:
         self._request(
             "POST",
-            f"/v1/workloads/{workload_id}/cancel",
-            idempotency_key=idempotency_key or f"cancel-{workload_id}",
+            f"/v1/workloads/{_valid_id(workload_id)}/cancel",
+            # Fresh per call: one key for the life of the workload makes every
+            # later cancel a replay of the first, answered without being done.
+            idempotency_key=idempotency_key or f"cancel-{workload_id}-{uuid.uuid4()}",
         )
 
     def events(self, workload_id: str, *, after: int = 0) -> list[Event]:
@@ -671,25 +806,33 @@ class Client(_Transport):
         The server returns at most 100 and does not say whether more follow.
         Pass ``after=`` the last ``seq`` you saw, or use ``iter_events()``.
         """
-        res = self._request("GET", f"/v1/workloads/{workload_id}/events", params={"after": after})
+        res = self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/events", params={"after": after})
         return [Event.from_dict(e) for e in (res or {}).get("events") or []]
 
     def iter_events(self, workload_id: str, *, after: int = 0) -> Iterator[Event]:
-        """Every event recorded so far, walking past the server's page cap."""
+        """Every event recorded so far, walking past the server's page cap.
+
+        Stops when the sequence does not advance: that batch is the same batch
+        again, and following it reads it forever.
+        """
         while True:
             batch = self.events(workload_id, after=after)
             if not batch:
                 return
+            highest = after
             for ev in batch:
-                after = max(after, ev.seq)
+                highest = max(highest, ev.seq)
                 yield ev
+            if highest <= after:
+                return
+            after = highest
 
     def artifacts(self, workload_id: str) -> list[Artifact]:
-        res = self._request("GET", f"/v1/workloads/{workload_id}/artifacts")
+        res = self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/artifacts")
         return [Artifact.from_dict(a) for a in (res or {}).get("artifacts") or []]
 
     def ledger(self, workload_id: str) -> Ledger:
-        return Ledger.from_dict(self._request("GET", f"/v1/workloads/{workload_id}/ledger"))
+        return Ledger.from_dict(self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/ledger"))
 
     def logs(
         self, workload_id: str, *, stage: str | None = None, generation: int | None = None
@@ -713,7 +856,11 @@ class Client(_Transport):
         if generation is not None:
             params["generation"] = generation
         return self._request(
-            "GET", f"/v1/workloads/{workload_id}/logs", params=params or None, text=True
+            "GET",
+            f"/v1/workloads/{_valid_id(workload_id)}/logs",
+            params=params or None,
+            text=True,
+            max_bytes=_LOG_MAX_BYTES,
         ) or ""
 
     def wait(
@@ -800,7 +947,7 @@ class Workload(_WorkloadState):
         self._client = client
 
     def refresh(self) -> "Workload":
-        path = f"/v1/workloads/{self.id}"
+        path = f"/v1/workloads/{_valid_id(self.id)}"
         self._absorb(self._client._one(self._client._request("GET", path), "GET", path))
         return self
 
@@ -859,10 +1006,16 @@ class AsyncClient(_Transport):
         max_retries: int = 2,
     ):
         super().__init__(max_retries)
-        self.api_key, self.base_url = _resolve(api_key, base_url)
+        key, self.base_url = _resolve(api_key, base_url)
+        self._api_key_shown = _redact(key)
         self._http = httpx.AsyncClient(
-            base_url=self.base_url, timeout=timeout, headers=_headers(self.api_key)
+            base_url=self.base_url, timeout=timeout, headers=_headers(key)
         )
+
+    @property
+    def api_key(self) -> str:
+        """The configured key, redacted. What was sent is in the transport."""
+        return self._api_key_shown
 
     async def aclose(self) -> None:
         await self._http.aclose()
@@ -883,17 +1036,40 @@ class AsyncClient(_Transport):
         params: dict[str, Any] | None = None,
         text: bool = False,
         headers_out: dict[str, str] | None = None,
+        max_bytes: int | None = None,
     ) -> Any:
-        headers = {"Idempotency-Key": idempotency_key} if idempotency_key else {}
+        headers = {"Idempotency-Key": _valid_idempotency_key(idempotency_key)} if idempotency_key else {}
         attempt = 0
+        # One waiting budget for the whole call, spent across every retry.
+        slept = 0.0
         while True:
+            delay: float | None = None
+            capped: str | None = None
             try:
-                resp = await self._http.request(
-                    method, path, json=json, headers=headers, params=params
-                )
+                if max_bytes is None:
+                    resp = await self._http.request(
+                        method, path, json=json, headers=headers, params=params
+                    )
+                else:
+                    async with self._http.stream(
+                        method, path, json=json, headers=headers, params=params
+                    ) as resp:
+                        if resp.status_code < 400:
+                            chunks, total = [], 0
+                            async for chunk in resp.aiter_bytes():
+                                total += len(chunk)
+                                if total > max_bytes:
+                                    raise self._too_big(path, max_bytes)
+                                chunks.append(chunk)
+                            capped = b"".join(chunks).decode("utf-8", "replace")
+                        else:
+                            await resp.aread()
             except httpx.TimeoutException as exc:
                 if attempt < self.max_retries:
-                    await asyncio.sleep(self._backoff(attempt, None))
+                    delay = self._hold(attempt, None, slept)
+                if delay is not None:
+                    await asyncio.sleep(delay)
+                    slept += delay
                     attempt += 1
                     continue
                 raise self._unreached(
@@ -901,7 +1077,10 @@ class AsyncClient(_Transport):
                 ) from exc
             except httpx.HTTPError as exc:
                 if attempt < self.max_retries:
-                    await asyncio.sleep(self._backoff(attempt, None))
+                    delay = self._hold(attempt, None, slept)
+                if delay is not None:
+                    await asyncio.sleep(delay)
+                    slept += delay
                     attempt += 1
                     continue
                 raise self._unreached(
@@ -912,13 +1091,18 @@ class AsyncClient(_Transport):
 
             if resp.status_code >= 400:
                 if self._should_retry(method, resp.status_code, attempt):
-                    await asyncio.sleep(self._backoff(attempt, resp))
-                    attempt += 1
-                    continue
+                    delay = self._hold(attempt, resp, slept)
+                    if delay is not None:
+                        await asyncio.sleep(delay)
+                        slept += delay
+                        attempt += 1
+                        continue
                 self._raise(method, path, resp)
 
             if headers_out is not None:
                 headers_out.update(resp.headers)
+            if capped is not None:
+                return capped
             if not resp.content:
                 return "" if text else None
             # The log endpoint answers text/plain, because its whole purpose is
@@ -936,11 +1120,8 @@ class AsyncClient(_Transport):
         budget: float | None = None,
         compute_class: ComputeClass | str | None = None,
         continuity: ContinuityMode | str | dict[str, Any] | None = None,
-        interrupt_tolerance: InterruptTolerance | str | None = None,
         finish_by: datetime | str | None = None,
         data_regions: list[str] | None = None,
-        env: dict[str, str] | None = None,
-        inputs: list[dict[str, Any]] | dict[str, Any] | None = None,
         stages: list[dict[str, Any]] | None = None,
         framework: str | None = None,
         policy: dict[str, Any] | None = None,
@@ -959,11 +1140,8 @@ class AsyncClient(_Transport):
             budget=budget,
             compute_class=compute_class,
             continuity=continuity,
-            interrupt_tolerance=interrupt_tolerance,
             finish_by=finish_by,
             data_regions=data_regions,
-            env=env,
-            inputs=inputs,
             stages=stages,
             framework=framework,
             policy=policy,
@@ -987,7 +1165,7 @@ class AsyncClient(_Transport):
         return wl
 
     async def get(self, workload_id: str) -> "AsyncWorkload":
-        path = f"/v1/workloads/{workload_id}"
+        path = f"/v1/workloads/{_valid_id(workload_id)}"
         wl = AsyncWorkload(self)
         wl._absorb(self._one(await self._request("GET", path), "GET", path))
         return wl
@@ -1038,8 +1216,10 @@ class AsyncClient(_Transport):
     async def cancel(self, workload_id: str, *, idempotency_key: str | None = None) -> None:
         await self._request(
             "POST",
-            f"/v1/workloads/{workload_id}/cancel",
-            idempotency_key=idempotency_key or f"cancel-{workload_id}",
+            f"/v1/workloads/{_valid_id(workload_id)}/cancel",
+            # Fresh per call: one key for the life of the workload makes every
+            # later cancel a replay of the first, answered without being done.
+            idempotency_key=idempotency_key or f"cancel-{workload_id}-{uuid.uuid4()}",
         )
 
     async def events(self, workload_id: str, *, after: int = 0) -> list[Event]:
@@ -1049,26 +1229,33 @@ class AsyncClient(_Transport):
         Pass ``after=`` the last ``seq`` you saw, or use ``iter_events()``.
         """
         res = await self._request(
-            "GET", f"/v1/workloads/{workload_id}/events", params={"after": after}
+            "GET", f"/v1/workloads/{_valid_id(workload_id)}/events", params={"after": after}
         )
         return [Event.from_dict(e) for e in (res or {}).get("events") or []]
 
     async def iter_events(self, workload_id: str, *, after: int = 0) -> AsyncIterator[Event]:
-        """Every event recorded so far, walking past the server's page cap."""
+        """Every event recorded so far, walking past the server's page cap.
+
+        Stops on a sequence that does not advance. See :meth:`Client.iter_events`.
+        """
         while True:
             batch = await self.events(workload_id, after=after)
             if not batch:
                 return
+            highest = after
             for ev in batch:
-                after = max(after, ev.seq)
+                highest = max(highest, ev.seq)
                 yield ev
+            if highest <= after:
+                return
+            after = highest
 
     async def artifacts(self, workload_id: str) -> list[Artifact]:
-        res = await self._request("GET", f"/v1/workloads/{workload_id}/artifacts")
+        res = await self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/artifacts")
         return [Artifact.from_dict(a) for a in (res or {}).get("artifacts") or []]
 
     async def ledger(self, workload_id: str) -> Ledger:
-        return Ledger.from_dict(await self._request("GET", f"/v1/workloads/{workload_id}/ledger"))
+        return Ledger.from_dict(await self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/ledger"))
 
     async def logs(
         self, workload_id: str, *, stage: str | None = None, generation: int | None = None
@@ -1080,7 +1267,11 @@ class AsyncClient(_Transport):
         if generation is not None:
             params["generation"] = generation
         return await self._request(
-            "GET", f"/v1/workloads/{workload_id}/logs", params=params or None, text=True
+            "GET",
+            f"/v1/workloads/{_valid_id(workload_id)}/logs",
+            params=params or None,
+            text=True,
+            max_bytes=_LOG_MAX_BYTES,
         ) or ""
 
     async def wait(
@@ -1151,7 +1342,7 @@ class AsyncWorkload(_WorkloadState):
         self._client = client
 
     async def refresh(self) -> "AsyncWorkload":
-        path = f"/v1/workloads/{self.id}"
+        path = f"/v1/workloads/{_valid_id(self.id)}"
         self._absorb(self._client._one(await self._client._request("GET", path), "GET", path))
         return self
 

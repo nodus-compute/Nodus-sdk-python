@@ -17,6 +17,8 @@ import warnings
 from datetime import datetime, timezone
 from typing import Any
 
+from .types import WorkloadStatus
+
 _PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -112,15 +114,42 @@ def _enum_value(v: Any) -> Any:
     return getattr(v, "value", v)
 
 
+# Brief fields the control plane does not model, and what to reach for instead.
+# Sending one costs a caller the constraint they believe they set.
+UNSUPPORTED: dict[str, str] = {
+    "interrupt_tolerance": (
+        "the control plane does not model this yet: it derives the envelope's "
+        "tolerance from continuity, so declaring 'low' here yields the opposite. "
+        "Use continuity= to say what an interruption should cost you."
+    ),
+    "env": (
+        "the control plane does not model this yet: a workload's source is an "
+        "image and a command, so environment never reaches the host. Bake the "
+        "values into the image, or pass them in the command."
+    ),
+    "inputs": (
+        "the control plane does not model this yet: a top-level inputs list is "
+        "decoded and read by nothing. Stage inputs are the ones that are "
+        "honoured -- declare them on stages=[...]."
+    ),
+}
+
+
 def _reject_unknown(unknown: dict[str, Any], known: tuple[str, ...]) -> None:
     """Refuse a keyword this SDK does not model, naming what it looked like.
 
     The control plane ignores fields it does not know, so a forwarded typo is
     accepted and runs: ``budget_usd=400`` submits a workload with no cost
-    ceiling at all and answers 202.
+    ceiling at all and answers 202. :data:`UNSUPPORTED` names the fields that
+    deserve a better refusal than "unknown".
     """
     if not unknown:
         return
+    named = sorted(set(unknown) & set(UNSUPPORTED))
+    if named:
+        raise TypeError(
+            "; ".join(f"{name}=: {UNSUPPORTED[name]}" for name in named)
+        )
     parts = []
     for name in sorted(unknown):
         near = difflib.get_close_matches(name, known, n=1, cutoff=0.6)
@@ -136,7 +165,6 @@ def _reject_unknown(unknown: dict[str, Any], known: tuple[str, ...]) -> None:
 
 def build_payload(
     *,
-    source: str | None = None,
     image: str | None = None,
     command: list[str] | str | None = None,
     requirements: dict[str, Any] | None = None,
@@ -147,10 +175,7 @@ def build_payload(
     budget: float | None = None,
     finish_by: datetime | str | None = None,
     continuity: Any = None,
-    interrupt_tolerance: Any = None,
     data_regions: list[str] | None = None,
-    inputs: list[dict[str, Any]] | dict[str, Any] | None = None,
-    env: dict[str, str] | None = None,
     stages: list[dict[str, Any]] | None = None,
     framework: str | None = None,
     policy: dict[str, Any] | None = None,
@@ -172,10 +197,12 @@ def build_payload(
         req.setdefault("peak_memory_gb", peak_memory_gb)
     if expected_runtime_hours is not None:
         req.setdefault("expected_runtime_hours", expected_runtime_hours)
-    if interrupt_tolerance is not None:
-        req.setdefault("interrupt_tolerance", _enum_value(interrupt_tolerance))
+
+    # Data residency lives in policy: the envelope reads Policy.DataRegions, and
+    # Requirements has no such field. An explicit policy= wins over the shortcut.
+    pol: dict[str, Any] = dict(policy or {})
     if data_regions:
-        req.setdefault("data_regions", list(data_regions))
+        pol.setdefault("data_regions", list(data_regions))
 
     outcome: dict[str, Any] = {}
     if budget is not None:
@@ -189,8 +216,12 @@ def build_payload(
     if continuity is None:
         cont: dict[str, Any] = {"mode": "checkpointed", "resume_on_interruption": True}
     elif isinstance(continuity, dict):
+        # Same default as the string form: an absent flag reads as true on
+        # arrival, handing "ephemeral" durability it declines. A written flag is kept.
         cont = dict(continuity)
-        cont["mode"] = _enum_value(cont.get("mode", "checkpointed"))
+        mode = _enum_value(cont.get("mode", "checkpointed"))
+        cont["mode"] = mode
+        cont.setdefault("resume_on_interruption", mode != "ephemeral")
     else:
         mode = _enum_value(continuity)
         cont = {"mode": mode, "resume_on_interruption": mode != "ephemeral"}
@@ -207,7 +238,7 @@ def build_payload(
         discarded = sorted(
             name
             for name, value in (
-                ("image", image), ("command", command), ("env", env), ("source", source)
+                ("image", image), ("command", command)
             )
             if value
         )
@@ -221,20 +252,16 @@ def build_payload(
             )
         payload["stages"] = [dict(s) for s in stages]
     else:
-        src: dict[str, Any] = {"image": image or source or DEFAULT_IMAGE}
+        src: dict[str, Any] = {"image": image or DEFAULT_IMAGE}
         cmd = _as_command(command)
         if cmd:
             src["command"] = cmd
-        if env:
-            src["env"] = dict(env)
         payload["source"] = src
 
-    if inputs:
-        payload["inputs"] = [inputs] if isinstance(inputs, dict) else list(inputs)
     if framework:
         payload["framework"] = framework
-    if policy:
-        payload["policy"] = dict(policy)
+    if pol:
+        payload["policy"] = pol
 
     _merge_extra(payload, extra)
     _warn_about_the_money(payload)
@@ -287,15 +314,47 @@ BRIEF_FIELDS: tuple[str, ...] = tuple(
 )
 
 
+#: The presets the control plane expands into concrete statuses server-side.
+STATUS_PRESETS: tuple[str, ...] = ("active", "terminal")
+
+#: Every token a status filter may name.
+STATUS_FILTERS: tuple[str, ...] = tuple(
+    sorted({s.value for s in WorkloadStatus}.union(STATUS_PRESETS))
+)
+
+
+def _one_status(value: Any) -> str:
+    """One filter token, checked against the vocabulary the server expands.
+
+    Unrecognised tokens are dropped on arrival, and a filter that expands to
+    nothing lists the whole account.
+    """
+    wire = str(_enum_value(value)).strip()
+    if wire in STATUS_FILTERS:
+        return wire
+    near = difflib.get_close_matches(wire, STATUS_FILTERS, n=1, cutoff=0.6)
+    raise ValueError(
+        f"{wire!r} is not a workload status"
+        + (f" (did you mean {near[0]!r}?)" if near else "")
+        + ". The control plane ignores a filter token it does not know, and a "
+        "filter that matches nothing is no filter, so this would have listed "
+        "every workload on the account. Statuses: " + ", ".join(STATUS_FILTERS) + "."
+    )
+
+
 def status_filter(status: Any) -> str | None:
     """Normalise a status filter into the wire form.
 
-    Accepts a member, a wire string, a list of either, or the presets
-    ``"active"`` and ``"terminal"`` that the control plane expands server-side.
+    Accepts a member, a wire string, a comma-joined string, a list of either,
+    or the presets ``"active"`` and ``"terminal"``. A token the server could
+    not expand is a ValueError here rather than a listing of everything.
     """
     if status is None:
         return None
     if isinstance(status, (list, tuple, set, frozenset)):
-        parts = [str(_enum_value(s)) for s in status if s is not None]
-        return ",".join(parts) or None
-    return str(_enum_value(status))
+        tokens = [s for s in status if s is not None]
+    elif isinstance(status, str):
+        tokens = [t for t in status.split(",") if t.strip()]
+    else:
+        tokens = [status]
+    return ",".join(_one_status(t) for t in tokens) or None

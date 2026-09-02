@@ -115,10 +115,27 @@ def test_continuity_defaults_to_checkpointed_and_ephemeral_opts_out():
     assert eph == {"mode": "ephemeral", "resume_on_interruption": False}
 
 
+@pytest.mark.parametrize("mode", ["checkpointed", "restartable", "ephemeral"])
+def test_both_spellings_of_continuity_build_the_same_brief(mode):
+    """Both spellings of the same continuity submit the same brief: an absent
+    resume flag would be read as true on arrival."""
+    assert (
+        build_payload(budget=1, continuity=mode)["continuity"]
+        == build_payload(budget=1, continuity={"mode": mode})["continuity"]
+    )
+
+
+def test_a_resume_flag_written_into_the_dict_is_still_the_callers_choice():
+    cont = build_payload(
+        budget=1, continuity={"mode": "ephemeral", "resume_on_interruption": True}
+    )["continuity"]
+    assert cont == {"mode": "ephemeral", "resume_on_interruption": True}
+
+
 def test_enums_and_strings_are_interchangeable():
     a = build_payload(budget=1, continuity=nodus.ContinuityMode.RESTARTABLE,
-                      interrupt_tolerance=nodus.InterruptTolerance.HIGH)
-    b = build_payload(budget=1, continuity="restartable", interrupt_tolerance="high")
+                      compute_class=nodus.ComputeClass.VM)
+    b = build_payload(budget=1, continuity="restartable", compute_class="vm")
     assert a == b
 
 
@@ -126,7 +143,54 @@ def test_status_filter_accepts_presets_members_and_lists():
     assert status_filter("active") == "active"
     assert status_filter(nodus.WorkloadStatus.RUNNING) == "running"
     assert status_filter([nodus.WorkloadStatus.FAILED, "cancelled"]) == "failed,cancelled"
+    assert status_filter("running,failed") == "running,failed"
     assert status_filter(None) is None
+
+
+def test_a_status_the_server_cannot_expand_is_refused():
+    """The server drops unknown filter tokens, and a filter that expands to
+    nothing lists the whole account."""
+    with pytest.raises(ValueError) as exc:
+        status_filter("runnning")
+    message = str(exc.value)
+    assert "runnning" in message
+    assert "running" in message, "the refusal should name the status it looked like"
+
+
+def test_one_bad_status_refuses_the_whole_list():
+    """Dropping the bad one silently would widen the filter, which is the bug."""
+    with pytest.raises(ValueError):
+        status_filter([nodus.WorkloadStatus.RUNNING, "compleeted"])
+    with pytest.raises(ValueError):
+        status_filter("running,compleeted")
+
+
+def test_the_command_offers_only_statuses_that_filter():
+    from nodus import cli
+
+    with pytest.raises(SystemExit):
+        cli.build_parser().parse_args(["list", "--status", "runnning"])
+    assert cli.build_parser().parse_args(["list", "--status", "active"]).status == "active"
+
+
+def test_data_regions_go_where_the_server_reads_them():
+    """The envelope reads ``Policy.DataRegions``; Requirements has no such field."""
+    p = build_payload(model="x", budget=1, data_regions=["us-east-1", "us-west-2"])
+    assert p["policy"]["data_regions"] == ["us-east-1", "us-west-2"]
+    assert "data_regions" not in p["requirements"]
+
+
+def test_data_regions_merge_into_a_policy_the_caller_wrote():
+    p = build_payload(model="x", budget=1, data_regions=["us-east-1"],
+                      policy={"something_else": True})
+    assert p["policy"] == {"something_else": True, "data_regions": ["us-east-1"]}
+
+
+def test_an_explicit_policy_wins_over_the_shorthand():
+    """``policy=`` is the schema itself; ``data_regions=`` is a shortcut into it."""
+    p = build_payload(model="x", budget=1, data_regions=["us-east-1"],
+                      policy={"data_regions": ["eu-west-1"]})
+    assert p["policy"]["data_regions"] == ["eu-west-1"]
 
 
 def test_stages_replace_the_single_source():
@@ -208,6 +272,102 @@ def test_missing_base_url_says_what_to_set_and_where_to_get_it(monkeypatch):
     assert "https://nodus.run/console/" in message
 
 
+@pytest.mark.parametrize(
+    "key",
+    ["nk_live_x\r\nX-Evil: 1", "nk_live_x\nmore", "nk_live_é", "nk_live_x\x00", "nk_live x\t"],
+)
+def test_a_key_that_cannot_be_a_header_is_refused_at_the_door(key):
+    """The key goes into Authorization verbatim, so its bytes matter: a
+    credential is checked where it is read, not thrown from the transport."""
+    with pytest.raises(nodus.ConfigurationError) as exc:
+        nodus.Client(api_key=key, base_url="https://nodus.invalid")
+    assert "NODUS_API_KEY" in str(exc.value)
+
+
+@pytest.mark.parametrize("url", ["https://nodus.invalid\nX: 1", "https://nodés.invalid"])
+def test_a_base_url_that_is_not_printable_ascii_is_a_configuration_error(url):
+    """A bad URL is a ConfigurationError, not an httpx type no except clause names."""
+    with pytest.raises(nodus.ConfigurationError):
+        nodus.Client(api_key="nk_live_test", base_url=url)
+
+
+SECRET = "nk_live_9f3a2b7c1d4e6f80"
+
+
+@pytest.mark.parametrize("client", [nodus.Client, nodus.AsyncClient])
+def test_the_key_is_not_sitting_in_the_clients_own_attributes(client):
+    """``vars(client)`` and ``repr(client)`` are what a crash reporter sends."""
+    c = client(api_key=SECRET, base_url="https://nodus.invalid")
+    assert SECRET not in repr(vars(c)), "the key is in the instance dictionary"
+    assert SECRET not in repr(c)
+    assert SECRET not in str(vars(c).values())
+
+
+def test_the_key_can_still_be_recognised_without_being_readable():
+    c = nodus.Client(api_key=SECRET, base_url="https://nodus.invalid")
+    assert c.api_key != SECRET
+    assert c.api_key.startswith("nk_liv")
+    assert "6f80" in c.api_key, "an operator has to be able to tell which key this is"
+
+
+def test_the_real_key_is_still_what_gets_sent():
+    """Redaction is for the attribute, not for the request."""
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["auth"] = request.headers.get("Authorization")
+        return httpx.Response(200, json=WORKLOAD)
+
+    c = nodus.Client(api_key=SECRET, base_url="https://nodus.invalid")
+    c._http = httpx.Client(
+        base_url="https://nodus.invalid",
+        transport=httpx.MockTransport(handler),
+        headers=nodus._headers(SECRET),
+    )
+    with c:
+        c.get("wl_abc")
+    assert seen["auth"] == f"Bearer {SECRET}"
+
+
+def test_a_cleartext_base_url_says_the_key_will_travel_in_the_open():
+    """http:// to anywhere but this machine puts the API key on the wire."""
+    with pytest.warns(UserWarning, match="http://"):
+        nodus.Client(api_key="nk_live_test", base_url="http://api.example.com")
+
+
+@pytest.mark.parametrize(
+    "url", ["http://127.0.0.1:8080", "http://localhost:8080", "http://[::1]:8080"]
+)
+def test_a_loopback_address_is_not_nagged(url):
+    """A local control plane is how the SDK is developed against; the key never
+    leaves the machine, so warning about it would train people to ignore it."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        nodus.Client(api_key="nk_live_test", base_url=url)
+
+
+def test_the_scheme_is_read_case_insensitively():
+    """A URL is not wrong for being shouted: the scheme check is case-insensitive."""
+    c = nodus.Client(api_key="nk_live_test", base_url="HTTPS://nodus.invalid")
+    assert c.base_url == "HTTPS://nodus.invalid"
+
+
+def test_a_non_ascii_idempotency_key_is_refused_rather_than_encoded():
+    """Refused at the door: the transport cannot encode it into a header."""
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        return httpx.Response(202, json=SUBMIT_ACCEPTED)
+
+    with client_with(handler) as c:
+        with pytest.raises(nodus.ValidationError):
+            c.run(model="x", budget=1, idempotency_key="nightly-café")
+        with pytest.raises(nodus.ValidationError):
+            c.run(model="x", budget=1, idempotency_key="nightly\r\nX-Evil: 1")
+    assert not calls, "a request went out with a header that cannot be encoded"
+
+
 def test_both_missing_are_reported_together(monkeypatch):
     monkeypatch.delenv("NODUS_API_KEY", raising=False)
     monkeypatch.delenv("NODUS_BASE_URL", raising=False)
@@ -252,6 +412,34 @@ def test_run_reads_the_legacy_submit_shape():
         wl = c.run(model="7B fine-tune", peak_memory_gb=80, budget=400)
     assert wl.id == "wl_abc"
     assert wl.status == nodus.WorkloadStatus.ACCEPTED
+
+
+def test_a_second_cancel_is_a_second_request_not_a_replay():
+    """Each cancel carries a fresh key: a fixed one would make every later
+    cancel a replay of the first, answered without being performed."""
+    keys: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        keys.append(request.headers.get("Idempotency-Key"))
+        return httpx.Response(202, json={"status": "cancel_requested"})
+
+    with client_with(handler) as c:
+        c.cancel("wl_abc")
+        c.cancel("wl_abc")
+    assert keys[0] != keys[1], f"both cancels claimed the same key: {keys}"
+    assert all(k.startswith("cancel-wl_abc-") for k in keys), keys
+
+
+def test_a_caller_supplied_cancel_key_is_still_used_verbatim():
+    keys: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        keys.append(request.headers.get("Idempotency-Key"))
+        return httpx.Response(202, json={})
+
+    with client_with(handler) as c:
+        c.cancel("wl_abc", idempotency_key="stop-the-nightly-run")
+    assert keys == ["stop-the-nightly-run"]
 
 
 def test_a_replayed_submission_says_it_was_replayed():
@@ -564,6 +752,182 @@ def test_a_settlement_carries_no_total_the_server_never_sends():
     assert st.balance_usd == 0.0
 
 
+# -- a malformed field is not a crash --------------------------------------
+
+
+def test_a_malformed_money_field_does_not_end_a_wait():
+    """An 18-hour wait must not die of one bad field in one poll."""
+    bodies = [
+        {**WORKLOAD, "status": "running", "spend_usd": {"usd": 5}},
+        {**WORKLOAD, "status": "completed"},
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=bodies.pop(0) if bodies else WORKLOAD)
+
+    with client_with(handler) as c:
+        wl = c.wait("wl_abc", poll_seconds=0)
+    assert wl.succeeded
+
+
+def test_money_that_is_not_a_number_is_not_shown_as_money():
+    """NaN and infinity format as "nan" and "inf" in a dollar figure."""
+    import math
+
+    body = {
+        **WORKLOAD,
+        "spend_usd": float("nan"),
+        "meter": {
+            "settled_usd": float("nan"),
+            "accruing_usd": 1e400,
+            "accruing_rate_usd_hour": "six dollars",
+            "total_now_usd": None,
+            "as_of": "2026-09-01T12:00:00Z",
+        },
+    }
+    # Serialised by hand: NaN and Infinity have to arrive as wire bytes, which
+    # httpx's own json= refuses to write.
+    raw = json.dumps(body)
+    with client_with(
+        lambda r: httpx.Response(
+            200, content=raw, headers={"Content-Type": "application/json"}
+        )
+    ) as c:
+        wl = c.get("wl_abc")
+    assert math.isfinite(wl.spend_usd) and wl.spend_usd == 0.0
+    assert math.isfinite(wl.meter.accruing_usd) and wl.meter.accruing_usd == 0.0
+    assert math.isfinite(wl.cost_now_usd)
+
+
+def test_a_payload_that_is_not_an_object_is_not_read_as_one():
+    """``payload.outcome.max_cost_usd`` is three assumptions about a free-form field."""
+    body = {**WORKLOAD, "payload": "surprise", "stages": "nope", "route": "gone",
+            "revision": {"n": 2}}
+    with client_with(lambda r: httpx.Response(200, json=body)) as c:
+        wl = c.get("wl_abc")
+    assert wl.budget_usd == 0.0
+    assert wl.stages == []
+    assert wl.revision == 1
+
+
+def test_a_malformed_ledger_row_still_parses():
+    body = {
+        "entries": [{"id": "led_1", "entry_type": "customer_charge",
+                     "credit_usd": "five", "evidence": "none"}],
+        "settlement": {"status": "closed", "balance_usd": float("nan")},
+    }
+    raw = json.dumps(body)
+    with client_with(
+        lambda r: httpx.Response(
+            200, content=raw, headers={"Content-Type": "application/json"}
+        )
+    ) as c:
+        led = c.ledger("wl_abc")
+    assert led.entries[0].credit_usd == 0.0
+    assert led.entries[0].evidence == {}
+    assert led.settlement.balance_usd == 0.0
+    assert led.charged_usd == 0.0
+
+
+# -- an id is one path segment ---------------------------------------------
+
+
+TRAVERSALS = [
+    "../../v1/webhooks",
+    "..%2f..%2fv1%2fwebhooks",
+    "wl_abc/../../v1/webhooks",
+    "wl_abc?x=1",
+    "wl_abc#frag",
+    "wl abc",
+    "",
+]
+
+
+@pytest.mark.parametrize("bad", TRAVERSALS)
+def test_a_workload_id_cannot_walk_out_of_its_own_path(bad):
+    """``/v1/workloads/{id}`` is a template, and an id is one segment of it:
+    httpx normalises dot segments, so ``..`` walks into another endpoint."""
+    paths: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        return httpx.Response(200, json=WORKLOAD)
+
+    with client_with(handler) as c:
+        with pytest.raises(nodus.ValidationError):
+            c.get(bad)
+    assert not paths, f"the request left the client: {paths}"
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda c, i: c.get(i),
+        lambda c, i: c.cancel(i),
+        lambda c, i: c.events(i),
+        lambda c, i: c.artifacts(i),
+        lambda c, i: c.ledger(i),
+        lambda c, i: c.logs(i),
+        lambda c, i: list(c.iter_events(i)),
+        lambda c, i: c.wait(i, poll_seconds=0),
+        lambda c, i: list(c.stream_events(i, poll_seconds=0)),
+    ],
+)
+def test_every_call_that_takes_an_id_checks_it(call):
+    paths: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        return httpx.Response(200, json=WORKLOAD)
+
+    with client_with(handler) as c:
+        with pytest.raises(nodus.ValidationError):
+            call(c, "../../v1/webhooks")
+    assert not paths, f"the request left the client: {paths}"
+
+
+def test_the_async_client_checks_ids_too():
+    async def go():
+        c = nodus.AsyncClient(api_key="nk_live_test", base_url="https://nodus.invalid")
+        paths: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            paths.append(request.url.path)
+            return httpx.Response(200, json=WORKLOAD)
+
+        c._http = httpx.AsyncClient(
+            base_url="https://nodus.invalid", transport=httpx.MockTransport(handler)
+        )
+        async with c:
+            for call in (c.get, c.cancel, c.events, c.artifacts, c.ledger, c.logs):
+                with pytest.raises(nodus.ValidationError):
+                    await call("../../v1/webhooks")
+        return paths
+
+    assert asyncio.run(go()) == []
+
+
+def test_an_id_the_server_supplied_is_checked_before_it_is_followed():
+    """A handle refreshes on the id the body carried, so a hostile plane could
+    aim the next request wherever it liked."""
+    paths: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        return httpx.Response(200, json={**WORKLOAD, "id": "../../v1/webhooks"})
+
+    with client_with(handler) as c:
+        wl = c.get("wl_abc")
+        with pytest.raises(nodus.ValidationError):
+            wl.refresh()
+    assert paths == ["/v1/workloads/wl_abc"], paths
+
+
+def test_an_ordinary_id_still_works():
+    with client_with(lambda r: httpx.Response(200, json=WORKLOAD)) as c:
+        assert c.get("wl_00000001-0000-4000-8000-000000000000").id == "wl_abc"
+
+
 # -- errors ----------------------------------------------------------------
 
 
@@ -577,7 +941,8 @@ def test_a_settlement_carries_no_total_the_server_never_sends():
         (422, {"error": "bad"}, nodus.ValidationError),
         (409, {"error": "idempotency_conflict"}, nodus.IdempotencyConflictError),
         (402, {"error": "budget"}, nodus.BudgetExceededError),
-        (503, {"error": "no_capacity"}, nodus.CapacityUnavailableError),
+        (503, {"error": "spend_check_unavailable"}, nodus.SpendCheckUnavailableError),
+        (503, {"error": "no_capacity"}, nodus.APIError),
         (418, {"error": "teapot"}, nodus.APIError),
     ],
 )
@@ -758,7 +1123,7 @@ def test_the_async_client_reads_the_same_wire_shape():
 
 def test_sync_and_async_handles_expose_the_same_attributes():
     shared = {"id", "status", "route", "spend_usd", "budget_usd", "stages",
-              "error", "replayed", "is_terminal", "succeeded", "created_at", "updated_at"}
+              "replayed", "is_terminal", "succeeded", "created_at", "updated_at"}
     for cls in (nodus.Workload, nodus.AsyncWorkload):
         for name in shared:
             assert hasattr(cls, name) or name in cls.__annotations__ or \
@@ -766,6 +1131,26 @@ def test_sync_and_async_handles_expose_the_same_attributes():
 
 
 # -- unknown wire values ---------------------------------------------------
+
+
+def test_why_a_run_failed_is_in_its_events_not_in_a_field():
+    """models.Workload has no error field; why a run failed is in its events."""
+    assert "error" not in nodus._WorkloadState.__annotations__
+
+    failed = {**WORKLOAD, "status": "failed"}
+    events = {"events": [{"id": 2, "event_type": "workload.failed",
+                          "payload": {"reason": "image pull failed"}}]}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/events"):
+            return httpx.Response(200, json=events)
+        return httpx.Response(200, json=failed)
+
+    with client_with(handler) as c:
+        wl = c.get("wl_abc")
+        assert not hasattr(wl, "error")
+        assert wl.is_terminal and not wl.succeeded
+        assert wl.events()[0].payload["reason"] == "image pull failed"
 
 
 def test_unknown_status_from_a_newer_control_plane_does_not_raise():
@@ -798,6 +1183,62 @@ def test_every_unknown_keyword_is_named_at_once():
         build_payload(model="x", budget=1, runtime_hours=3, memory_gb=80)
     message = str(exc.value)
     assert "runtime_hours" in message and "memory_gb" in message
+
+
+@pytest.mark.parametrize(
+    "brief,why",
+    [
+        ({"interrupt_tolerance": "low"}, "continuity"),
+        ({"env": {"HF_TOKEN": "secret"}}, "command"),
+        ({"inputs": [{"uri": "key:datasets/x"}]}, "stages"),
+    ],
+)
+def test_a_brief_field_the_control_plane_cannot_honour_is_refused(brief, why):
+    """A field the control plane throws away is refused, not accepted and sent:
+    a parameter that lands nowhere is a promise the API cannot keep."""
+    name = next(iter(brief))
+    with pytest.raises(TypeError) as exc:
+        build_payload(model="x", budget=1, **brief)
+    message = str(exc.value)
+    assert name in message
+    assert "does not model" in message
+    assert why in message, "the refusal should say what to reach for instead"
+
+
+def test_source_is_not_a_second_undocumented_spelling_of_image():
+    """``source=`` is not part of the brief, and binding to a private parameter
+    must not carry it past the unknown-keyword check."""
+    from nodus._brief import BRIEF_FIELDS
+
+    assert "source" not in BRIEF_FIELDS
+    with pytest.raises(TypeError) as exc:
+        build_payload(model="x", budget=1, source="ubuntu:22.04")
+    assert "source" in str(exc.value)
+
+    with client_with(lambda r: httpx.Response(202, json=SUBMIT_ACCEPTED)) as c:
+        with pytest.raises(TypeError):
+            c.run(model="x", budget=1, source="ubuntu:22.04")
+
+
+def test_an_unsupported_field_never_reaches_the_network():
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        return httpx.Response(202, json=SUBMIT_ACCEPTED)
+
+    with client_with(handler) as c:
+        for brief in ({"interrupt_tolerance": "low"}, {"env": {"A": "1"}}, {"inputs": []}):
+            with pytest.raises(TypeError):
+                c.run(model="x", budget=1, **brief)
+    assert not calls
+
+
+def test_the_command_no_longer_offers_a_tolerance_the_server_derives():
+    from nodus import cli
+
+    with pytest.raises(SystemExit):
+        cli.build_parser().parse_args(["run", "--interrupt-tolerance", "low"])
 
 
 def test_a_field_this_sdk_does_not_model_travels_in_extra():
@@ -975,11 +1416,36 @@ def test_an_error_says_what_to_do_and_which_request_it_was():
         ("invalid_continuity_mode", "checkpointed"),
         ("invalid_complete_by", "finish_by"),
         ("idempotency_conflict", "Idempotency-Key"),
-        ("capacity_unavailable", "interrupt_tolerance"),
+        ("spend_check_unavailable", "Retry in a moment"),
     ],
 )
 def test_every_rejection_the_control_plane_sends_carries_a_remedy(code, hint):
     assert hint in str(_raised(400, {"error": code, "message": "no"}))
+
+
+def test_the_only_503_the_control_plane_sends_is_the_money_guard():
+    """The one 503 the API emits is spend_check_unavailable: admission failed
+    closed, nothing was created or charged, and the remedy is to retry."""
+    err = _raised(
+        503,
+        {"error": "spend_check_unavailable",
+         "message": "the account spend check is temporarily unavailable"},
+    )
+    assert isinstance(err, nodus.SpendCheckUnavailableError)
+    assert "retry" in str(err).lower()
+    assert "interrupt_tolerance" not in str(err)
+    assert "nothing was created" in str(err).lower()
+
+
+def test_a_503_nobody_recognises_is_not_dressed_up_as_a_capacity_problem():
+    assert type(_raised(503, {"error": "something_newer"})) is nodus.APIError
+
+
+def test_a_code_the_server_never_emits_gets_no_special_class():
+    """``signature_error`` appears nowhere in the control plane; the code it
+    does send for a bad signature is ``invalid_signature``."""
+    assert isinstance(_raised(401, {"error": "invalid_signature"}), nodus.SignatureError)
+    assert type(_raised(401, {"error": "signature_error"})) is nodus.AuthenticationError
 
 
 def test_budget_refusal_exposes_the_arithmetic_as_numbers():
@@ -1042,6 +1508,34 @@ def test_a_long_retry_after_is_clamped_rather_than_discarded():
     assert err.retry_after_header == "600"
     resp = httpx.Response(429, headers={"Retry-After": "600"})
     assert nodus.Client._backoff(0, resp) == 300.0, "a backoff must not hold for ten minutes"
+
+
+def test_an_infinite_retry_after_is_not_a_number_of_seconds():
+    """``float("inf")`` parses, but it is not a number of seconds to sleep."""
+    import math
+
+    for hint in ("inf", "-inf", "nan", "Infinity"):
+        err = _raised(429, {"error": "rate_limited"}, {"Retry-After": hint})
+        assert err.retry_after is None, f"{hint} was read as a duration"
+        resp = httpx.Response(429, headers={"Retry-After": hint})
+        backoff = nodus.Client._backoff(0, resp)
+        assert math.isfinite(backoff) and backoff <= 300.0
+
+
+def test_one_call_cannot_sleep_past_the_cap_by_retrying(monkeypatch):
+    """A cap a retry loop can multiply is not a cap: the ceiling bounds the call."""
+    slept: list[float] = []
+    monkeypatch.setattr(nodus.time, "sleep", lambda s: slept.append(s))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            429, json={"error": "rate_limited"}, headers={"Retry-After": "300"}
+        )
+
+    with client_with(handler, max_retries=2) as c:
+        with pytest.raises(nodus.RateLimitError):
+            c.get("wl_abc")
+    assert sum(slept) <= 300.0, f"one call slept {sum(slept)}s: {slept}"
 
 
 def test_retry_after_in_http_date_form_is_understood():
@@ -1175,6 +1669,42 @@ def test_iter_events_walks_past_the_cap_the_server_returns():
         assert len(list(c.iter_events("wl_abc"))) == 101
 
 
+def test_iter_events_stops_when_the_sequence_stops_advancing():
+    """A batch that does not move ``after`` is the same batch again, forever."""
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        assert len(calls) <= 5, "iter_events never stopped"
+        return httpx.Response(
+            200, json={"events": [{"id": 1, "event_type": "workload.running"}]}
+        )
+
+    with client_with(handler) as c:
+        assert len(list(c.iter_events("wl_abc"))) <= 2
+
+
+def test_the_async_iter_events_stops_too():
+    async def go():
+        calls: list[int] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(1)
+            assert len(calls) <= 5, "iter_events never stopped"
+            return httpx.Response(
+                200, json={"events": [{"id": 1, "event_type": "workload.running"}]}
+            )
+
+        c = nodus.AsyncClient(api_key="nk_live_test", base_url="https://nodus.invalid")
+        c._http = httpx.AsyncClient(
+            base_url="https://nodus.invalid", transport=httpx.MockTransport(handler)
+        )
+        async with c:
+            return [e async for e in c.iter_events("wl_abc")]
+
+    assert len(asyncio.run(go())) <= 2
+
+
 def test_iter_workloads_stops_when_the_offset_stops_advancing():
     """A next_offset that does not move is a stall, not a next page."""
     calls: list[int] = []
@@ -1225,6 +1755,53 @@ def test_generation_zero_is_still_a_filter():
     with client_with(_log_handler(seen)) as c:
         c.logs("wl_abc", generation=0)
     assert seen["params"].get("generation") == "0"
+
+
+def test_a_log_bigger_than_the_cap_is_refused_before_it_is_all_in_memory(monkeypatch):
+    """A log is read in pieces and refused at the ceiling, never held whole."""
+    monkeypatch.setattr(nodus, "_LOG_MAX_BYTES", 64 * 1024)
+    served: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        def chunks():
+            for i in range(4096):  # 4MB if it is all pulled
+                served.append(i)
+                yield b"x" * 1024
+
+        return httpx.Response(200, content=chunks(), headers={"Content-Type": "text/plain"})
+
+    with client_with(handler) as c:
+        with pytest.raises(nodus.NodusError, match="log"):
+            c.logs("wl_abc")
+    assert len(served) < 200, f"the whole log was pulled into memory: {len(served)} chunks"
+
+
+def test_an_ordinary_log_still_comes_back_whole():
+    seen: dict = {}
+    with client_with(_log_handler(seen)) as c:
+        assert c.logs("wl_abc") == "step-1\nstep-2\n"
+
+
+def test_the_async_client_caps_a_log_too(monkeypatch):
+    monkeypatch.setattr(nodus, "_LOG_MAX_BYTES", 64 * 1024)
+
+    async def go():
+        def handler(request: httpx.Request) -> httpx.Response:
+            async def chunks():
+                for _ in range(4096):
+                    yield b"x" * 1024
+
+            return httpx.Response(200, content=chunks())
+
+        c = nodus.AsyncClient(api_key="nk_live_test", base_url="https://nodus.invalid")
+        c._http = httpx.AsyncClient(
+            base_url="https://nodus.invalid", transport=httpx.MockTransport(handler)
+        )
+        async with c:
+            with pytest.raises(nodus.NodusError, match="log"):
+                await c.logs("wl_abc")
+
+    asyncio.run(go())
 
 
 def test_a_handle_reads_its_own_logs():

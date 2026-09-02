@@ -7,6 +7,8 @@ hardware, is a Nodus decision and is not part of this contract.
 
 from __future__ import annotations
 
+import math
+
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -71,7 +73,11 @@ class ContinuityMode(_WireEnum):
 
 
 class InterruptTolerance(_WireEnum):
-    """How much interruption risk the brief will accept for a lower cost."""
+    """How much interruption risk an execution envelope carries.
+
+    Read-only: the control plane derives it from ``continuity`` and models no
+    field a caller could set, so ``run()`` does not accept it.
+    """
 
     LOW = "low"
     MEDIUM = "medium"
@@ -99,6 +105,42 @@ TERMINAL_STATUSES = frozenset(
 
 #: Wire values of the terminal states, for comparing against raw strings.
 TERMINAL = frozenset(s.value for s in TERMINAL_STATUSES)
+
+
+def _num(value: Any, default: float = 0.0) -> float:
+    """A float from a field nothing here controls.
+
+    A raw ``float()`` on wire data can raise mid-poll with an error no failure
+    policy catches; NaN and infinity pass numeric checks yet compare false
+    against every budget, so non-finite is refused along with unparseable.
+    """
+    if value is None or isinstance(value, bool):
+        return default
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        return default
+    return out if math.isfinite(out) else default
+
+
+def _int(value: Any, default: int = 0) -> int:
+    """A count from the same untrusted place. See :func:`_num`."""
+    if value is None or isinstance(value, bool):
+        return default
+    try:
+        return int(_num(value, float(default)))
+    except (TypeError, ValueError, OverflowError):
+        return default
+
+
+def _obj(value: Any) -> dict[str, Any]:
+    """A mapping, or an empty one: a free-form field is not always an object."""
+    return value if isinstance(value, dict) else {}
+
+
+def _rows(value: Any) -> list[Any]:
+    """A list, or an empty one: iterating a string yields its characters."""
+    return value if isinstance(value, list) else []
 
 
 def _dt(value: Any) -> datetime | None:
@@ -141,20 +183,20 @@ class Route:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> "Route | None":
-        if not d:
+        if not isinstance(d, dict) or not d:
             return None
         return cls(
             sku=d.get("offer_id") or d.get("sku") or "",
             compute_class=ComputeClass.coerce(d.get("compute_class")),
             fit_class=d.get("fit_class") or "",
             region=d.get("region") or "",
-            memory_gb=float(d.get("memory_gb") or 0.0),
-            price_usd_hour=float(d.get("price_usd_hour") or 0.0),
-            expected_cost_usd=float(d.get("expected_cost_usd") or 0.0),
-            expected_hours=float(d.get("expected_hours") or 0.0),
-            remaining_budget_usd=float(d.get("remaining_budget_usd") or 0.0),
+            memory_gb=_num(d.get("memory_gb")),
+            price_usd_hour=_num(d.get("price_usd_hour")),
+            expected_cost_usd=_num(d.get("expected_cost_usd")),
+            expected_hours=_num(d.get("expected_hours")),
+            remaining_budget_usd=_num(d.get("remaining_budget_usd")),
             interruptible=bool(d.get("interruptible")),
-            resources=d.get("resources") or {},
+            resources=_obj(d.get("resources")),
             raw=d,
         )
 
@@ -173,12 +215,13 @@ class StageRun:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "StageRun":
+        d = _obj(d)
         return cls(
             id=d.get("id") or "",
             status=WorkloadStatus.coerce(d.get("status")),
             continuity_mode=ContinuityMode.coerce(d.get("continuity_mode")),
-            completed_units=int(d.get("completed_units") or 0),
-            total_units=int(d.get("total_units") or 0),
+            completed_units=_int(d.get("completed_units")),
+            total_units=_int(d.get("total_units")),
             latest_manifest=d.get("latest_manifest"),
             raw=d,
         )
@@ -211,11 +254,11 @@ class ManifestFile:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> "ManifestFile":
-        d = d or {}
+        d = _obj(d)
         return cls(
             uri=d.get("uri") or "",
             sha256=d.get("sha256") or "",
-            bytes=int(d.get("bytes") or 0),
+            bytes=_int(d.get("bytes")),
             media=d.get("media") or "",
         )
 
@@ -254,36 +297,27 @@ class Artifact:
     manifest: dict[str, Any] = field(default_factory=dict, repr=False)
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
-    # TODO(sdk): model `GET /v1/workloads/{id}/outputs` and `.../logs`.
-    #
-    # Those endpoints are landing in the control plane under separate work and
-    # are not modelled here yet, on purpose: this class exists in its current
-    # form because the previous one was written against a response shape the
-    # server never sent, and the way to not repeat that is to read the merged
-    # handler rather than a spec in flight. When picking this up, take the shape
-    # from `internal/api` and the `Output` schema in `design/openapi.yaml` — an
-    # output row is name/stage_id/sha256/bytes plus a `download` path and
-    # deliberately no storage key — and add the client methods alongside it.
-    # Note that an output is a *file*, so it is not this type: an Artifact is a
-    # manifest.
+    # An output is a file a manifest names, not a manifest, so the outputs and
+    # logs endpoints are a separate type; neither is modelled here yet.
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Artifact":
         # stage_id, generation and sequence appear both on the row and inside
         # the manifest. Prefer the row: it is what the store indexed on, so it is
         # what a filter or a sort on this list would have used.
-        man = d.get("manifest") or {}
+        d = _obj(d)
+        man = _obj(d.get("manifest"))
         return cls(
             manifest_id=d.get("manifest_id") or "",
             stage_id=d.get("stage_id") or man.get("stage_id") or "",
-            generation=int(d.get("generation") or man.get("generation") or 0),
-            sequence=int(d.get("sequence") or man.get("sequence") or 0),
+            generation=_int(d.get("generation") or man.get("generation")),
+            sequence=_int(d.get("sequence") or man.get("sequence")),
             final=bool(man.get("final")),
             created_at=_dt(d.get("created_at")),
-            files=[ManifestFile.from_dict(f) for f in (man.get("files") or [])],
+            files=[ManifestFile.from_dict(f) for f in _rows(man.get("files"))],
             outputs={
                 name: ManifestFile.from_dict(f)
-                for name, f in (man.get("outputs") or {}).items()
+                for name, f in _obj(man.get("outputs")).items()
             },
             manifest=man,
             raw=d,
@@ -303,11 +337,12 @@ class Event:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Event":
+        d = _obj(d)
         return cls(
-            seq=int(d.get("id") or 0),
+            seq=_int(d.get("id")),
             id=d.get("event_id") or "",
             type=d.get("event_type") or d.get("type") or "",
-            payload=d.get("payload") or {},
+            payload=_obj(d.get("payload")),
             created_at=_dt(d.get("created_at")),
             raw=d,
         )
@@ -325,13 +360,14 @@ class LedgerEntry:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "LedgerEntry":
+        d = _obj(d)
         return cls(
             id=d.get("id") or "",
             entry_type=d.get("entry_type") or "",
-            debit_usd=float(d.get("debit_usd") or 0.0),
-            credit_usd=float(d.get("credit_usd") or 0.0),
+            debit_usd=_num(d.get("debit_usd")),
+            credit_usd=_num(d.get("credit_usd")),
             currency=d.get("currency") or "USD",
-            evidence=d.get("evidence") or {},
+            evidence=_obj(d.get("evidence")),
             created_at=_dt(d.get("created_at")),
         )
 
@@ -357,10 +393,10 @@ class Settlement:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> "Settlement":
-        d = d or {}
+        d = _obj(d)
         return cls(
             status=d.get("status") or "none",
-            balance_usd=float(d.get("balance_usd") or 0.0),
+            balance_usd=_num(d.get("balance_usd")),
             correlation_id=d.get("correlation_id") or "",
             closed_at=_dt(d.get("closed_at")),
             raw=d,
@@ -389,9 +425,9 @@ class Ledger:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> "Ledger":
-        d = d or {}
+        d = _obj(d)
         return cls(
-            entries=[LedgerEntry.from_dict(e) for e in (d.get("entries") or [])],
+            entries=[LedgerEntry.from_dict(e) for e in _rows(d.get("entries"))],
             settlement=Settlement.from_dict(d.get("settlement")),
             raw=d,
         )
@@ -417,13 +453,13 @@ class Meter:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> "Meter | None":
-        if not d:
+        if not isinstance(d, dict) or not d:
             return None
         return cls(
-            settled_usd=float(d.get("settled_usd") or 0.0),
-            accruing_usd=float(d.get("accruing_usd") or 0.0),
-            accruing_rate_usd_hour=float(d.get("accruing_rate_usd_hour") or 0.0),
-            total_now_usd=float(d.get("total_now_usd") or 0.0),
+            settled_usd=_num(d.get("settled_usd")),
+            accruing_usd=_num(d.get("accruing_usd")),
+            accruing_rate_usd_hour=_num(d.get("accruing_rate_usd_hour")),
+            total_now_usd=_num(d.get("total_now_usd")),
             as_of=_dt(d.get("as_of")),
             raw=d,
         )
