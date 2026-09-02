@@ -721,6 +721,28 @@ def test_a_field_this_sdk_does_not_model_travels_in_extra():
     assert p["experimental_knob"] == 3
 
 
+def test_extra_cannot_overwrite_the_brief_that_was_just_built():
+    """``extra`` adds fields; it does not get to delete the cost ceiling.
+
+    It was merged with dict.update, so extra={"outcome": ...} REPLACED the
+    outcome object holding max_cost_usd. budget=400 submitted uncapped, and the
+    warning that would have said so had already run against the pre-merge
+    payload -- so the one submission that most needed telling was the one that
+    said nothing.
+    """
+    with pytest.raises(TypeError) as exc:
+        build_payload(model="x", budget=400, extra={"outcome": {"note": "hi"}})
+    message = str(exc.value)
+    assert "outcome" in message
+    assert "extra" in message
+
+
+def test_extra_still_carries_a_field_alongside_the_brief():
+    p = build_payload(model="x", budget=400, extra={"experimental_knob": 3})
+    assert p["experimental_knob"] == 3
+    assert p["outcome"]["max_cost_usd"] == 400.0
+
+
 def test_a_typod_keyword_never_reaches_the_network():
     calls = []
 

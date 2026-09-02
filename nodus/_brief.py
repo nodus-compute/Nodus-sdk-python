@@ -182,17 +182,8 @@ def build_payload(
 
     if stages:
         payload["stages"] = [dict(s) for s in stages]
-        for stage in payload["stages"]:
-            named = (stage.get("source") or {}).get("image")
-            if named:
-                _warn_if_it_cannot_bootstrap(named)
     else:
-        # Scoped to the single-source brief: that is where an omitted budget is
-        # an accident rather than a pipeline assembled against the schema.
-        _warn_if_it_is_uncapped(outcome)
-        chosen = image or source or DEFAULT_IMAGE
-        _warn_if_it_cannot_bootstrap(chosen)
-        src: dict[str, Any] = {"image": chosen}
+        src: dict[str, Any] = {"image": image or source or DEFAULT_IMAGE}
         cmd = _as_command(command)
         if cmd:
             src["command"] = cmd
@@ -207,9 +198,50 @@ def build_payload(
     if policy:
         payload["policy"] = dict(policy)
 
-    if extra:
-        payload.update(extra)
+    _merge_extra(payload, extra)
+    _warn_about_the_money(payload)
     return payload
+
+
+def _merge_extra(payload: dict[str, Any], extra: dict[str, Any] | None) -> None:
+    """Add fields this SDK version does not model. Never replace one it does.
+
+    A dict.update let ``extra={"outcome": ...}`` overwrite the outcome object
+    holding the cost ceiling, so a brief passing budget=400 submitted uncapped.
+    """
+    if not extra:
+        return
+    clashes = sorted(set(extra) & set(payload))
+    if clashes:
+        raise TypeError(
+            "extra= would replace "
+            + ", ".join(repr(k) for k in clashes)
+            + ", which this brief already built"
+            + (", including the cost ceiling in 'outcome'" if "outcome" in clashes else "")
+            + ". Pass the value through the keyword that builds it, or drop it "
+            "from extra=; extra is for fields the control plane models and this "
+            "SDK version does not."
+        )
+    payload.update(extra)
+
+
+def _warn_about_the_money(payload: dict[str, Any]) -> None:
+    """The free warnings, read off the payload as it will be sent.
+
+    After the merge, not before: a warning drawn from a draft of the brief can
+    describe a submission that never happened.
+    """
+    if not payload.get("stages"):
+        # Scoped to the single-source brief: that is where an omitted budget is
+        # an accident rather than a pipeline assembled against the schema.
+        _warn_if_it_is_uncapped(payload.get("outcome") or {})
+    source = payload.get("source") or {}
+    if source.get("image"):
+        _warn_if_it_cannot_bootstrap(source["image"])
+    for stage in payload.get("stages") or []:
+        named = (stage.get("source") or {}).get("image")
+        if named:
+            _warn_if_it_cannot_bootstrap(named)
 
 
 #: The keywords a brief may name, read off the translator so the two cannot drift.
