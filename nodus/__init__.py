@@ -414,12 +414,8 @@ class _WorkloadState:
         """
         from .types import _dt, _int, _num, _obj, _rows  # local import: internal helpers
 
-        # Submit answers with "workload_id"; every read endpoint answers with
-        # "id". Accepting both is what makes run() work against the real
-        # control plane: the SDK read only "id", so client.run() raised
-        # "submit returned no workload id" on a 202 that had in fact created
-        # the workload. Unit tests missed it because the fixtures used a shape
-        # POST /v1/workloads has never returned.
+        # Submit answers with "workload_id" and every read endpoint with "id".
+        # Both spellings name the same workload.
         d = _obj(d)
         self.id = d.get("id") or d.get("workload_id") or self.id
         if "status" in d:

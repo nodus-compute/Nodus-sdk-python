@@ -115,16 +115,16 @@ def _enum_value(v: Any) -> Any:
 
 
 # Brief fields the control plane does not model, and what to reach for instead.
-# Each of these was accepted, serialised, sent, and thrown away on arrival.
+# Sending one costs a caller the constraint they believe they set.
 UNSUPPORTED: dict[str, str] = {
     "interrupt_tolerance": (
         "the control plane does not model this yet: it derives the envelope's "
-        "tolerance from continuity, so a declared 'low' became an envelope of "
-        "'high'. Use continuity= to say what interruption should cost you."
+        "tolerance from continuity, so declaring 'low' here yields the opposite. "
+        "Use continuity= to say what an interruption should cost you."
     ),
     "env": (
         "the control plane does not model this yet: a workload's source is an "
-        "image and a command, so environment never reached the host. Bake the "
+        "image and a command, so environment never reaches the host. Bake the "
         "values into the image, or pass them in the command."
     ),
     "inputs": (
@@ -198,11 +198,8 @@ def build_payload(
     if expected_runtime_hours is not None:
         req.setdefault("expected_runtime_hours", expected_runtime_hours)
 
-    # Data residency is a policy, not a requirement: the envelope is built from
-    # payload.Policy.DataRegions, and models.Requirements has no such field, so
-    # a brief that said where its data may live was answered 202 with the
-    # constraint dropped on arrival. An explicit policy= wins, because that is
-    # the schema itself and data_regions= is a shortcut into it.
+    # Data residency lives in policy: the envelope reads Policy.DataRegions, and
+    # Requirements has no such field. An explicit policy= wins over the shortcut.
     pol: dict[str, Any] = dict(policy or {})
     if data_regions:
         pol.setdefault("data_regions", list(data_regions))
@@ -219,10 +216,9 @@ def build_payload(
     if continuity is None:
         cont: dict[str, Any] = {"mode": "checkpointed", "resume_on_interruption": True}
     elif isinstance(continuity, dict):
-        # The same default as the string form, because they are the same brief
-        # written two ways. Left out, the flag is read as true on arrival -- so
-        # the dict spelling of "ephemeral" asked for the durability the caller
-        # had just declined, and paid for it. A flag written here is kept.
+        # The same default as the string form: one brief written two ways. An
+        # absent flag is read as true on arrival, which would hand "ephemeral"
+        # the durability it declines. A flag written here is kept.
         cont = dict(continuity)
         mode = _enum_value(cont.get("mode", "checkpointed"))
         cont["mode"] = mode
@@ -332,8 +328,8 @@ def _one_status(value: Any) -> str:
     """One filter token, checked against the vocabulary the server expands.
 
     Unrecognised tokens are dropped on arrival, and a filter that expands to
-    nothing is no filter at all -- so a misspelled status did not narrow the
-    list, it returned the whole account.
+    nothing is no filter at all -- so a misspelled status does not narrow the
+    list, it returns the whole account.
     """
     wire = str(_enum_value(value)).strip()
     if wire in STATUS_FILTERS:

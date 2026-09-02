@@ -29,8 +29,8 @@ def _safe(text: Any) -> str:
 
 
 def _fmt_workload(wl: Any) -> str:
-    # cost_now_usd, not spend_usd: a charge is booked when a lease closes, so a
-    # list of running workloads would otherwise show $0.00 for all of them.
+    # cost_now_usd, not spend_usd and not the meter: settled charges do not move
+    # while a lease is open, and the meter counts only this billing period.
     route = _safe(wl.route.sku) if wl.route else "-"
     status = _safe(getattr(wl.status, "value", wl.status))
     return f"{_safe(wl.id)}  {status:<13} {route:<28} ${wl.cost_now_usd:.2f}"
@@ -226,7 +226,7 @@ def build_parser() -> argparse.ArgumentParser:
     l = sub.add_parser("list", help="list workloads")
     l.add_argument("--limit", type=int, default=50)
     # Spelled out rather than free text: the control plane ignores a token it
-    # does not know, so a typo here listed every workload on the account.
+    # does not know, so a typo here would list every workload on the account.
     l.add_argument("--status", default=None, choices=STATUS_FILTERS,
                    help="active, terminal, or a concrete status")
 

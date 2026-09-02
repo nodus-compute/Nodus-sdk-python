@@ -298,18 +298,8 @@ class Artifact:
     manifest: dict[str, Any] = field(default_factory=dict, repr=False)
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
-    # TODO(sdk): model `GET /v1/workloads/{id}/outputs` and `.../logs`.
-    #
-    # Those endpoints are landing in the control plane under separate work and
-    # are not modelled here yet, on purpose: this class exists in its current
-    # form because the previous one was written against a response shape the
-    # server never sent, and the way to not repeat that is to read the merged
-    # handler rather than a spec in flight. When picking this up, take the shape
-    # from `internal/api` and the `Output` schema in `design/openapi.yaml` — an
-    # output row is name/stage_id/sha256/bytes plus a `download` path and
-    # deliberately no storage key — and add the client methods alongside it.
-    # Note that an output is a *file*, so it is not this type: an Artifact is a
-    # manifest.
+    # An output is a file a manifest names, not a manifest, so the outputs and
+    # logs endpoints are a separate type; neither is modelled here yet.
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Artifact":

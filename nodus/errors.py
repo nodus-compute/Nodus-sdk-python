@@ -305,10 +305,8 @@ def error_from_response(
     if status_code == 401 and code == "invalid_signature":
         cls: type[NodusError] = SignatureError
     elif status_code == 503 and code == "spend_check_unavailable":
-        # The only 503 the control plane sends. Anything else at this status
-        # is an infrastructure answer, not a statement about this brief, and
-        # dressing it up as a capacity problem sent callers to widen a brief
-        # that was never the cause.
+        # The only 503 the control plane sends. Anything else at this status is
+        # an infrastructure answer, not a statement about this brief.
         cls = SpendCheckUnavailableError
     else:
         cls = _BY_STATUS.get(status_code, APIError)

@@ -1,11 +1,9 @@
 """The shape of the public API, asserted rather than hoped for.
 
 Two clients and two handles are four surfaces that have to say the same thing.
-The async half used to be a subset of the sync one — no ``wait()``, no
-``stream_events()``, no ``logs()``, no webhooks — and nothing failed, because the
-test that claimed to check it called a single method. These assertions compare
-the surfaces name by name and parameter by parameter, so a method added to one
-half and forgotten on the other is a red suite rather than a discovery.
+These assertions compare them name by name and parameter by parameter, so a
+method added to one half and forgotten on the other is a red suite rather than
+a discovery -- which a test that calls one method of each cannot do.
 """
 
 from __future__ import annotations
