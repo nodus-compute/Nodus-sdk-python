@@ -285,10 +285,6 @@ _LOGIN_NEEDS_BASE_URL = (
 )
 
 
-# _is_header_safe lives in config: storing a credential and sending one have
-# to agree on what a header can carry, so there is exactly one predicate.
-
-
 def _check_scheme(url: str, stacklevel: int) -> None:
     scheme = url.split("://", 1)[0].lower()
     if scheme not in ("http", "https"):

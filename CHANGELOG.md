@@ -18,6 +18,13 @@
   travel in a request header fails every later command, after only ever
   having been shown redacted. Control characters (C0 and C1 alike) are
   refused in every stored value; non-ASCII text such as a tenant name is not.
+  When that refusal meets a value already in the file — a foreign section's
+  included — it names the file and the way out, not just the offending key.
+- A wire string that arrives as the wrong JSON type reads as absent instead
+  of crashing a listing: `nodus artifacts` no longer raises on a digest sent
+  as a number, and `nodus explain` no longer raises on a non-numeric device
+  memory. The sign-in page address is never opened if it carries any control
+  character, the C1 range included.
 - Both commands say so on stderr when `NODUS_API_KEY` (or `NODUS_BASE_URL`) is
   set: it outranks the file, so "signed in" and "logged out" would otherwise
   both be wrong.

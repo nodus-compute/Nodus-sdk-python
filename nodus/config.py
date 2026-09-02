@@ -273,27 +273,30 @@ def read_metadata() -> dict[str, str]:
 # -- writing ---------------------------------------------------------------
 
 
-def _quote(value: str, where: str) -> str:
-    """One TOML basic string, or a refusal.
+def _quote(value: str, where: str, path: str | os.PathLike[str]) -> str:
+    """One TOML basic string, or a refusal naming the file and a way out.
 
     A raw C0 control or DEL makes a file neither this parser nor ``tomllib``
     reads back. The C1 range (0x80–0x9f) is legal TOML, but a control
     character is never a legitimate part of a credential, an address, or a
     name — and a stored one resurfaces on a terminal that honours 8-bit
-    escapes. Non-ASCII text, a tenant's own name say, is fine.
+    escapes. Non-ASCII text, a tenant's own name say, is fine. This refusal
+    can meet a foreign value the rewrite is only carrying through, so it
+    hard-stops login and logout — the message must leave the reader able to
+    fix it, not just tell them which key offended.
     """
     for char in value:
         if char < " " or "\x7f" <= char <= "\x9f":
             raise ConfigurationError(
-                f"{where} contains {char!r}, a control character, which is "
-                "never part of a real credential, address, or name. This SDK "
-                "will not store it."
+                f"{where} in {path} contains {char!r}, a control character, "
+                "which is never part of a real credential, address, or name. "
+                "Edit the file by hand, or delete it and run: nodus login"
             )
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def _key(name: str, where: str) -> str:
-    return name if _BARE_KEY.match(name) else _quote(name, where)
+def _key(name: str, where: str, path: str | os.PathLike[str]) -> str:
+    return name if _BARE_KEY.match(name) else _quote(name, where, path)
 
 
 def _dump(data: dict[str, Any], path: Path, prefix: tuple[str, ...] = ()) -> str:
@@ -309,7 +312,7 @@ def _dump(data: dict[str, Any], path: Path, prefix: tuple[str, ...] = ()) -> str
     where = ".".join(prefix) if prefix else str(path)
     out: list[str] = []
     if prefix and (scalars or not tables):
-        out.append("[" + ".".join(_key(part, where) for part in prefix) + "]")
+        out.append("[" + ".".join(_key(part, where, path) for part in prefix) + "]")
     for key, value in scalars:
         if not isinstance(value, str):
             raise ConfigurationError(
@@ -318,7 +321,7 @@ def _dump(data: dict[str, Any], path: Path, prefix: tuple[str, ...] = ()) -> str
                 "changing it. Edit the file by hand, or delete it and run: "
                 "nodus login"
             )
-        out.append(f"{_key(key, where)} = {_quote(value, f'{where}.{key}')}")
+        out.append(f"{_key(key, where, path)} = {_quote(value, f'{where}.{key}', path)}")
     for key, table in tables:
         if out and out[-1]:
             out.append("")

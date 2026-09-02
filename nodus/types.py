@@ -133,6 +133,16 @@ def _int(value: Any, default: int = 0) -> int:
         return default
 
 
+def _text(value: Any) -> str:
+    """Text from a field nothing here controls, or "" when it is not text.
+
+    A digest or a name that arrives as a number or a list is not that field:
+    "" reads as absent rather than rendering the wrong type's repr, and
+    slicing it cannot raise mid-listing. See :func:`_num`.
+    """
+    return value if isinstance(value, str) else ""
+
+
 def _obj(value: Any) -> dict[str, Any]:
     """A mapping, or an empty one: a free-form field is not always an object."""
     return value if isinstance(value, dict) else {}
@@ -186,10 +196,10 @@ class Route:
         if not isinstance(d, dict) or not d:
             return None
         return cls(
-            sku=d.get("offer_id") or d.get("sku") or "",
+            sku=_text(d.get("offer_id")) or _text(d.get("sku")),
             compute_class=ComputeClass.coerce(d.get("compute_class")),
-            fit_class=d.get("fit_class") or "",
-            region=d.get("region") or "",
+            fit_class=_text(d.get("fit_class")),
+            region=_text(d.get("region")),
             memory_gb=_num(d.get("memory_gb")),
             price_usd_hour=_num(d.get("price_usd_hour")),
             expected_cost_usd=_num(d.get("expected_cost_usd")),
@@ -217,7 +227,7 @@ class StageRun:
     def from_dict(cls, d: dict[str, Any]) -> "StageRun":
         d = _obj(d)
         return cls(
-            id=d.get("id") or "",
+            id=_text(d.get("id")),
             status=WorkloadStatus.coerce(d.get("status")),
             continuity_mode=ContinuityMode.coerce(d.get("continuity_mode")),
             completed_units=_int(d.get("completed_units")),
@@ -256,10 +266,10 @@ class ManifestFile:
     def from_dict(cls, d: dict[str, Any] | None) -> "ManifestFile":
         d = _obj(d)
         return cls(
-            uri=d.get("uri") or "",
-            sha256=d.get("sha256") or "",
+            uri=_text(d.get("uri")),
+            sha256=_text(d.get("sha256")),
             bytes=_int(d.get("bytes")),
-            media=d.get("media") or "",
+            media=_text(d.get("media")),
         )
 
 
@@ -308,8 +318,8 @@ class Artifact:
         d = _obj(d)
         man = _obj(d.get("manifest"))
         return cls(
-            manifest_id=d.get("manifest_id") or "",
-            stage_id=d.get("stage_id") or man.get("stage_id") or "",
+            manifest_id=_text(d.get("manifest_id")),
+            stage_id=_text(d.get("stage_id")) or _text(man.get("stage_id")),
             generation=_int(d.get("generation") or man.get("generation")),
             sequence=_int(d.get("sequence") or man.get("sequence")),
             final=bool(man.get("final")),
@@ -340,8 +350,8 @@ class Event:
         d = _obj(d)
         return cls(
             seq=_int(d.get("id")),
-            id=d.get("event_id") or "",
-            type=d.get("event_type") or d.get("type") or "",
+            id=_text(d.get("event_id")),
+            type=_text(d.get("event_type")) or _text(d.get("type")),
             payload=_obj(d.get("payload")),
             created_at=_dt(d.get("created_at")),
             raw=d,
@@ -362,11 +372,11 @@ class LedgerEntry:
     def from_dict(cls, d: dict[str, Any]) -> "LedgerEntry":
         d = _obj(d)
         return cls(
-            id=d.get("id") or "",
-            entry_type=d.get("entry_type") or "",
+            id=_text(d.get("id")),
+            entry_type=_text(d.get("entry_type")),
             debit_usd=_num(d.get("debit_usd")),
             credit_usd=_num(d.get("credit_usd")),
-            currency=d.get("currency") or "USD",
+            currency=_text(d.get("currency")) or "USD",
             evidence=_obj(d.get("evidence")),
             created_at=_dt(d.get("created_at")),
         )
@@ -395,9 +405,9 @@ class Settlement:
     def from_dict(cls, d: dict[str, Any] | None) -> "Settlement":
         d = _obj(d)
         return cls(
-            status=d.get("status") or "none",
+            status=_text(d.get("status")) or "none",
             balance_usd=_num(d.get("balance_usd")),
-            correlation_id=d.get("correlation_id") or "",
+            correlation_id=_text(d.get("correlation_id")),
             closed_at=_dt(d.get("closed_at")),
             raw=d,
         )

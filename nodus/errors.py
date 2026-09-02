@@ -300,9 +300,9 @@ def error_from_response(
     if remedy:
         message = f"{message}\n{remedy}"
     if request_id:
-        # A header value, so h11 normally rejects controls before it gets
-        # here — but this message must not lean on which transport parsed it.
-        # The attribute below keeps the value verbatim for correlation.
+        # h11 passes every control byte but NUL, CR, LF, VT and FF through a
+        # header value, so this strip is the only defence for the message's
+        # copy. The attribute keeps the value verbatim for correlation.
         message = f"{message}\nrequest id: {_CONTROL.sub('', request_id)}"
 
     # A signed-request rejection is a 401 like a bad key, but it means something

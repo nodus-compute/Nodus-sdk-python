@@ -211,18 +211,20 @@ def test_the_ledger_command_prints_what_the_run_charged(monkeypatch, capsys):
     assert "0.00" in out, "a zero balance is a fact, not a reason to print nothing"
 
 
-HOSTILE = "\x1b[2J\x1b]0;pwned\x07wl_abc\rerror: everything is fine"
+HOSTILE = "\x1b[2J\x1b]0;pwned\x07\x7f\x9bwl_abc\rerror: everything is fine"
 
 #: A newline needs no escape sequence to lie. Every row these commands print
 #: is one line, so a value carrying one forges a whole extra row that reads
 #: exactly like a real one -- a charge that was never made, a run that does
-#: not exist. It also carries every character ``_has_control_characters``
-#: looks for, so the escape assertion below can actually fail.
-FORGING = "wl_ok\n\x1b[2J\x07\rwl_evil        completed     nodus:a100-80-us-east   $0.00"
+#: not exist. Both hostile constants also carry C0 escapes, DEL and a C1
+#: byte, so a cleaner quietly narrowed to part of the range still goes red.
+FORGING = "wl_ok\n\x1b[2J\x07\r\x7f\x9bwl_evil        completed     nodus:a100-80-us-east   $0.00"
 
 
 def _has_control_characters(text: str) -> bool:
-    return any(ch in text for ch in "\x1b\x07\r\x00")
+    # Everything the cleaners must remove: C0 (the newlines between rows are
+    # the output's own), DEL, and the C1 range xterm honours as 8-bit CSI.
+    return any((ch < " " and ch != "\n") or "\x7f" <= ch <= "\x9f" for ch in text)
 
 
 def _row_printing_client(value: str):
@@ -290,7 +292,12 @@ def _row_printing_client(value: str):
                         "sequence": 1,
                         "manifest": {
                             "outputs": {value: {"sha256": value, "bytes": 1}},
-                            "files": [{"uri": value, "sha256": value, "bytes": 1}],
+                            "files": [
+                                {"uri": value, "sha256": value, "bytes": 1},
+                                # A digest that arrives as a JSON number: the
+                                # row must render, not raise on the slice.
+                                {"uri": value, "sha256": 4096, "bytes": 1},
+                            ],
                         },
                     }
                 )
@@ -314,10 +321,14 @@ ROW_COMMANDS = [
     ["run"],
     ["list"],
     ["get", "wl_abc"],
+    # The --json dumps lean on json.dumps's own ensure_ascii escaping; these
+    # two parameters are what pins that argument in place.
+    ["get", "wl_abc", "--json"],
     ["events", "wl_abc"],
     ["events", "wl_abc", "--follow"],
     ["artifacts", "wl_abc"],
     ["ledger", "wl_abc"],
+    ["ledger", "wl_abc", "--json"],
     ["explain", "wl_abc"],
 ]
 
@@ -333,9 +344,10 @@ def test_a_server_value_cannot_add_a_row_to_any_listing(argv, monkeypatch, capsy
     cli.main(list(argv))
     clean = len(capsys.readouterr().out.splitlines())
     if argv[0] == "artifacts":
-        # The manifest line plus its output and file rows. Zero here means the
-        # fixture missed the endpoint's nesting and the sites went untested.
-        assert clean == 3, "the forged artifact must render all three rows"
+        # The manifest line, its output row, and both file rows. Zero means
+        # the fixture missed the endpoint's nesting and the sites went
+        # untested; three means the numeric-digest row crashed or vanished.
+        assert clean == 4, "the forged artifact must render all four rows"
 
     monkeypatch.setattr(cli, "Client", _row_printing_client(FORGING))
     cli.main(list(argv))

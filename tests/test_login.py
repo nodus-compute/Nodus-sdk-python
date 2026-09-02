@@ -258,7 +258,7 @@ def test_the_minimal_parser_reads_back_the_keys_it_writes(key):
     Only the CI floor runs this parser for real, so the round-trip below would
     otherwise be green on this machine while corrupting files on that one.
     """
-    text = f'[other]\n{config._key(key, "probe")} = "v"\n'
+    text = f'[other]\n{config._key(key, "probe", "config.toml")} = "v"\n'
     assert config._parse_simple_toml(text, "config.toml")["other"] == {key: "v"}
 
 
@@ -270,7 +270,7 @@ def test_a_foreign_key_survives_repeated_logins_unchanged(nodus_config, key):
     time, on the Python the CI floor runs, until nothing can read the file.
     """
     nodus_config.write_text(
-        f'[other]\n{config._key(key, "probe")} = "v"\n', encoding="utf-8"
+        f'[other]\n{config._key(key, "probe", "config.toml")} = "v"\n', encoding="utf-8"
     )
     for _ in range(3):
         config.save_credentials("nk_live_written", "https://written.example")
@@ -366,6 +366,24 @@ def test_a_unicode_tenant_name_is_stored_not_refused(nodus_config):
     """Refusing controls must not shade into forcing ASCII: a name is text."""
     config.save_credentials("nk_live_written", "https://written.example", tenant="café")
     assert config.read_metadata()["tenant"] == "café"
+
+
+def test_a_stale_control_character_in_a_foreign_value_names_the_file_and_a_way_out(
+    console, nodus_config, capsys
+):
+    """The pre-flight re-dumps every value, foreign sections included.
+
+    C1 is legal TOML, so a file holding one reads back fine and only the
+    rewrite refuses -- possibly a value an older writer stored. That refusal
+    stops login cold, so it has to say which file and what to do, not just
+    which key offended.
+    """
+    nodus_config.write_text('[other]\nnote = "keep\x9bme"\n', encoding="utf-8")
+    assert _login(console) == 2
+    assert console.start_calls == [], "a key was minted for a config that cannot hold it"
+    err = capsys.readouterr().err
+    assert str(nodus_config) in err
+    assert "Edit the file by hand" in err and "nodus login" in err
 
 
 @pytest.mark.parametrize("key", ["nk live spaced", "nk_live_café"])
@@ -576,12 +594,18 @@ def test_a_table_where_a_credential_goes_is_refused_not_overwritten(nodus_config
 def test_a_write_that_fails_anyway_shows_the_key_once_rather_than_losing_it(
     console, nodus_config, monkeypatch, capsys
 ):
-    """The backstop for whatever the pre-flight could not see coming."""
+    """The backstop for whatever the pre-flight could not see coming.
+
+    The fault sits at the rename, the layer a full disk really bites, so the
+    real ``save_credentials`` -- its key gate included -- runs above it. A
+    stand-in for the whole function would exercise a branch the shipped code
+    never takes.
+    """
 
     def boom(*_a, **_kw):
         raise OSError("disk full")
 
-    monkeypatch.setattr(config, "save_credentials", boom)
+    monkeypatch.setattr(config.os, "replace", boom)
     assert _login(console) == 2
     err = capsys.readouterr().err
     assert err.count(APPROVED["api_key"]) == 1
@@ -616,6 +640,19 @@ def test_a_key_the_client_could_never_send_is_refused_not_stored(
     assert "console sent an API key" in printed
     assert "Signed in" not in printed
     assert not nodus_config.exists(), "an unsendable key must not be stored"
+
+
+def test_the_refusal_still_identifies_the_key_when_the_console_names_none(
+    console, nodus_config, capsys
+):
+    """No key_id to revoke by, so the sentence must say how to find the key."""
+    console.token = [
+        (200, {"api_key": "nk_live_\x9bset", "base_url": "https://api.nodus.example"})
+    ]
+    assert _login(console) == 2
+    err = capsys.readouterr().err
+    assert "most recent" in err
+    assert not nodus_config.exists()
 
 
 # -- nodus login, end to end over HTTP -------------------------------------
@@ -841,6 +878,9 @@ def test_login_opens_the_browser_and_no_browser_stops_it(console, no_browser_ope
         "https://ok.example/a\nb",
         "https://ok.example/a\tb",
         "https://ok.example/a\x7fb",
+        "https://ok.example/a\x9bb",
+        # NEL: a C1 line break that even str.splitlines respects.
+        "https://ok.example/a\x85b",
     ],
 )
 def test_an_address_that_is_not_a_plain_web_url_is_never_opened(
@@ -853,7 +893,7 @@ def test_an_address_that_is_not_a_plain_web_url_is_never_opened(
 
 
 @pytest.mark.parametrize("field", ["user_code", "verification_url"])
-@pytest.mark.parametrize("hostile", ["\x1b[31mDANGER\x07", "x\ty", "x\rz"])
+@pytest.mark.parametrize("hostile", ["\x1b[31mDANGER\x07", "x\ty", "x\rz", "x\x7f\x9by"])
 def test_text_from_the_console_cannot_repaint_the_terminal(
     console, capsys, field, hostile
 ):
@@ -861,7 +901,7 @@ def test_text_from_the_console_cannot_repaint_the_terminal(
     assert _login(console) == 0
     printed = _both_streams(capsys)
     assert not any(char < " " and char != "\n" for char in printed)
-    assert "\x7f" not in printed
+    assert not any("\x7f" <= char <= "\x9f" for char in printed)
 
 
 def test_a_refusal_from_the_console_cannot_forge_a_sign_in_block(

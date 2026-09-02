@@ -229,11 +229,11 @@ def _open_browser(url: str) -> bool:
     whatever it is given to the platform's handler: a ``file:`` or
     ``javascript:`` URL would be acted on locally. An address carrying a
     control character is not opened in a cleaned-up form either -- cleaning it
-    makes it a different address, which is not the one anyone approved. Tab
-    and newline count here even though :data:`_CONTROL` spares them; a URL is
-    one line by definition.
+    makes it a different address, which is not the one anyone approved. The
+    range is :data:`_CONTROL_LINE`'s -- C0, DEL and C1, tab and newline
+    included -- because a URL is a one-line value like any other.
     """
-    if any(char < " " or char == "\x7f" for char in url):
+    if _CONTROL_LINE.search(url):
         return False
     if not url.lower().startswith(("http://", "https://")):
         return False
@@ -270,12 +270,17 @@ def _cmd_login(args: argparse.Namespace) -> int:
     # refuses such a key too; this refusal is the one that can say whose
     # fault it is.
     if not _is_header_safe(creds.api_key):
-        named = f" {_safe_line(creds.key_id)}" if creds.key_id else ""
+        which = (
+            f"key {_safe_line(creds.key_id)}"
+            if creds.key_id
+            # No id to revoke by; how it was just minted is the next handle.
+            else "the key -- the console lists it as the most recent for this device"
+        )
         print(
             "The console sent an API key this client cannot use: a key must "
             "be printable ASCII with no spaces to travel in a request "
-            f"header. Nothing was stored. Revoke the key{named} in the "
-            "console and sign in again.",
+            f"header. Nothing was stored. Revoke {which} in the console and "
+            "sign in again.",
             file=sys.stderr,
         )
         return 2
@@ -309,8 +314,8 @@ def _cmd_login(args: argparse.Namespace) -> int:
                 return 2
             raise
 
-    # The redaction keeps the key's own first characters, so it is cleaned
-    # like any other value that was written somewhere else.
+    # The redaction arm cannot carry a control character once the gate above
+    # has passed; wrapped anyway so both arms follow the one rule.
     who = _safe_line(creds.tenant) if creds.tenant else _safe_line(_redact(creds.api_key))
     print(f"Signed in as {who}.")
     print(f"Wrote {path}")
