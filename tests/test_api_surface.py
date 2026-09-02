@@ -142,6 +142,46 @@ def test_the_command_answers_a_missing_log_with_a_sentence(monkeypatch, capsys):
     assert "Traceback" not in out.err
 
 
+def test_the_ledger_command_prints_what_the_run_charged(monkeypatch, capsys):
+    """A settled ledger balances to zero, and the command used to print nothing.
+
+    The settlement's own amount is a balance, so it is $0.00 whenever the books
+    are square — and the render suppressed a falsy amount, which is every
+    healthy settlement there is. What the customer pays has to be on the screen.
+    """
+    from nodus.types import Ledger
+
+    led = Ledger.from_dict(
+        {
+            "entries": [
+                {"id": "led_1", "entry_type": "customer_charge", "credit_usd": 5.0},
+                {"id": "led_2", "entry_type": "settle_close", "debit_usd": 5.0},
+            ],
+            "settlement": {"status": "closed", "balance_usd": 0.0},
+        }
+    )
+
+    class _Fake:
+        def __init__(self, *a, **kw):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return None
+
+        def ledger(self, workload_id):
+            return led
+
+    monkeypatch.setattr(cli, "Client", _Fake)
+    assert cli.main(["ledger", "wl_abc"]) == 0
+    out = capsys.readouterr().out
+    assert "5.00" in out, f"the charge is not on the screen: {out!r}"
+    assert "closed" in out
+    assert "0.00" in out, "a zero balance is a fact, not a reason to print nothing"
+
+
 def test_explain_still_reads_the_route_out_of_the_control_plane(monkeypatch, capsys):
     """The half that was never the price book: why this route, from the plane that chose it."""
 

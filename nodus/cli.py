@@ -119,9 +119,12 @@ def _cmd_ledger(args: argparse.Namespace) -> int:
             side, amount = ("debit", e.debit_usd) if e.debit_usd else ("credit", e.credit_usd)
             print(f"  {e.entry_type:<18} {side:<7} ${amount:.6f}")
         st = led.settlement
-        if st:
-            print(f"  {'settlement':<18} {st.status}"
-                  + (f"   ${st.total_usd:.6f}" if st.total_usd else ""))
+        # Both numbers, always. The charge is what the customer pays; the
+        # balance is what closing left on the books, and a settlement that
+        # closed cleanly leaves zero -- which is a fact worth printing, not a
+        # falsy amount to suppress.
+        print(f"  {'charged':<18} {'total':<7} ${led.charged_usd:.6f}")
+        print(f"  {'settlement':<18} {st.status:<7} balance ${st.balance_usd:.6f}")
     return 0
 
 

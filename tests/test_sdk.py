@@ -470,15 +470,68 @@ def test_artifacts_map_the_manifest_row_shape():
     assert not hasattr(art, "verified")
 
 
+# GET /v1/workloads/{id}/ledger as internal/api/pilot.go writes it. A
+# customer_charge is a CREDIT, and settlement carries a balance rather than a
+# total: settle_close posts the entry that zeroes the books, so a healthy
+# closed settlement balances at exactly $0.00.
+LEDGER = {
+    "workload_id": "wl_abc",
+    "entries": [
+        {
+            "id": "led_1",
+            "correlation_id": "cor_1",
+            "entry_type": "customer_charge",
+            "debit_usd": 0.0,
+            "credit_usd": 5.0,
+            "currency": "USD",
+            "evidence": {"hours": 2.0},
+            "created_at": "2026-07-27T11:00:00Z",
+        },
+        {
+            "id": "led_2",
+            "correlation_id": "settle_1",
+            "entry_type": "settle_close",
+            "debit_usd": 5.0,
+            "credit_usd": 0.0,
+            "currency": "USD",
+            "evidence": {"reason": "settle_close_balance"},
+            "created_at": "2026-07-27T11:05:00Z",
+        },
+    ],
+    "settlement": {
+        "status": "closed",
+        "balance_usd": 0.0,
+        "correlation_id": "settle_1",
+        "closed_at": "2026-07-27T11:05:00Z",
+    },
+}
+
+
 def test_ledger_parses_entries_and_settlement():
-    payload = {
-        "entries": [{"id": "le_1", "entry_type": "customer_charge", "debit_usd": 5.0}],
-        "settlement": {"status": "settled", "total_usd": 5.0},
-    }
-    with client_with(lambda r: httpx.Response(200, json=payload)) as c:
+    with client_with(lambda r: httpx.Response(200, json=LEDGER)) as c:
         led = c.ledger("wl_abc")
-    assert led.entries[0].debit_usd == 5.0
-    assert led.settlement.status == "settled"
+    assert led.entries[0].credit_usd == 5.0
+    assert led.settlement.status == "closed"
+    assert led.settlement.balance_usd == 0.0
+    assert led.settlement.closed_at is not None
+
+
+def test_the_ledger_totals_what_the_customer_was_charged():
+    """The settlement balances to zero; the charge is what the customer pays.
+
+    ``balance_usd`` is what is left on the books after settle_close posts the
+    entry that squares them, so it is $0.00 for every healthy settlement.
+    Reading it as the price of the run reports a free workload. What was
+    charged is the sum of the customer_charge credits.
+    """
+    with client_with(lambda r: httpx.Response(200, json=LEDGER)) as c:
+        led = c.ledger("wl_abc")
+    assert led.charged_usd == 5.0
+
+
+def test_a_settlement_carries_no_total_the_server_never_sends():
+    """``total_usd`` was read from two keys the control plane has never sent."""
+    assert not hasattr(nodus.Settlement(), "total_usd")
 
 
 # -- errors ----------------------------------------------------------------

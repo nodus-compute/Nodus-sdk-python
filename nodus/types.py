@@ -29,6 +29,7 @@ __all__ = [
     "Settlement",
     "Ledger",
     "Meter",
+    "CUSTOMER_CHARGE",
 ]
 
 
@@ -335,10 +336,25 @@ class LedgerEntry:
         )
 
 
+#: The entry type that moves a customer's money. Everything else on a ledger is
+#: bookkeeping between Nodus and the run.
+CUSTOMER_CHARGE = "customer_charge"
+
+
 @dataclass
 class Settlement:
+    """Whether the books for one workload are closed, and what is left on them.
+
+    ``balance_usd`` is a residual, not a price: closing a settlement posts the
+    entry that squares debits against credits, so a settlement that closed
+    cleanly balances at exactly $0.00. What the run cost is
+    :attr:`Ledger.charged_usd`.
+    """
+
     status: str = "none"
-    total_usd: float = 0.0
+    balance_usd: float = 0.0
+    correlation_id: str = ""
+    closed_at: datetime | None = None
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
     @classmethod
@@ -346,7 +362,9 @@ class Settlement:
         d = d or {}
         return cls(
             status=d.get("status") or "none",
-            total_usd=float(d.get("total_usd") or d.get("customer_charge_usd") or 0.0),
+            balance_usd=float(d.get("balance_usd") or 0.0),
+            correlation_id=d.get("correlation_id") or "",
+            closed_at=_dt(d.get("closed_at")),
             raw=d,
         )
 
@@ -361,6 +379,17 @@ class Ledger:
     entries: list[LedgerEntry] = field(default_factory=list)
     settlement: Settlement = field(default_factory=Settlement)
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @property
+    def charged_usd(self) -> float:
+        """What the customer was charged for this workload, from the evidence.
+
+        The sum of the customer_charge credits — the same arithmetic the control
+        plane projects ``spend_usd`` from, so the two reconcile against each
+        other. The settlement's own balance is what is left after closing, which
+        is zero whenever nothing went wrong.
+        """
+        return sum(e.credit_usd for e in self.entries if e.entry_type == CUSTOMER_CHARGE)
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> "Ledger":
