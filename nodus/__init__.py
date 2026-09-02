@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -269,6 +270,29 @@ def _resolve(api_key: str | None, base_url: str | None) -> tuple[str, str]:
             "It is the API address from https://nodus.run/console/."
         )
     return key, url
+
+
+#: What an identifier may contain. Everything the control plane mints is inside
+#: this; everything outside it is a URL, not an id.
+_WORKLOAD_ID = re.compile(r"\A[A-Za-z0-9_-]+\Z")
+
+
+def _valid_id(workload_id: Any) -> str:
+    """One path segment, checked before it can become part of a URL.
+
+    ``/v1/workloads/{id}`` is a template, and httpx resolves dot segments before
+    it sends: an id of ``../../v1/webhooks`` left the workload namespace and
+    read back the webhook signing secret. An id that arrives from the server and
+    is followed on the next refresh reaches the same place, so this is checked
+    wherever an id becomes a path -- not only where a caller typed one.
+    """
+    if isinstance(workload_id, str) and _WORKLOAD_ID.match(workload_id):
+        return workload_id
+    raise ValidationError(
+        f"{workload_id!r} is not a workload id: an id is letters, digits, "
+        "underscores and hyphens. It becomes one segment of /v1/workloads/{id}, "
+        "where a slash or a dot segment addresses a different endpoint entirely."
+    )
 
 
 def _was_replayed(headers: dict[str, str]) -> bool:
@@ -611,7 +635,7 @@ class Client(_Transport):
         return wl
 
     def get(self, workload_id: str) -> "Workload":
-        path = f"/v1/workloads/{workload_id}"
+        path = f"/v1/workloads/{_valid_id(workload_id)}"
         wl = Workload(self)
         wl._absorb(self._one(self._request("GET", path), "GET", path))
         return wl
@@ -661,7 +685,7 @@ class Client(_Transport):
     def cancel(self, workload_id: str, *, idempotency_key: str | None = None) -> None:
         self._request(
             "POST",
-            f"/v1/workloads/{workload_id}/cancel",
+            f"/v1/workloads/{_valid_id(workload_id)}/cancel",
             idempotency_key=idempotency_key or f"cancel-{workload_id}",
         )
 
@@ -671,7 +695,7 @@ class Client(_Transport):
         The server returns at most 100 and does not say whether more follow.
         Pass ``after=`` the last ``seq`` you saw, or use ``iter_events()``.
         """
-        res = self._request("GET", f"/v1/workloads/{workload_id}/events", params={"after": after})
+        res = self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/events", params={"after": after})
         return [Event.from_dict(e) for e in (res or {}).get("events") or []]
 
     def iter_events(self, workload_id: str, *, after: int = 0) -> Iterator[Event]:
@@ -685,11 +709,11 @@ class Client(_Transport):
                 yield ev
 
     def artifacts(self, workload_id: str) -> list[Artifact]:
-        res = self._request("GET", f"/v1/workloads/{workload_id}/artifacts")
+        res = self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/artifacts")
         return [Artifact.from_dict(a) for a in (res or {}).get("artifacts") or []]
 
     def ledger(self, workload_id: str) -> Ledger:
-        return Ledger.from_dict(self._request("GET", f"/v1/workloads/{workload_id}/ledger"))
+        return Ledger.from_dict(self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/ledger"))
 
     def logs(
         self, workload_id: str, *, stage: str | None = None, generation: int | None = None
@@ -713,7 +737,7 @@ class Client(_Transport):
         if generation is not None:
             params["generation"] = generation
         return self._request(
-            "GET", f"/v1/workloads/{workload_id}/logs", params=params or None, text=True
+            "GET", f"/v1/workloads/{_valid_id(workload_id)}/logs", params=params or None, text=True
         ) or ""
 
     def wait(
@@ -800,7 +824,7 @@ class Workload(_WorkloadState):
         self._client = client
 
     def refresh(self) -> "Workload":
-        path = f"/v1/workloads/{self.id}"
+        path = f"/v1/workloads/{_valid_id(self.id)}"
         self._absorb(self._client._one(self._client._request("GET", path), "GET", path))
         return self
 
@@ -987,7 +1011,7 @@ class AsyncClient(_Transport):
         return wl
 
     async def get(self, workload_id: str) -> "AsyncWorkload":
-        path = f"/v1/workloads/{workload_id}"
+        path = f"/v1/workloads/{_valid_id(workload_id)}"
         wl = AsyncWorkload(self)
         wl._absorb(self._one(await self._request("GET", path), "GET", path))
         return wl
@@ -1038,7 +1062,7 @@ class AsyncClient(_Transport):
     async def cancel(self, workload_id: str, *, idempotency_key: str | None = None) -> None:
         await self._request(
             "POST",
-            f"/v1/workloads/{workload_id}/cancel",
+            f"/v1/workloads/{_valid_id(workload_id)}/cancel",
             idempotency_key=idempotency_key or f"cancel-{workload_id}",
         )
 
@@ -1049,7 +1073,7 @@ class AsyncClient(_Transport):
         Pass ``after=`` the last ``seq`` you saw, or use ``iter_events()``.
         """
         res = await self._request(
-            "GET", f"/v1/workloads/{workload_id}/events", params={"after": after}
+            "GET", f"/v1/workloads/{_valid_id(workload_id)}/events", params={"after": after}
         )
         return [Event.from_dict(e) for e in (res or {}).get("events") or []]
 
@@ -1064,11 +1088,11 @@ class AsyncClient(_Transport):
                 yield ev
 
     async def artifacts(self, workload_id: str) -> list[Artifact]:
-        res = await self._request("GET", f"/v1/workloads/{workload_id}/artifacts")
+        res = await self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/artifacts")
         return [Artifact.from_dict(a) for a in (res or {}).get("artifacts") or []]
 
     async def ledger(self, workload_id: str) -> Ledger:
-        return Ledger.from_dict(await self._request("GET", f"/v1/workloads/{workload_id}/ledger"))
+        return Ledger.from_dict(await self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/ledger"))
 
     async def logs(
         self, workload_id: str, *, stage: str | None = None, generation: int | None = None
@@ -1080,7 +1104,7 @@ class AsyncClient(_Transport):
         if generation is not None:
             params["generation"] = generation
         return await self._request(
-            "GET", f"/v1/workloads/{workload_id}/logs", params=params or None, text=True
+            "GET", f"/v1/workloads/{_valid_id(workload_id)}/logs", params=params or None, text=True
         ) or ""
 
     async def wait(
@@ -1151,7 +1175,7 @@ class AsyncWorkload(_WorkloadState):
         self._client = client
 
     async def refresh(self) -> "AsyncWorkload":
-        path = f"/v1/workloads/{self.id}"
+        path = f"/v1/workloads/{_valid_id(self.id)}"
         self._absorb(self._client._one(await self._client._request("GET", path), "GET", path))
         return self
 

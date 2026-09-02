@@ -564,6 +564,109 @@ def test_a_settlement_carries_no_total_the_server_never_sends():
     assert st.balance_usd == 0.0
 
 
+# -- an id is one path segment ---------------------------------------------
+
+
+TRAVERSALS = [
+    "../../v1/webhooks",
+    "..%2f..%2fv1%2fwebhooks",
+    "wl_abc/../../v1/webhooks",
+    "wl_abc?x=1",
+    "wl_abc#frag",
+    "wl abc",
+    "",
+]
+
+
+@pytest.mark.parametrize("bad", TRAVERSALS)
+def test_a_workload_id_cannot_walk_out_of_its_own_path(bad):
+    """``/v1/workloads/{id}`` is a template, and an id is a segment of it.
+
+    httpx normalises dot segments before it sends, so an id of ``../../v1/
+    webhooks`` left the workload namespace entirely and read back the webhook
+    signing secret. The same id can arrive from the server, through _absorb.
+    """
+    paths: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        return httpx.Response(200, json=WORKLOAD)
+
+    with client_with(handler) as c:
+        with pytest.raises(nodus.ValidationError):
+            c.get(bad)
+    assert not paths, f"the request left the client: {paths}"
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda c, i: c.get(i),
+        lambda c, i: c.cancel(i),
+        lambda c, i: c.events(i),
+        lambda c, i: c.artifacts(i),
+        lambda c, i: c.ledger(i),
+        lambda c, i: c.logs(i),
+        lambda c, i: list(c.iter_events(i)),
+        lambda c, i: c.wait(i, poll_seconds=0),
+        lambda c, i: list(c.stream_events(i, poll_seconds=0)),
+    ],
+)
+def test_every_call_that_takes_an_id_checks_it(call):
+    paths: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        return httpx.Response(200, json=WORKLOAD)
+
+    with client_with(handler) as c:
+        with pytest.raises(nodus.ValidationError):
+            call(c, "../../v1/webhooks")
+    assert not paths, f"the request left the client: {paths}"
+
+
+def test_the_async_client_checks_ids_too():
+    async def go():
+        c = nodus.AsyncClient(api_key="nk_live_test", base_url="https://nodus.invalid")
+        paths: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            paths.append(request.url.path)
+            return httpx.Response(200, json=WORKLOAD)
+
+        c._http = httpx.AsyncClient(
+            base_url="https://nodus.invalid", transport=httpx.MockTransport(handler)
+        )
+        async with c:
+            for call in (c.get, c.cancel, c.events, c.artifacts, c.ledger, c.logs):
+                with pytest.raises(nodus.ValidationError):
+                    await call("../../v1/webhooks")
+        return paths
+
+    assert asyncio.run(go()) == []
+
+
+def test_an_id_the_server_supplied_is_checked_before_it_is_followed():
+    """A handle refreshes on the id the body carried, so a hostile plane could
+    aim the next request wherever it liked."""
+    paths: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        return httpx.Response(200, json={**WORKLOAD, "id": "../../v1/webhooks"})
+
+    with client_with(handler) as c:
+        wl = c.get("wl_abc")
+        with pytest.raises(nodus.ValidationError):
+            wl.refresh()
+    assert paths == ["/v1/workloads/wl_abc"], paths
+
+
+def test_an_ordinary_id_still_works():
+    with client_with(lambda r: httpx.Response(200, json=WORKLOAD)) as c:
+        assert c.get("wl_00000001-0000-4000-8000-000000000000").id == "wl_abc"
+
+
 # -- errors ----------------------------------------------------------------
 
 
