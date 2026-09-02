@@ -20,7 +20,7 @@ from .types import ContinuityMode
 def _fmt_workload(wl: Any) -> str:
     # cost_now_usd, not spend_usd: a charge is booked when a lease closes, so a
     # list of running workloads would otherwise show $0.00 for all of them.
-    route = wl.route.sku if wl.route else "—"
+    route = wl.route.sku if wl.route else "-"
     status = getattr(wl.status, "value", wl.status)
     return f"{wl.id}  {status:<13} {route:<28} ${wl.cost_now_usd:.2f}"
 
@@ -127,7 +127,7 @@ def _cmd_ledger(args: argparse.Namespace) -> int:
 
 
 _NO_LOG_YET = (
-    "no log recorded yet — the log is a committed artifact, so it appears"
+    "no log recorded yet: the log is a committed artifact, so it appears"
     " once a checkpoint carrying it has been verified"
 )
 
@@ -156,8 +156,8 @@ def _fmt_route(route: Any) -> list[str]:
     lines = [
         f"{'catalog SKU':<22} {route.sku}",
         f"{'fit':<22} {route.fit_class}"
-        + (f"  ·  {mem:g} GB" if mem else "")
-        + (f"  ·  {route.region}" if getattr(route, 'region', '') else ""),
+        + (f"  |  {mem:g} GB" if mem else "")
+        + (f"  |  {route.region}" if getattr(route, 'region', '') else ""),
         f"{'rate':<22} ${route.price_usd_hour:.4f}/h",
         f"{'expected hours':<22} {route.expected_hours:.2f}",
         f"{'expected cost':<22} ${route.expected_cost_usd:.2f}",

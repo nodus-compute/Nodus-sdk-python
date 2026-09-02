@@ -106,6 +106,40 @@ def test_the_package_ships_its_types():
 # -- the command ------------------------------------------------------------
 
 
+def test_the_command_prints_only_ascii():
+    """A console on a legacy code page cannot encode a typographic dash.
+
+    Windows still opens cmd.exe on the OEM code page, where printing an em
+    dash raises UnicodeEncodeError -- so the run that had just been submitted
+    ended in a traceback instead of printing its own id. The docstrings are
+    exempt because nothing prints them; the constants are what reach a screen.
+    """
+    import ast
+    import pathlib
+
+    tree = ast.parse(pathlib.Path(cli.__file__).read_text(encoding="utf-8"))
+    documented = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            first = node.body[0] if node.body else None
+            if (
+                isinstance(first, ast.Expr)
+                and isinstance(first.value, ast.Constant)
+                and isinstance(first.value.value, str)
+            ):
+                documented.add(id(first.value))
+
+    offenders = [
+        (node.lineno, node.value)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and id(node) not in documented
+        and not node.value.isascii()
+    ]
+    assert not offenders, f"non-ASCII text the command can print: {offenders}"
+
+
 def _subcommands() -> set[str]:
     parser = cli.build_parser()
     actions = [a for a in parser._actions if hasattr(a, "choices") and a.choices]
