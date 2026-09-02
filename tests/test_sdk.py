@@ -636,6 +636,65 @@ def test_client_errors_are_not_retried():
     assert calls["n"] == 1
 
 
+def test_a_submit_that_times_out_hands_back_the_key_that_makes_the_retry_safe():
+    """A timeout is not a refusal. The workload may exist, and may be billing.
+
+    The key that was sent is the only thing that makes a retry the same
+    submission instead of a second paid run, and it was discarded with the
+    request -- a caller who let run() mint one could not name it afterwards.
+    """
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectTimeout("too slow", request=request)
+
+    with client_with(handler, max_retries=0) as c:
+        with pytest.raises(nodus.APITimeoutError) as exc:
+            c.run(model="x", budget=1, idempotency_key="nightly-2026-09-01")
+    assert exc.value.payload.get("idempotency_key") == "nightly-2026-09-01"
+    assert "idempotency_key" in str(exc.value)
+
+
+def test_a_submit_that_cannot_connect_hands_back_its_generated_key():
+    """The key run() minted for itself is the one the caller never saw."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("no route", request=request)
+
+    with client_with(handler, max_retries=0) as c:
+        with pytest.raises(nodus.APIConnectionError) as exc:
+            c.run(model="x", budget=1)
+    key = exc.value.payload.get("idempotency_key")
+    assert key and key.startswith("nodus-")
+
+
+def test_an_async_submit_that_times_out_hands_back_its_key_too():
+    async def go():
+        c = nodus.AsyncClient(api_key="nk_live_test", base_url="https://nodus.invalid",
+                              max_retries=0)
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise httpx.ConnectTimeout("too slow", request=request)
+
+        c._http = httpx.AsyncClient(
+            base_url="https://nodus.invalid", transport=httpx.MockTransport(handler)
+        )
+        async with c:
+            with pytest.raises(nodus.APITimeoutError) as exc:
+                await c.run(model="x", budget=1, idempotency_key="k-1")
+        return exc.value.payload.get("idempotency_key")
+
+    assert asyncio.run(go()) == "k-1"
+
+
+def test_a_read_that_times_out_says_nothing_about_keys():
+    """A GET creates nothing, so there is no resubmission to make safe."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectTimeout("too slow", request=request)
+
+    with client_with(handler, max_retries=0) as c:
+        with pytest.raises(nodus.APITimeoutError) as exc:
+            c.get("wl_abc")
+    assert exc.value.payload == {}
+
+
 def test_idempotency_conflict_is_not_retried():
     """Retrying a 409 cannot help: the key already names a different payload."""
     calls = {"n": 0}

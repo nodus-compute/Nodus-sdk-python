@@ -404,6 +404,28 @@ class _Transport:
         return min(8.0, 0.5 * (2**attempt))
 
     @staticmethod
+    def _unreached(
+        cls: type[NodusError], message: str, idempotency_key: str | None
+    ) -> NodusError:
+        """A failure that leaves the caller unable to say what happened.
+
+        A timeout is not a refusal: the request may have arrived, and if it did,
+        the workload exists and is billing. Retrying without the key that was
+        sent is how one brief becomes two paid runs -- and a caller who let
+        ``run()`` mint the key could not name it, because it died with the
+        request. It travels on the error instead.
+        """
+        if not idempotency_key:
+            return cls(message)
+        return cls(
+            f"{message}\nIt may still have reached the control plane, in which case "
+            "the workload exists and is billing. Retry with "
+            f"idempotency_key={idempotency_key!r} so the retry is the same "
+            "submission rather than a second paid one.",
+            body={"idempotency_key": idempotency_key},
+        )
+
+    @staticmethod
     def _one(body: Any, method: str, path: str) -> dict[str, Any]:
         """A read that must have answered with an object.
 
@@ -468,13 +490,19 @@ class Client(_Transport):
                     time.sleep(self._backoff(attempt, None))
                     attempt += 1
                     continue
-                raise APITimeoutError(f"{method} {path} timed out") from exc
+                raise self._unreached(
+                    APITimeoutError, f"{method} {path} timed out", idempotency_key
+                ) from exc
             except httpx.HTTPError as exc:
                 if attempt < self.max_retries:
                     time.sleep(self._backoff(attempt, None))
                     attempt += 1
                     continue
-                raise APIConnectionError(f"{method} {path} failed to connect: {exc}") from exc
+                raise self._unreached(
+                    APIConnectionError,
+                    f"{method} {path} failed to connect: {exc}",
+                    idempotency_key,
+                ) from exc
 
             if resp.status_code >= 400:
                 if self._should_retry(method, resp.status_code, attempt):
@@ -530,6 +558,11 @@ class Client(_Transport):
         this call's own retries and nothing beyond it. To make an
         application-level retry loop safe, pass a key derived from the thing you
         are running so a resubmission cannot become a second paid workload.
+
+        A raised :class:`APITimeoutError` or :class:`APIConnectionError` does
+        not mean nothing was submitted: the request may have arrived and the
+        workload may be running. Retry with the key on ``err.payload``, which is
+        the one that was sent, so the retry cannot become a second paid run.
         """
         payload = build_payload(
             command=command,
@@ -849,13 +882,19 @@ class AsyncClient(_Transport):
                     await asyncio.sleep(self._backoff(attempt, None))
                     attempt += 1
                     continue
-                raise APITimeoutError(f"{method} {path} timed out") from exc
+                raise self._unreached(
+                    APITimeoutError, f"{method} {path} timed out", idempotency_key
+                ) from exc
             except httpx.HTTPError as exc:
                 if attempt < self.max_retries:
                     await asyncio.sleep(self._backoff(attempt, None))
                     attempt += 1
                     continue
-                raise APIConnectionError(f"{method} {path} failed to connect: {exc}") from exc
+                raise self._unreached(
+                    APIConnectionError,
+                    f"{method} {path} failed to connect: {exc}",
+                    idempotency_key,
+                ) from exc
 
             if resp.status_code >= 400:
                 if self._should_retry(method, resp.status_code, attempt):
