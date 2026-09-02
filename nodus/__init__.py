@@ -260,6 +260,17 @@ def _setup_help(missing: list[str]) -> str:
     )
 
 
+def _is_header_safe(value: str) -> bool:
+    """Whether this can be sent verbatim in a header or a URL.
+
+    Printable ASCII and no spaces: a control character in a credential is a
+    header injection waiting for a server that tolerates one, and a non-ASCII
+    one is a UnicodeEncodeError thrown from inside the transport, long after
+    the setting that caused it was read.
+    """
+    return bool(value) and value.isascii() and value.isprintable() and " " not in value
+
+
 def _resolve(api_key: str | None, base_url: str | None) -> tuple[str, str]:
     key = (api_key or os.environ.get("NODUS_API_KEY") or "").strip()
     url = (base_url or os.environ.get("NODUS_BASE_URL") or "").strip().rstrip("/")
@@ -270,6 +281,14 @@ def _resolve(api_key: str | None, base_url: str | None) -> tuple[str, str]:
     ]
     if missing:
         raise ConfigurationError(_setup_help(missing))
+    for name, value in (("NODUS_BASE_URL", url), ("NODUS_API_KEY", key)):
+        if not _is_header_safe(value):
+            raise ConfigurationError(
+                f"{name} contains a character that cannot be sent: it must be "
+                "printable ASCII with no spaces or line breaks. Check for a "
+                "newline picked up from a file, or a smart quote pasted from a "
+                "browser."
+            )
     if not url.startswith(("http://", "https://")):
         raise ConfigurationError(
             f"base_url must start with http:// or https://, got {url!r}. "
@@ -298,6 +317,21 @@ def _valid_id(workload_id: Any) -> str:
         f"{workload_id!r} is not a workload id: an id is letters, digits, "
         "underscores and hyphens. It becomes one segment of /v1/workloads/{id}, "
         "where a slash or a dot segment addresses a different endpoint entirely."
+    )
+
+
+def _valid_idempotency_key(key: str) -> str:
+    """A key that can survive being a header.
+
+    A non-ASCII one raised UnicodeEncodeError from inside the transport, mid
+    submit, naming neither the key nor the call; one carrying CRLF was a header
+    the server would reject on every attempt, retried to the end of the budget.
+    """
+    if _is_header_safe(key):
+        return key
+    raise ValidationError(
+        f"idempotency_key {key!r} cannot be sent as a header: it must be "
+        "printable ASCII with no spaces or line breaks."
     )
 
 
@@ -531,7 +565,7 @@ class Client(_Transport):
         text: bool = False,
         headers_out: dict[str, str] | None = None,
     ) -> Any:
-        headers = {"Idempotency-Key": idempotency_key} if idempotency_key else {}
+        headers = {"Idempotency-Key": _valid_idempotency_key(idempotency_key)} if idempotency_key else {}
         attempt = 0
         # One waiting budget for the whole call, so retries cannot multiply the
         # ceiling into a wait the caller reads as a hang.
@@ -941,7 +975,7 @@ class AsyncClient(_Transport):
         text: bool = False,
         headers_out: dict[str, str] | None = None,
     ) -> Any:
-        headers = {"Idempotency-Key": idempotency_key} if idempotency_key else {}
+        headers = {"Idempotency-Key": _valid_idempotency_key(idempotency_key)} if idempotency_key else {}
         attempt = 0
         # One waiting budget for the whole call, so retries cannot multiply the
         # ceiling into a wait the caller reads as a hang.

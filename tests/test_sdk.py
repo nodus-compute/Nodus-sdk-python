@@ -208,6 +208,45 @@ def test_missing_base_url_says_what_to_set_and_where_to_get_it(monkeypatch):
     assert "https://nodus.run/console/" in message
 
 
+@pytest.mark.parametrize(
+    "key",
+    ["nk_live_x\r\nX-Evil: 1", "nk_live_x\nmore", "nk_live_é", "nk_live_x\x00", "nk_live x\t"],
+)
+def test_a_key_that_cannot_be_a_header_is_refused_at_the_door(key):
+    """The key goes into Authorization verbatim, so its bytes matter.
+
+    A key carrying CRLF was accepted and built into the header as written --
+    the shape of a header injection, and at best a protocol error thrown from
+    somewhere unrelated much later. A credential is checked where it is read.
+    """
+    with pytest.raises(nodus.ConfigurationError) as exc:
+        nodus.Client(api_key=key, base_url="https://nodus.invalid")
+    assert "NODUS_API_KEY" in str(exc.value)
+
+
+@pytest.mark.parametrize("url", ["https://nodus.invalid\nX: 1", "https://nodés.invalid"])
+def test_a_base_url_that_is_not_printable_ascii_is_a_configuration_error(url):
+    """It raised httpx.InvalidURL, which no ``except nodus.NodusError`` catches."""
+    with pytest.raises(nodus.ConfigurationError):
+        nodus.Client(api_key="nk_live_test", base_url=url)
+
+
+def test_a_non_ascii_idempotency_key_is_refused_rather_than_encoded():
+    """It raised UnicodeEncodeError from inside the transport, mid-submit."""
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        return httpx.Response(202, json=SUBMIT_ACCEPTED)
+
+    with client_with(handler) as c:
+        with pytest.raises(nodus.ValidationError):
+            c.run(model="x", budget=1, idempotency_key="nightly-café")
+        with pytest.raises(nodus.ValidationError):
+            c.run(model="x", budget=1, idempotency_key="nightly\r\nX-Evil: 1")
+    assert not calls, "a request went out with a header that cannot be encoded"
+
+
 def test_both_missing_are_reported_together(monkeypatch):
     monkeypatch.delenv("NODUS_API_KEY", raising=False)
     monkeypatch.delenv("NODUS_BASE_URL", raising=False)
