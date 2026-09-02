@@ -112,15 +112,42 @@ def _enum_value(v: Any) -> Any:
     return getattr(v, "value", v)
 
 
+# Brief fields the control plane does not model, and what to reach for instead.
+# Each of these was accepted, serialised, sent, and thrown away on arrival.
+UNSUPPORTED: dict[str, str] = {
+    "interrupt_tolerance": (
+        "the control plane does not model this yet: it derives the envelope's "
+        "tolerance from continuity, so a declared 'low' became an envelope of "
+        "'high'. Use continuity= to say what interruption should cost you."
+    ),
+    "env": (
+        "the control plane does not model this yet: a workload's source is an "
+        "image and a command, so environment never reached the host. Bake the "
+        "values into the image, or pass them in the command."
+    ),
+    "inputs": (
+        "the control plane does not model this yet: a top-level inputs list is "
+        "decoded and read by nothing. Stage inputs are the ones that are "
+        "honoured -- declare them on stages=[...]."
+    ),
+}
+
+
 def _reject_unknown(unknown: dict[str, Any], known: tuple[str, ...]) -> None:
     """Refuse a keyword this SDK does not model, naming what it looked like.
 
     The control plane ignores fields it does not know, so a forwarded typo is
     accepted and runs: ``budget_usd=400`` submits a workload with no cost
-    ceiling at all and answers 202.
+    ceiling at all and answers 202. The same is true of a field it once looked
+    like it modelled, which is what :data:`UNSUPPORTED` is for.
     """
     if not unknown:
         return
+    named = sorted(set(unknown) & set(UNSUPPORTED))
+    if named:
+        raise TypeError(
+            "; ".join(f"{name}=: {UNSUPPORTED[name]}" for name in named)
+        )
     parts = []
     for name in sorted(unknown):
         near = difflib.get_close_matches(name, known, n=1, cutoff=0.6)
@@ -147,10 +174,7 @@ def build_payload(
     budget: float | None = None,
     finish_by: datetime | str | None = None,
     continuity: Any = None,
-    interrupt_tolerance: Any = None,
     data_regions: list[str] | None = None,
-    inputs: list[dict[str, Any]] | dict[str, Any] | None = None,
-    env: dict[str, str] | None = None,
     stages: list[dict[str, Any]] | None = None,
     framework: str | None = None,
     policy: dict[str, Any] | None = None,
@@ -172,8 +196,6 @@ def build_payload(
         req.setdefault("peak_memory_gb", peak_memory_gb)
     if expected_runtime_hours is not None:
         req.setdefault("expected_runtime_hours", expected_runtime_hours)
-    if interrupt_tolerance is not None:
-        req.setdefault("interrupt_tolerance", _enum_value(interrupt_tolerance))
 
     # Data residency is a policy, not a requirement: the envelope is built from
     # payload.Policy.DataRegions, and models.Requirements has no such field, so
@@ -214,7 +236,7 @@ def build_payload(
         discarded = sorted(
             name
             for name, value in (
-                ("image", image), ("command", command), ("env", env), ("source", source)
+                ("image", image), ("command", command), ("source", source)
             )
             if value
         )
@@ -232,12 +254,8 @@ def build_payload(
         cmd = _as_command(command)
         if cmd:
             src["command"] = cmd
-        if env:
-            src["env"] = dict(env)
         payload["source"] = src
 
-    if inputs:
-        payload["inputs"] = [inputs] if isinstance(inputs, dict) else list(inputs)
     if framework:
         payload["framework"] = framework
     if pol:

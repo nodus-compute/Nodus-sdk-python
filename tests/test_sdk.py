@@ -117,8 +117,8 @@ def test_continuity_defaults_to_checkpointed_and_ephemeral_opts_out():
 
 def test_enums_and_strings_are_interchangeable():
     a = build_payload(budget=1, continuity=nodus.ContinuityMode.RESTARTABLE,
-                      interrupt_tolerance=nodus.InterruptTolerance.HIGH)
-    b = build_payload(budget=1, continuity="restartable", interrupt_tolerance="high")
+                      compute_class=nodus.ComputeClass.VM)
+    b = build_payload(budget=1, continuity="restartable", compute_class="vm")
     assert a == b
 
 
@@ -1124,6 +1124,54 @@ def test_every_unknown_keyword_is_named_at_once():
         build_payload(model="x", budget=1, runtime_hours=3, memory_gb=80)
     message = str(exc.value)
     assert "runtime_hours" in message and "memory_gb" in message
+
+
+@pytest.mark.parametrize(
+    "brief,why",
+    [
+        ({"interrupt_tolerance": "low"}, "continuity"),
+        ({"env": {"HF_TOKEN": "secret"}}, "command"),
+        ({"inputs": [{"uri": "key:datasets/x"}]}, "stages"),
+    ],
+)
+def test_a_brief_field_the_control_plane_cannot_honour_is_refused(brief, why):
+    """Three parameters that were accepted, sent, and thrown away.
+
+    interrupt_tolerance landed on no server field at all, and profile.go
+    derives the envelope's tolerance from continuity instead -- so declaring
+    "low" produced an envelope of "high", the opposite of what was asked for.
+    env never reached the box, because models.WorkloadSource is {image,
+    command} and nothing else. inputs was decoded into the payload and read by
+    nothing. Accepting them is a promise the API cannot keep.
+    """
+    name = next(iter(brief))
+    with pytest.raises(TypeError) as exc:
+        build_payload(model="x", budget=1, **brief)
+    message = str(exc.value)
+    assert name in message
+    assert "does not model" in message
+    assert why in message, "the refusal should say what to reach for instead"
+
+
+def test_an_unsupported_field_never_reaches_the_network():
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        return httpx.Response(202, json=SUBMIT_ACCEPTED)
+
+    with client_with(handler) as c:
+        for brief in ({"interrupt_tolerance": "low"}, {"env": {"A": "1"}}, {"inputs": []}):
+            with pytest.raises(TypeError):
+                c.run(model="x", budget=1, **brief)
+    assert not calls
+
+
+def test_the_command_no_longer_offers_a_tolerance_the_server_derives():
+    from nodus import cli
+
+    with pytest.raises(SystemExit):
+        cli.build_parser().parse_args(["run", "--interrupt-tolerance", "low"])
 
 
 def test_a_field_this_sdk_does_not_model_travels_in_extra():

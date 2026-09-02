@@ -73,7 +73,12 @@ class ContinuityMode(_WireEnum):
 
 
 class InterruptTolerance(_WireEnum):
-    """How much interruption risk the brief will accept for a lower cost."""
+    """How much interruption risk an execution envelope carries.
+
+    Not part of a brief: the control plane derives this from ``continuity`` and
+    models no field a caller could set, so ``run()`` does not accept it. It is
+    kept for reading a value the control plane reports.
+    """
 
     LOW = "low"
     MEDIUM = "medium"

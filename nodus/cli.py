@@ -54,7 +54,6 @@ def _cmd_run(args: argparse.Namespace, command: list[str]) -> int:
             budget=args.budget,
             finish_by=args.finish_by,
             continuity=args.continuity,
-            interrupt_tolerance=args.interrupt_tolerance,
             data_regions=args.data_region or None,
             idempotency_key=args.idempotency_key,
         )
@@ -217,7 +216,6 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         choices=[m.value for m in ContinuityMode],
     )
-    r.add_argument("--interrupt-tolerance", default=None, choices=["low", "medium", "high"])
     r.add_argument("--data-region", action="append", default=None)
     r.add_argument("--idempotency-key", default=None)
     r.add_argument("--wait", action="store_true")
