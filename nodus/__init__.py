@@ -812,10 +812,8 @@ class Client(_Transport):
     def iter_events(self, workload_id: str, *, after: int = 0) -> Iterator[Event]:
         """Every event recorded so far, walking past the server's page cap.
 
-        Stops when the sequence does not advance, for the same reason
-        ``iter_workloads`` stops on a repeated offset: a batch that leaves
-        ``after`` where it was is the same batch again, and following it reads
-        it forever.
+        Stops when the sequence does not advance: that batch is the same batch
+        again, and following it reads it forever.
         """
         while True:
             batch = self.events(workload_id, after=after)

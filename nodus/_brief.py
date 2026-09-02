@@ -140,8 +140,8 @@ def _reject_unknown(unknown: dict[str, Any], known: tuple[str, ...]) -> None:
 
     The control plane ignores fields it does not know, so a forwarded typo is
     accepted and runs: ``budget_usd=400`` submits a workload with no cost
-    ceiling at all and answers 202. The same is true of a field it once looked
-    like it modelled, which is what :data:`UNSUPPORTED` is for.
+    ceiling at all and answers 202. :data:`UNSUPPORTED` names the fields that
+    deserve a better refusal than "unknown".
     """
     if not unknown:
         return
@@ -216,9 +216,8 @@ def build_payload(
     if continuity is None:
         cont: dict[str, Any] = {"mode": "checkpointed", "resume_on_interruption": True}
     elif isinstance(continuity, dict):
-        # The same default as the string form: one brief written two ways. An
-        # absent flag is read as true on arrival, which would hand "ephemeral"
-        # the durability it declines. A flag written here is kept.
+        # Same default as the string form: an absent flag reads as true on
+        # arrival, handing "ephemeral" durability it declines. A written flag is kept.
         cont = dict(continuity)
         mode = _enum_value(cont.get("mode", "checkpointed"))
         cont["mode"] = mode
@@ -328,8 +327,7 @@ def _one_status(value: Any) -> str:
     """One filter token, checked against the vocabulary the server expands.
 
     Unrecognised tokens are dropped on arrival, and a filter that expands to
-    nothing is no filter at all -- so a misspelled status does not narrow the
-    list, it returns the whole account.
+    nothing lists the whole account.
     """
     wire = str(_enum_value(value)).strip()
     if wire in STATUS_FILTERS:
@@ -348,9 +346,8 @@ def status_filter(status: Any) -> str | None:
     """Normalise a status filter into the wire form.
 
     Accepts a member, a wire string, a comma-joined string, a list of either,
-    or the presets ``"active"`` and ``"terminal"`` that the control plane
-    expands server-side. A token it could not expand is a ValueError here
-    rather than a listing of everything.
+    or the presets ``"active"`` and ``"terminal"``. A token the server could
+    not expand is a ValueError here rather than a listing of everything.
     """
     if status is None:
         return None

@@ -182,21 +182,17 @@ class BudgetExceededError(NodusError):
 class SpendCheckUnavailableError(NodusError):
     """503 on submit. The account's spend could not be measured, so nothing ran.
 
-    Admission fails closed: rather than admit work past a money guard it could
-    not consult, the control plane refuses. Nothing was created and nothing was
-    charged, and the same brief will be accepted once the check answers again,
-    so this is retryable exactly as sent.
+    Admission fails closed: nothing was created, nothing was charged, and the
+    same brief is retryable exactly as sent.
     """
 
 
 class CapacityUnavailableError(NodusError):
     """Reserved. No control plane path raises this today.
 
-    Kept because it is exported, and removing an exported name breaks an
-    ``except`` clause somebody wrote. There is no ``capacity_unavailable`` code
-    in the API: a brief no route fits is refused at submit as a validation
-    problem, and 503 means the money guard could not be reached
-    (:class:`SpendCheckUnavailableError`).
+    Kept because removing an exported name breaks ``except`` clauses somebody
+    wrote. A brief no route fits is refused at submit as a validation problem;
+    a 503 is :class:`SpendCheckUnavailableError`.
     """
 
 
@@ -300,8 +296,7 @@ def error_from_response(
 
     # A signed-request rejection is a 401 like a bad key, but it means something
     # different to the caller: the credential is fine, the signature is not.
-    # Only the code the API actually writes counts; a second spelling nothing
-    # emits is a branch that can only ever mislead whoever reads it.
+    # Only the code the API actually writes counts.
     if status_code == 401 and code == "invalid_signature":
         cls: type[NodusError] = SignatureError
     elif status_code == 503 and code == "spend_check_unavailable":

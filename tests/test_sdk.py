@@ -117,14 +117,8 @@ def test_continuity_defaults_to_checkpointed_and_ephemeral_opts_out():
 
 @pytest.mark.parametrize("mode", ["checkpointed", "restartable", "ephemeral"])
 def test_both_spellings_of_continuity_build_the_same_brief(mode):
-    """The dict form left resume_on_interruption out, and the server fills it in.
-
-    An absent resume flag is read as true by the control plane, so
-    continuity={"mode": "ephemeral"} -- the spelling that says losing this run
-    is acceptable -- submitted a workload that resumes on interruption and pays
-    for the durability the caller had just declined. The string form of the
-    same words sent the opposite.
-    """
+    """Both spellings of the same continuity submit the same brief: an absent
+    resume flag would be read as true on arrival."""
     assert (
         build_payload(budget=1, continuity=mode)["continuity"]
         == build_payload(budget=1, continuity={"mode": mode})["continuity"]
@@ -154,13 +148,8 @@ def test_status_filter_accepts_presets_members_and_lists():
 
 
 def test_a_status_the_server_cannot_expand_is_refused():
-    """A misspelled filter did not narrow anything -- it returned everything.
-
-    The control plane drops filter tokens it does not recognise, and a filter
-    that expands to nothing is no filter at all. So list(status="runnning")
-    answered with the whole account, and a script that acts on what it lists
-    acted on every workload there.
-    """
+    """The server drops unknown filter tokens, and a filter that expands to
+    nothing lists the whole account."""
     with pytest.raises(ValueError) as exc:
         status_filter("runnning")
     message = str(exc.value)
@@ -185,13 +174,7 @@ def test_the_command_offers_only_statuses_that_filter():
 
 
 def test_data_regions_go_where_the_server_reads_them():
-    """Data residency was sent under requirements, which nothing reads.
-
-    profile.go builds the envelope from ``payload.Policy.DataRegions``, and
-    models.Requirements has no such field -- so the constraint was dropped on
-    arrival and the submission answered 202. A brief that says where its data
-    may live got a run that was never restricted.
-    """
+    """The envelope reads ``Policy.DataRegions``; Requirements has no such field."""
     p = build_payload(model="x", budget=1, data_regions=["us-east-1", "us-west-2"])
     assert p["policy"]["data_regions"] == ["us-east-1", "us-west-2"]
     assert "data_regions" not in p["requirements"]
@@ -1151,13 +1134,7 @@ def test_sync_and_async_handles_expose_the_same_attributes():
 
 
 def test_why_a_run_failed_is_in_its_events_not_in_a_field():
-    """``Workload.error`` could never hold anything.
-
-    models.Workload has no error field and never has, so a caller reading
-    ``wl.error`` to find out why a run failed read None every time -- and read
-    it as "nothing went wrong". The reason is in the events, which is where the
-    control plane writes it.
-    """
+    """models.Workload has no error field; why a run failed is in its events."""
     assert "error" not in nodus._WorkloadState.__annotations__
 
     failed = {**WORKLOAD, "status": "failed"}
@@ -1217,15 +1194,8 @@ def test_every_unknown_keyword_is_named_at_once():
     ],
 )
 def test_a_brief_field_the_control_plane_cannot_honour_is_refused(brief, why):
-    """Three parameters that were accepted, sent, and thrown away.
-
-    interrupt_tolerance landed on no server field at all, and profile.go
-    derives the envelope's tolerance from continuity instead -- so declaring
-    "low" produced an envelope of "high", the opposite of what was asked for.
-    env never reached the box, because models.WorkloadSource is {image,
-    command} and nothing else. inputs was decoded into the payload and read by
-    nothing. Accepting them is a promise the API cannot keep.
-    """
+    """A field the control plane throws away is refused, not accepted and sent:
+    a parameter that lands nowhere is a promise the API cannot keep."""
     name = next(iter(brief))
     with pytest.raises(TypeError) as exc:
         build_payload(model="x", budget=1, **brief)
@@ -1236,12 +1206,8 @@ def test_a_brief_field_the_control_plane_cannot_honour_is_refused(brief, why):
 
 
 def test_source_is_not_a_second_undocumented_spelling_of_image():
-    """``run(source=...)`` set the image without ever being part of the brief.
-
-    It bound to a private parameter, so it slipped past the check that refuses
-    a keyword this SDK does not model -- and then turned up as the did-you-mean
-    suggestion for real typos, recommending a name no documentation has.
-    """
+    """``source=`` is not part of the brief, and binding to a private parameter
+    must not carry it past the unknown-keyword check."""
     from nodus._brief import BRIEF_FIELDS
 
     assert "source" not in BRIEF_FIELDS
@@ -1458,14 +1424,8 @@ def test_every_rejection_the_control_plane_sends_carries_a_remedy(code, hint):
 
 
 def test_the_only_503_the_control_plane_sends_is_the_money_guard():
-    """Every 503 was a capacity problem, and the remedy said to widen the brief.
-
-    The one 503 the API emits is spend_check_unavailable: the account could not
-    be measured, so admission failed CLOSED and nothing was created or charged.
-    Telling that caller to raise their interruption tolerance sends them toward
-    cheaper, more interruptible capacity to fix a problem that was never about
-    capacity -- and the honest answer is to retry in a moment.
-    """
+    """The one 503 the API emits is spend_check_unavailable: admission failed
+    closed, nothing was created or charged, and the remedy is to retry."""
     err = _raised(
         503,
         {"error": "spend_check_unavailable",
@@ -1710,13 +1670,7 @@ def test_iter_events_walks_past_the_cap_the_server_returns():
 
 
 def test_iter_events_stops_when_the_sequence_stops_advancing():
-    """A batch that does not move ``after`` is the same batch again, forever.
-
-    iter_workloads has had this guard all along, one method away: an offset
-    that repeats is a stall, not a next page. iter_events had none, so a plane
-    answering with an unnumbered event walked it 2000 requests deep and kept
-    going -- against rate limits, on the caller's own thread.
-    """
+    """A batch that does not move ``after`` is the same batch again, forever."""
     calls: list[int] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
