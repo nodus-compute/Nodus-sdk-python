@@ -134,7 +134,8 @@ def test_status_filter_accepts_presets_members_and_lists():
 
 
 def test_stages_replace_the_single_source():
-    p = build_payload(stages=[{"id": "prepare"}, {"id": "train", "depends_on": ["prepare"]}])
+    p = build_payload(budget=1,
+                      stages=[{"id": "prepare"}, {"id": "train", "depends_on": ["prepare"]}])
     assert "source" not in p
     assert [s["id"] for s in p["stages"]] == ["prepare", "train"]
 
@@ -167,7 +168,7 @@ def test_an_image_measured_to_ship_no_fetch_tool_warns_before_submission():
 def test_a_stage_naming_that_image_warns_too():
     """A staged brief rents the same hosts; the image lives one level down."""
     with pytest.warns(UserWarning, match="curl"):
-        build_payload(stages=[{"id": "train", "source": {"image": "ubuntu:22.04"}}])
+        build_payload(budget=1, stages=[{"id": "train", "source": {"image": "ubuntu:22.04"}}])
 
 
 def test_an_unmeasured_image_is_not_second_guessed():
@@ -1046,10 +1047,31 @@ def test_a_money_warning_blames_a_direct_brief_too(recwarn):
     assert seen[0].filename.endswith("test_sdk.py"), seen[0].filename
 
 
-def test_a_staged_brief_is_not_nagged_about_a_budget():
+def test_a_staged_brief_is_warned_about_a_budget_like_any_other():
+    """A pipeline of five stages is the brief with the most to spend, not the least.
+
+    The warning was scoped to single-source briefs, so the submissions that rent
+    the most hosts were the ones that never mentioned being uncapped.
+    """
+    with pytest.warns(UserWarning, match="budget="):
+        build_payload(stages=[{"id": "train"}])
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        build_payload(stages=[{"id": "train"}])
+        build_payload(stages=[{"id": "train"}], budget=50)
+
+
+def test_stages_refuse_the_source_they_would_throw_away():
+    """``stages=`` replaces the top-level source, so image= alongside it is a lie.
+
+    They were accepted and dropped: the brief that was submitted ran a
+    different image from the one the caller wrote down.
+    """
+    with pytest.raises(TypeError) as exc:
+        build_payload(stages=[{"id": "train"}], budget=1, image="ubuntu:22.04",
+                      command=["python", "train.py"])
+    message = str(exc.value)
+    assert "image" in message and "command" in message
+    assert "stages" in message
 
 
 # -- pagination and event walking ------------------------------------------

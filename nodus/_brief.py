@@ -205,6 +205,24 @@ def build_payload(
     }
 
     if stages:
+        # A staged brief has a source per stage, so a top-level one has nowhere
+        # to go. Silently dropping it submitted a pipeline that ran something
+        # other than what the caller wrote down.
+        discarded = sorted(
+            name
+            for name, value in (
+                ("image", image), ("command", command), ("env", env), ("source", source)
+            )
+            if value
+        )
+        if discarded:
+            raise TypeError(
+                "stages= replaces the top-level source, so "
+                + ", ".join(f"{n}=" for n in discarded)
+                + " would be dropped rather than run. Put them on the stage that "
+                "needs them: stages=[{'id': ..., 'source': {'image': ..., "
+                "'command': [...]}}]."
+            )
         payload["stages"] = [dict(s) for s in stages]
     else:
         src: dict[str, Any] = {"image": image or source or DEFAULT_IMAGE}
@@ -255,10 +273,7 @@ def _warn_about_the_money(payload: dict[str, Any]) -> None:
     After the merge, not before: a warning drawn from a draft of the brief can
     describe a submission that never happened.
     """
-    if not payload.get("stages"):
-        # Scoped to the single-source brief: that is where an omitted budget is
-        # an accident rather than a pipeline assembled against the schema.
-        _warn_if_it_is_uncapped(payload.get("outcome") or {})
+    _warn_if_it_is_uncapped(payload.get("outcome") or {})
     source = payload.get("source") or {}
     if source.get("image"):
         _warn_if_it_cannot_bootstrap(source["image"])
