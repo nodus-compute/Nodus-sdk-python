@@ -1500,6 +1500,58 @@ def test_generation_zero_is_still_a_filter():
     assert seen["params"].get("generation") == "0"
 
 
+def test_a_log_bigger_than_the_cap_is_refused_before_it_is_all_in_memory(monkeypatch):
+    """A training log is whatever the job printed, and the SDK held all of it.
+
+    The endpoint answers text/plain with no length the client agreed to, so a
+    chatty run put its entire stdout into the caller's process -- measured at
+    210MB. It is read in pieces now, and stops at the ceiling.
+    """
+    monkeypatch.setattr(nodus, "_LOG_MAX_BYTES", 64 * 1024)
+    served: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        def chunks():
+            for i in range(4096):  # 4MB if it is all pulled
+                served.append(i)
+                yield b"x" * 1024
+
+        return httpx.Response(200, content=chunks(), headers={"Content-Type": "text/plain"})
+
+    with client_with(handler) as c:
+        with pytest.raises(nodus.NodusError, match="log"):
+            c.logs("wl_abc")
+    assert len(served) < 200, f"the whole log was pulled into memory: {len(served)} chunks"
+
+
+def test_an_ordinary_log_still_comes_back_whole():
+    seen: dict = {}
+    with client_with(_log_handler(seen)) as c:
+        assert c.logs("wl_abc") == "step-1\nstep-2\n"
+
+
+def test_the_async_client_caps_a_log_too(monkeypatch):
+    monkeypatch.setattr(nodus, "_LOG_MAX_BYTES", 64 * 1024)
+
+    async def go():
+        def handler(request: httpx.Request) -> httpx.Response:
+            async def chunks():
+                for _ in range(4096):
+                    yield b"x" * 1024
+
+            return httpx.Response(200, content=chunks())
+
+        c = nodus.AsyncClient(api_key="nk_live_test", base_url="https://nodus.invalid")
+        c._http = httpx.AsyncClient(
+            base_url="https://nodus.invalid", transport=httpx.MockTransport(handler)
+        )
+        async with c:
+            with pytest.raises(nodus.NodusError, match="log"):
+                await c.logs("wl_abc")
+
+    asyncio.run(go())
+
+
 def test_a_handle_reads_its_own_logs():
     seen: dict = {}
     with client_with(_log_handler(seen)) as c:

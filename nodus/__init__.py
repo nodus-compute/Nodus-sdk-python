@@ -134,6 +134,12 @@ _RETRY_METHODS = frozenset({"GET", "PUT", "DELETE", "POST"})
 _RETRY_AFTER_CAP = 300.0
 
 
+# Most a single log read will hold in memory. The endpoint answers with whatever
+# the job printed and no length the client ever agreed to, so without a ceiling
+# the caller's process is sized by someone else's print statements.
+_LOG_MAX_BYTES = 64 * 1024 * 1024
+
+
 def _retry_after(resp: httpx.Response) -> float | None:
     """Seconds the server asked for, in either spelling the header allows.
 
@@ -507,6 +513,14 @@ class _Transport:
         return min(self._backoff(attempt, resp), left)
 
     @staticmethod
+    def _too_big(path: str, max_bytes: int) -> NodusError:
+        return NodusError(
+            f"the log at {path} is larger than {max_bytes} bytes and was not read. "
+            "Narrow it with stage= and generation=, which is one attempt's output "
+            "rather than every attempt's."
+        )
+
+    @staticmethod
     def _unreached(
         cls: type[NodusError], message: str, idempotency_key: str | None
     ) -> NodusError:
@@ -579,6 +593,7 @@ class Client(_Transport):
         params: dict[str, Any] | None = None,
         text: bool = False,
         headers_out: dict[str, str] | None = None,
+        max_bytes: int | None = None,
     ) -> Any:
         headers = {"Idempotency-Key": _valid_idempotency_key(idempotency_key)} if idempotency_key else {}
         attempt = 0
@@ -587,10 +602,26 @@ class Client(_Transport):
         slept = 0.0
         while True:
             delay: float | None = None
+            capped: str | None = None
             try:
-                resp = self._http.request(
-                    method, path, json=json, headers=headers, params=params
-                )
+                if max_bytes is None:
+                    resp = self._http.request(
+                        method, path, json=json, headers=headers, params=params
+                    )
+                else:
+                    with self._http.stream(
+                        method, path, json=json, headers=headers, params=params
+                    ) as resp:
+                        if resp.status_code < 400:
+                            chunks, total = [], 0
+                            for chunk in resp.iter_bytes():
+                                total += len(chunk)
+                                if total > max_bytes:
+                                    raise self._too_big(path, max_bytes)
+                                chunks.append(chunk)
+                            capped = b"".join(chunks).decode("utf-8", "replace")
+                        else:
+                            resp.read()
             except httpx.TimeoutException as exc:
                 if attempt < self.max_retries:
                     delay = self._hold(attempt, None, slept)
@@ -628,6 +659,8 @@ class Client(_Transport):
 
             if headers_out is not None:
                 headers_out.update(resp.headers)
+            if capped is not None:
+                return capped
             if not resp.content:
                 return "" if text else None
             # The log endpoint answers text/plain, because its whole purpose is
@@ -819,7 +852,11 @@ class Client(_Transport):
         if generation is not None:
             params["generation"] = generation
         return self._request(
-            "GET", f"/v1/workloads/{_valid_id(workload_id)}/logs", params=params or None, text=True
+            "GET",
+            f"/v1/workloads/{_valid_id(workload_id)}/logs",
+            params=params or None,
+            text=True,
+            max_bytes=_LOG_MAX_BYTES,
         ) or ""
 
     def wait(
@@ -989,6 +1026,7 @@ class AsyncClient(_Transport):
         params: dict[str, Any] | None = None,
         text: bool = False,
         headers_out: dict[str, str] | None = None,
+        max_bytes: int | None = None,
     ) -> Any:
         headers = {"Idempotency-Key": _valid_idempotency_key(idempotency_key)} if idempotency_key else {}
         attempt = 0
@@ -997,10 +1035,26 @@ class AsyncClient(_Transport):
         slept = 0.0
         while True:
             delay: float | None = None
+            capped: str | None = None
             try:
-                resp = await self._http.request(
-                    method, path, json=json, headers=headers, params=params
-                )
+                if max_bytes is None:
+                    resp = await self._http.request(
+                        method, path, json=json, headers=headers, params=params
+                    )
+                else:
+                    async with self._http.stream(
+                        method, path, json=json, headers=headers, params=params
+                    ) as resp:
+                        if resp.status_code < 400:
+                            chunks, total = [], 0
+                            async for chunk in resp.aiter_bytes():
+                                total += len(chunk)
+                                if total > max_bytes:
+                                    raise self._too_big(path, max_bytes)
+                                chunks.append(chunk)
+                            capped = b"".join(chunks).decode("utf-8", "replace")
+                        else:
+                            await resp.aread()
             except httpx.TimeoutException as exc:
                 if attempt < self.max_retries:
                     delay = self._hold(attempt, None, slept)
@@ -1038,6 +1092,8 @@ class AsyncClient(_Transport):
 
             if headers_out is not None:
                 headers_out.update(resp.headers)
+            if capped is not None:
+                return capped
             if not resp.content:
                 return "" if text else None
             # The log endpoint answers text/plain, because its whole purpose is
@@ -1199,7 +1255,11 @@ class AsyncClient(_Transport):
         if generation is not None:
             params["generation"] = generation
         return await self._request(
-            "GET", f"/v1/workloads/{_valid_id(workload_id)}/logs", params=params or None, text=True
+            "GET",
+            f"/v1/workloads/{_valid_id(workload_id)}/logs",
+            params=params or None,
+            text=True,
+            max_bytes=_LOG_MAX_BYTES,
         ) or ""
 
     async def wait(
