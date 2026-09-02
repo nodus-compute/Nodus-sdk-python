@@ -1651,6 +1651,48 @@ def test_iter_events_walks_past_the_cap_the_server_returns():
         assert len(list(c.iter_events("wl_abc"))) == 101
 
 
+def test_iter_events_stops_when_the_sequence_stops_advancing():
+    """A batch that does not move ``after`` is the same batch again, forever.
+
+    iter_workloads has had this guard all along, one method away: an offset
+    that repeats is a stall, not a next page. iter_events had none, so a plane
+    answering with an unnumbered event walked it 2000 requests deep and kept
+    going -- against rate limits, on the caller's own thread.
+    """
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        assert len(calls) <= 5, "iter_events never stopped"
+        return httpx.Response(
+            200, json={"events": [{"id": 1, "event_type": "workload.running"}]}
+        )
+
+    with client_with(handler) as c:
+        assert len(list(c.iter_events("wl_abc"))) <= 2
+
+
+def test_the_async_iter_events_stops_too():
+    async def go():
+        calls: list[int] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(1)
+            assert len(calls) <= 5, "iter_events never stopped"
+            return httpx.Response(
+                200, json={"events": [{"id": 1, "event_type": "workload.running"}]}
+            )
+
+        c = nodus.AsyncClient(api_key="nk_live_test", base_url="https://nodus.invalid")
+        c._http = httpx.AsyncClient(
+            base_url="https://nodus.invalid", transport=httpx.MockTransport(handler)
+        )
+        async with c:
+            return [e async for e in c.iter_events("wl_abc")]
+
+    assert len(asyncio.run(go())) <= 2
+
+
 def test_iter_workloads_stops_when_the_offset_stops_advancing():
     """A next_offset that does not move is a stall, not a next page."""
     calls: list[int] = []

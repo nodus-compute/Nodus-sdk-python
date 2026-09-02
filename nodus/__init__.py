@@ -814,14 +814,24 @@ class Client(_Transport):
         return [Event.from_dict(e) for e in (res or {}).get("events") or []]
 
     def iter_events(self, workload_id: str, *, after: int = 0) -> Iterator[Event]:
-        """Every event recorded so far, walking past the server's page cap."""
+        """Every event recorded so far, walking past the server's page cap.
+
+        Stops when the sequence does not advance, for the same reason
+        ``iter_workloads`` stops on a repeated offset: a batch that leaves
+        ``after`` where it was is the same batch again, and following it reads
+        it forever.
+        """
         while True:
             batch = self.events(workload_id, after=after)
             if not batch:
                 return
+            highest = after
             for ev in batch:
-                after = max(after, ev.seq)
+                highest = max(highest, ev.seq)
                 yield ev
+            if highest <= after:
+                return
+            after = highest
 
     def artifacts(self, workload_id: str) -> list[Artifact]:
         res = self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/artifacts")
@@ -1230,14 +1240,21 @@ class AsyncClient(_Transport):
         return [Event.from_dict(e) for e in (res or {}).get("events") or []]
 
     async def iter_events(self, workload_id: str, *, after: int = 0) -> AsyncIterator[Event]:
-        """Every event recorded so far, walking past the server's page cap."""
+        """Every event recorded so far, walking past the server's page cap.
+
+        Stops on a sequence that does not advance. See :meth:`Client.iter_events`.
+        """
         while True:
             batch = await self.events(workload_id, after=after)
             if not batch:
                 return
+            highest = after
             for ev in batch:
-                after = max(after, ev.seq)
+                highest = max(highest, ev.seq)
                 yield ev
+            if highest <= after:
+                return
+            after = highest
 
     async def artifacts(self, workload_id: str) -> list[Artifact]:
         res = await self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/artifacts")
