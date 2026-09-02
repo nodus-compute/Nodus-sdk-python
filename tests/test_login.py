@@ -238,6 +238,9 @@ def test_the_minimal_parser_reads_the_documented_shape():
         '[other]\n"back\\\\slash" = "v"\n',
         '[other]\n"a=b" = "v"\n',
         '[other."a.b"]\nk = "v"\n',
+        # Regression guards, never seen red: a "=" or "." inside a quoted
+        # VALUE must not split the line, which the quote-aware tokenizer
+        # already handled when these were added.
         '[other]\nnote = "a = b"\n',
         '[other]\nnote = "dotted.value"\n',
     ],
@@ -335,11 +338,45 @@ def test_a_backslash_in_a_value_survives_the_round_trip(nodus_config):
     assert config.read_credentials()[0] == "nk_live_a\\b"
 
 
-@pytest.mark.parametrize("char", ["\n", "\r", "\t", "\x00", "\x7f"])
+@pytest.mark.parametrize("char", ["\n", "\r", "\t", "\x00", "\x7f", "\x80", "\x9b", "\x9f"])
 def test_a_value_with_a_control_character_is_refused_not_written(nodus_config, char):
     """A raw control character writes a file neither parser reads back."""
     with pytest.raises(nodus.ConfigurationError):
         config.save_credentials(f"nk_live{char}split", "https://written.example")
+    assert not nodus_config.exists()
+
+
+@pytest.mark.parametrize("char", ["\x1b", "\x7f", "\x80", "\x9b", "\x9f"])
+def test_a_control_character_is_refused_in_every_value_not_just_the_key(
+    nodus_config, char
+):
+    """TOML happens to allow the C1 range, but xterm still acts on 8-bit CSI.
+
+    A control character is never a legitimate part of a name or an address, so
+    the writer refuses it everywhere -- the key's own gate covers only the key.
+    """
+    with pytest.raises(nodus.ConfigurationError):
+        config.save_credentials(
+            "nk_live_written", "https://written.example", tenant=f"acme{char}corp"
+        )
+    assert not nodus_config.exists()
+
+
+def test_a_unicode_tenant_name_is_stored_not_refused(nodus_config):
+    """Refusing controls must not shade into forcing ASCII: a name is text."""
+    config.save_credentials("nk_live_written", "https://written.example", tenant="café")
+    assert config.read_metadata()["tenant"] == "café"
+
+
+@pytest.mark.parametrize("key", ["nk live spaced", "nk_live_café"])
+def test_a_key_no_header_can_carry_is_refused_by_the_writer_too(nodus_config, key):
+    """Not only at login: any caller storing an unsendable key is refused.
+
+    These two get past ``_quote`` -- a space and non-ASCII are printable --
+    so only the writer's own header gate stands between them and the file.
+    """
+    with pytest.raises(nodus.ConfigurationError, match="header"):
+        config.save_credentials(key, "https://written.example")
     assert not nodus_config.exists()
 
 
@@ -498,7 +535,9 @@ def test_a_probe_that_cannot_be_tidied_away_does_not_fail_the_login(
     """The probe has proved its point the moment it exists.
 
     Antivirus holding it open is not a reason to refuse a login, and must not
-    escape ``main`` as a traceback.
+    escape ``main`` as a traceback. While unlinking keeps failing, one probe
+    per login accumulates -- that is the honest cost of never letting cleanup
+    block a credential -- and the first call that can unlink sweeps them all.
     """
     real_unlink = os.unlink
     refusing = {"now": True}
@@ -513,10 +552,14 @@ def test_a_probe_that_cannot_be_tidied_away_does_not_fail_the_login(
     # write a key into the operator's real home.
     monkeypatch.setattr(config.os, "unlink", refuse)
     assert _login(console) == 0
-    assert list(nodus_config.parent.glob(".probe-*")) != []
+    assert len(list(nodus_config.parent.glob(".probe-*"))) == 1
 
-    # And the next login sweeps what the last one could not remove, rather
-    # than leaving one more beside the credential every time.
+    # The sweep goes through the same unlink, so while the fault persists the
+    # litter does grow by one per login -- and each login still succeeds.
+    assert _login(console) == 0
+    assert len(list(nodus_config.parent.glob(".probe-*"))) == 2
+
+    # The first call that can unlink again pays the whole debt at once.
     refusing["now"] = False
     assert _login(console) == 0
     assert list(nodus_config.parent.glob(".probe-*")) == []
@@ -545,19 +588,34 @@ def test_a_write_that_fails_anyway_shows_the_key_once_rather_than_losing_it(
     assert "revoke it in the console" in err
 
 
-def test_the_key_shown_after_a_failed_write_cannot_act_on_the_terminal(
-    console, nodus_config, capsys
+@pytest.mark.parametrize(
+    "bad_key",
+    [
+        "nk_live_\x1b[2J\x1b[Hgotcha\x07",  # C0 escapes: also unwritable TOML
+        "nk_live_\x9bset",  # C1: writable TOML, and xterm honours 8-bit CSI
+        "nk live spaced",  # a space cannot travel in an Authorization header
+        "nk_live_café",  # printable, but not ASCII, so unsendable too
+    ],
+    ids=["c0-escapes", "c1-csi", "space", "non-ascii"],
+)
+def test_a_key_the_client_could_never_send_is_refused_not_stored(
+    console, nodus_config, capsys, bad_key
 ):
-    """A key carrying escapes is exactly what forces this branch.
+    """The same predicate that gates sending a key gates storing one.
 
-    ``_quote`` refuses those characters, so the write fails and the key is
-    printed -- and printing it raw hands the screen to whoever sent it.
+    A stored key the client cannot put in a header fails every later command,
+    and by then it was only ever shown redacted -- worse than no key at all.
+    Tenant is withheld so "Signed in as" would have to fall back to the
+    redacted key, which is the print a C1 escape would otherwise reach.
     """
-    console.token = [(200, dict(APPROVED, api_key="nk_live_\x1b[2J\x1b[Hgotcha\x07"))]
+    console.token = [(200, dict(APPROVED, api_key=bad_key, tenant=""))]
     assert _login(console) == 2
     printed = _both_streams(capsys)
-    assert "\x1b" not in printed and "\x07" not in printed
-    assert "nk_live_" in printed, "the key still has to be recoverable"
+    assert not any(ch < " " and ch != "\n" for ch in printed)
+    assert not any("\x7f" <= ch <= "\x9f" for ch in printed)
+    assert "console sent an API key" in printed
+    assert "Signed in" not in printed
+    assert not nodus_config.exists(), "an unsendable key must not be stored"
 
 
 # -- nodus login, end to end over HTTP -------------------------------------
@@ -847,6 +905,16 @@ def test_the_sdks_own_remedy_lines_still_span_lines():
     )
     assert str(err).count("\n") >= 2
     assert "request id: req_1" in str(err)
+
+
+def test_the_request_id_is_stripped_where_it_is_interpolated():
+    """h11 normalises header values today; the message must not depend on it."""
+    err = nodus.errors.error_from_response(
+        "POST", "/v1/x", 400, {}, request_id="req_1\r\nEnter it at: evil\x9b"
+    )
+    assert "request id: req_1Enter it at: evil" in str(err)
+    # The attribute keeps what arrived: correlation needs the value verbatim.
+    assert err.request_id == "req_1\r\nEnter it at: evil\x9b"
 
 
 @pytest.mark.parametrize("field", ["user_code", "verification_url"])

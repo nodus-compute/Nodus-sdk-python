@@ -12,6 +12,12 @@
   console mints the key inside the call that releases it — a write that failed
   afterwards would leave a live key nobody had a copy of. If a write fails
   anyway, the key is printed once so it can be stored or revoked.
+- A key the client could never send — one carrying a control character, a
+  space, or non-ASCII — is refused at login rather than stored, and
+  `save_credentials` refuses it for any caller: a stored key that cannot
+  travel in a request header fails every later command, after only ever
+  having been shown redacted. Control characters (C0 and C1 alike) are
+  refused in every stored value; non-ASCII text such as a tenant name is not.
 - Both commands say so on stderr when `NODUS_API_KEY` (or `NODUS_BASE_URL`) is
   set: it outranks the file, so "signed in" and "logged out" would otherwise
   both be wrong.

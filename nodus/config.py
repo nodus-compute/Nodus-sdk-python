@@ -56,6 +56,16 @@ CREDENTIAL_FIELDS = ("api_key", "key_id", "tenant", "expires_at")
 _BARE_KEY = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
+def _is_header_safe(value: str) -> bool:
+    """Whether this can travel verbatim in a header or a URL.
+
+    Printable ASCII, no spaces: a control character is a header injection, and
+    non-ASCII raises from inside the transport long after the setting was read.
+    Lives here so storing a credential and sending one share the one predicate.
+    """
+    return bool(value) and value.isascii() and value.isprintable() and " " not in value
+
+
 def config_path() -> Path:
     """Where the credentials live."""
     return Path.home() / ".nodus" / "config.toml"
@@ -266,16 +276,18 @@ def read_metadata() -> dict[str, str]:
 def _quote(value: str, where: str) -> str:
     """One TOML basic string, or a refusal.
 
-    A basic string cannot carry a raw control character, so writing one
-    produces a file neither this parser nor ``tomllib`` will read back — and
-    the tool that wrote it is then the tool that cannot fix it.
+    A raw C0 control or DEL makes a file neither this parser nor ``tomllib``
+    reads back. The C1 range (0x80–0x9f) is legal TOML, but a control
+    character is never a legitimate part of a credential, an address, or a
+    name — and a stored one resurfaces on a terminal that honours 8-bit
+    escapes. Non-ASCII text, a tenant's own name say, is fine.
     """
     for char in value:
-        if char < " " or char == "\x7f":
+        if char < " " or "\x7f" <= char <= "\x9f":
             raise ConfigurationError(
-                f"{where} contains {char!r}, which cannot be written to a TOML "
-                "file. A credential or address with a control character in it "
-                "is not one this SDK will store."
+                f"{where} contains {char!r}, a control character, which is "
+                "never part of a real credential, address, or name. This SDK "
+                "will not store it."
             )
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
@@ -427,10 +439,12 @@ def ensure_writable() -> None:
     path = config_path()
     _prepare_directory(path)
     # Anything a previous run could not tidy away. One probe per login is a
-    # slow leak into the directory holding the credential.
+    # slow leak into the directory holding the credential. os.unlink, like
+    # every other delete in this module: on 3.10 Path.unlink binds the os
+    # function early, and two spellings of delete are two layers to fake.
     for stale in path.parent.glob(".probe-*"):
         with contextlib.suppress(OSError):
-            stale.unlink()
+            os.unlink(stale)
     if path.exists() and not path.is_file():
         raise ConfigurationError(
             f"{path} is not a file, so the credentials cannot be written "
@@ -456,8 +470,10 @@ def ensure_writable() -> None:
             "Fix its permissions and run: nodus login"
         ) from exc
     # The probe proved the point the moment it was created; failing to tidy it
-    # away is not a reason to refuse a login. One that survives is swept by the
-    # next call rather than accumulating.
+    # away is not a reason to refuse a login. A survivor is swept by the next
+    # call that can unlink — while unlinking keeps failing, each login does
+    # leave one more probe behind, the cost of never letting cleanup block a
+    # credential.
     with contextlib.suppress(OSError):
         os.close(handle)
     with contextlib.suppress(OSError):
@@ -477,6 +493,15 @@ def save_credentials(
     A field the server did not send is removed rather than stored empty, so a
     key_id left over from an earlier login never outlives the key it named.
     """
+    # A key that cannot travel in a request header can never be sent, and a
+    # stored key that cannot be sent fails every later command after it has
+    # only ever been shown redacted. Refused here, whoever the caller is.
+    if not _is_header_safe(api_key):
+        raise ConfigurationError(
+            "api_key contains a character that cannot travel in a request "
+            "header, so no client could ever send it. A key that cannot be "
+            "sent is worse than no key, so it is refused rather than stored."
+        )
     path = config_path()
     fields = {"key_id": key_id, "tenant": tenant, "expires_at": expires_at}
 

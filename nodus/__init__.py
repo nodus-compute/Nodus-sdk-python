@@ -46,7 +46,7 @@ from typing import Any, AsyncIterator, Iterator
 import httpx
 
 from ._brief import build_payload, status_filter
-from .config import read_credentials
+from .config import _is_header_safe, read_credentials
 from .errors import (
     APIConnectionError,
     APIError,
@@ -285,13 +285,8 @@ _LOGIN_NEEDS_BASE_URL = (
 )
 
 
-def _is_header_safe(value: str) -> bool:
-    """Whether this can travel verbatim in a header or a URL.
-
-    Printable ASCII, no spaces: a control character is a header injection, and
-    non-ASCII raises from inside the transport long after the setting was read.
-    """
-    return bool(value) and value.isascii() and value.isprintable() and " " not in value
+# _is_header_safe lives in config: storing a credential and sending one have
+# to agree on what a header can carry, so there is exactly one predicate.
 
 
 def _check_scheme(url: str, stacklevel: int) -> None:

@@ -23,9 +23,8 @@ def nodus_config(tmp_path, monkeypatch):
     that reads one passes or fails by whose machine it ran on.
 
     Redirected twice on purpose. ``config_path`` is what the code calls, and
-    ``Path.home`` is what it calls in turn: a test that drops the first patch
-    still cannot reach a real home through the second. One that undid only the
-    first wrote a key into ``~/.nodus`` before this existed.
+    ``Path.home`` is what it calls in turn: a test that drops either patch
+    still cannot reach the operator's real home through the other.
     """
     home = tmp_path / "home"
     path = home / ".nodus" / "config.toml"

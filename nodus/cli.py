@@ -16,17 +16,18 @@ import warnings
 import webbrowser
 from typing import Any
 
-from . import Client, __version__, _redact, _resolve_base_url, config, login
+from . import Client, __version__, _is_header_safe, _redact, _resolve_base_url, config, login
 from ._brief import STATUS_FILTERS
 from .errors import NodusError, NotFoundError
-from .types import ContinuityMode
+from .types import ContinuityMode, _num
 
 # Nearly everything printed here was written somewhere else, and a terminal
 # acts on whatever escapes it is handed. The rule between the two cleaners:
 # _safe is only for values that may legitimately span lines, and every value
 # that is one line by definition goes through _safe_line. A newline in a
 # one-line value is not formatting -- it forges a whole row of output that
-# reads exactly like the tool's own.
+# reads exactly like the tool's own. The --json dumps are the one exception:
+# json.dumps escapes every control character itself.
 #
 # C0 and C1 controls, minus tab and newline. This keeps them because it also
 # cleans a workload's own log, which is nothing but lines.
@@ -76,7 +77,7 @@ def _cmd_run(args: argparse.Namespace, command: list[str]) -> int:
             data_regions=args.data_region or None,
             idempotency_key=args.idempotency_key,
         )
-        print(wl.id)
+        print(_safe_line(wl.id))
         if not args.wait:
             return 0
         wl.wait(poll_seconds=args.poll, timeout_seconds=args.timeout)
@@ -98,6 +99,8 @@ def _cmd_get(args: argparse.Namespace) -> int:
         if args.wait:
             wl.wait(poll_seconds=args.poll, timeout_seconds=args.timeout)
         if args.json:
+            # ensure_ascii (the default) escapes every control character, so
+            # raw wire text cannot reach the terminal through a dump.
             print(json.dumps(wl.raw, indent=2, default=str))
         else:
             print(_fmt_workload(wl))
@@ -181,7 +184,9 @@ def _cmd_logs(args: argparse.Namespace) -> int:
 
 
 def _fmt_route(route: Any) -> list[str]:
-    mem = (route.resources or {}).get("device_memory_gb") or route.memory_gb
+    # resources is a raw wire object: coerced, so a non-numeric value the
+    # server chose cannot crash the {mem:g} format below.
+    mem = _num((route.resources or {}).get("device_memory_gb")) or route.memory_gb
     lines = [
         f"{'catalog SKU':<22} {_safe_line(route.sku)}",
         f"{'fit':<22} {_safe_line(route.fit_class)}"
@@ -259,6 +264,22 @@ def _cmd_login(args: argparse.Namespace) -> int:
         print("Waiting for you to approve it...")
         creds = login.poll_for_credentials(http, device, base_url)
 
+    # The same predicate that gates sending a key gates keeping one: a stored
+    # key the client cannot put in a header fails every later command, and by
+    # then it has only ever been shown redacted. config.save_credentials
+    # refuses such a key too; this refusal is the one that can say whose
+    # fault it is.
+    if not _is_header_safe(creds.api_key):
+        named = f" {_safe_line(creds.key_id)}" if creds.key_id else ""
+        print(
+            "The console sent an API key this client cannot use: a key must "
+            "be printable ASCII with no spaces to travel in a request "
+            f"header. Nothing was stored. Revoke the key{named} in the "
+            "console and sign in again.",
+            file=sys.stderr,
+        )
+        return 2
+
     # A caveat about the file belongs in the sentence a person is reading, not
     # in a UserWarning with a source line under it.
     with warnings.catch_warnings(record=True) as caveats:
@@ -272,14 +293,15 @@ def _cmd_login(args: argparse.Namespace) -> int:
                 expires_at=creds.expires_at,
             )
         except BaseException as exc:
-            # The key exists on the server whether or not this write worked.
-            # Showing it once is the only way it is not lost while still live.
-            # Quoted, not raw: the write failing is itself evidence the key
-            # holds something the file would not take, and a control character
-            # is exactly that. repr stays copy-pasteable and cannot act.
+            # The key exists on the server whether or not this write worked,
+            # and the write can fail for reasons that are not the key's --
+            # a full disk, permissions, a foreign entry the dump refuses.
+            # Showing it once is the only way it is not lost while still
+            # live; repr stays copy-pasteable and cannot act on a terminal.
             print(
                 f"Could not write {config.config_path()}: {_safe_line(exc)}. "
-                f"Your key is: {creds.api_key!r} - it will not be shown again. "
+                f"Your key, shown in quotes that are not part of it: "
+                f"{creds.api_key!r} - it will not be shown again. "
                 "Store it, or revoke it in the console.",
                 file=sys.stderr,
             )
@@ -287,7 +309,9 @@ def _cmd_login(args: argparse.Namespace) -> int:
                 return 2
             raise
 
-    who = _safe_line(creds.tenant) if creds.tenant else _redact(creds.api_key)
+    # The redaction keeps the key's own first characters, so it is cleaned
+    # like any other value that was written somewhere else.
+    who = _safe_line(creds.tenant) if creds.tenant else _safe_line(_redact(creds.api_key))
     print(f"Signed in as {who}.")
     print(f"Wrote {path}")
     for caveat in caveats:

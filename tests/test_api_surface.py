@@ -216,8 +216,9 @@ HOSTILE = "\x1b[2J\x1b]0;pwned\x07wl_abc\rerror: everything is fine"
 #: A newline needs no escape sequence to lie. Every row these commands print
 #: is one line, so a value carrying one forges a whole extra row that reads
 #: exactly like a real one -- a charge that was never made, a run that does
-#: not exist.
-FORGING = "wl_ok\nwl_evil        completed     nodus:a100-80-us-east   $0.00"
+#: not exist. It also carries every character ``_has_control_characters``
+#: looks for, so the escape assertion below can actually fail.
+FORGING = "wl_ok\n\x1b[2J\x07\rwl_evil        completed     nodus:a100-80-us-east   $0.00"
 
 
 def _has_control_characters(text: str) -> bool:
@@ -251,10 +252,16 @@ def _row_printing_client(value: str):
                         "fit_class": value,
                         "region": value,
                         "price_usd_hour": 1.0,
+                        # A raw wire object: `explain` formats what it finds
+                        # under device_memory_gb, and the server chooses it.
+                        "resources": {"device_memory_gb": value},
                     },
                 }
             )
             return wl
+
+        def run(self, **kw):
+            return self._workload()
 
         def get(self, workload_id):
             return self._workload()
@@ -265,10 +272,15 @@ def _row_printing_client(value: str):
         def events(self, workload_id, **kw):
             return [nodus.Event.from_dict({"id": 1, "event_type": value})]
 
-        def cancel(self, workload_id):
-            return None
+        def stream_events(self, workload_id, **kw):
+            # One shot: the --follow loop prints each event as it arrives, and
+            # a stream that ended is the only one a test can wait out.
+            return iter([nodus.Event.from_dict({"id": 1, "event_type": value})])
 
         def artifacts(self, workload_id):
+            # files and outputs live inside the manifest, as the endpoint
+            # nests them. At the top level Artifact.from_dict drops both, and
+            # the two artifact print sites go untested behind zero rows.
             return [
                 Artifact.from_dict(
                     {
@@ -276,8 +288,10 @@ def _row_printing_client(value: str):
                         "manifest_id": value,
                         "generation": 1,
                         "sequence": 1,
-                        "outputs": {value: {"sha256": value, "bytes": 1}},
-                        "files": [{"uri": value, "sha256": value, "bytes": 1}],
+                        "manifest": {
+                            "outputs": {value: {"sha256": value, "bytes": 1}},
+                            "files": [{"uri": value, "sha256": value, "bytes": 1}],
+                        },
                     }
                 )
             ]
@@ -293,18 +307,22 @@ def _row_printing_client(value: str):
     return _Fake
 
 
+# Every command that prints a server-written value. `cancel` is absent on
+# purpose: the only value it prints is args.workload_id, the operator's own
+# argument -- asserting it here would compare the test's literal to itself.
 ROW_COMMANDS = [
+    ["run"],
     ["list"],
     ["get", "wl_abc"],
     ["events", "wl_abc"],
+    ["events", "wl_abc", "--follow"],
     ["artifacts", "wl_abc"],
     ["ledger", "wl_abc"],
     ["explain", "wl_abc"],
-    ["cancel", "wl_abc"],
 ]
 
 
-@pytest.mark.parametrize("argv", ROW_COMMANDS, ids=lambda a: a[0])
+@pytest.mark.parametrize("argv", ROW_COMMANDS, ids=lambda a: " ".join(a))
 def test_a_server_value_cannot_add_a_row_to_any_listing(argv, monkeypatch, capsys):
     """One line per row, whatever the server called things.
 
@@ -314,12 +332,19 @@ def test_a_server_value_cannot_add_a_row_to_any_listing(argv, monkeypatch, capsy
     monkeypatch.setattr(cli, "Client", _row_printing_client("wl_ok"))
     cli.main(list(argv))
     clean = len(capsys.readouterr().out.splitlines())
+    if argv[0] == "artifacts":
+        # The manifest line plus its output and file rows. Zero here means the
+        # fixture missed the endpoint's nesting and the sites went untested.
+        assert clean == 3, "the forged artifact must render all three rows"
 
     monkeypatch.setattr(cli, "Client", _row_printing_client(FORGING))
     cli.main(list(argv))
     forged = capsys.readouterr().out
     assert len(forged.splitlines()) == clean, f"{argv} gained a row: {forged!r}"
     assert not _has_control_characters(forged)
+    # The value must survive its own cleaning: a cleaner that answers with ""
+    # keeps the row count and the escape check green while erasing every id.
+    assert "wl_ok" in forged, f"{argv} lost the value along with the escapes: {forged!r}"
 
 
 def test_text_from_the_server_cannot_repaint_the_terminal(monkeypatch, capsys):
