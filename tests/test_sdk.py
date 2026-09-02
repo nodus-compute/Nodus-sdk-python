@@ -958,7 +958,8 @@ def test_an_ordinary_id_still_works():
         (422, {"error": "bad"}, nodus.ValidationError),
         (409, {"error": "idempotency_conflict"}, nodus.IdempotencyConflictError),
         (402, {"error": "budget"}, nodus.BudgetExceededError),
-        (503, {"error": "no_capacity"}, nodus.CapacityUnavailableError),
+        (503, {"error": "spend_check_unavailable"}, nodus.SpendCheckUnavailableError),
+        (503, {"error": "no_capacity"}, nodus.APIError),
         (418, {"error": "teapot"}, nodus.APIError),
     ],
 )
@@ -1449,11 +1450,42 @@ def test_an_error_says_what_to_do_and_which_request_it_was():
         ("invalid_continuity_mode", "checkpointed"),
         ("invalid_complete_by", "finish_by"),
         ("idempotency_conflict", "Idempotency-Key"),
-        ("capacity_unavailable", "interrupt_tolerance"),
+        ("spend_check_unavailable", "Retry in a moment"),
     ],
 )
 def test_every_rejection_the_control_plane_sends_carries_a_remedy(code, hint):
     assert hint in str(_raised(400, {"error": code, "message": "no"}))
+
+
+def test_the_only_503_the_control_plane_sends_is_the_money_guard():
+    """Every 503 was a capacity problem, and the remedy said to widen the brief.
+
+    The one 503 the API emits is spend_check_unavailable: the account could not
+    be measured, so admission failed CLOSED and nothing was created or charged.
+    Telling that caller to raise their interruption tolerance sends them toward
+    cheaper, more interruptible capacity to fix a problem that was never about
+    capacity -- and the honest answer is to retry in a moment.
+    """
+    err = _raised(
+        503,
+        {"error": "spend_check_unavailable",
+         "message": "the account spend check is temporarily unavailable"},
+    )
+    assert isinstance(err, nodus.SpendCheckUnavailableError)
+    assert "retry" in str(err).lower()
+    assert "interrupt_tolerance" not in str(err)
+    assert "nothing was created" in str(err).lower()
+
+
+def test_a_503_nobody_recognises_is_not_dressed_up_as_a_capacity_problem():
+    assert type(_raised(503, {"error": "something_newer"})) is nodus.APIError
+
+
+def test_a_code_the_server_never_emits_gets_no_special_class():
+    """``signature_error`` appears nowhere in the control plane; the code it
+    does send for a bad signature is ``invalid_signature``."""
+    assert isinstance(_raised(401, {"error": "invalid_signature"}), nodus.SignatureError)
+    assert type(_raised(401, {"error": "signature_error"})) is nodus.AuthenticationError
 
 
 def test_budget_refusal_exposes_the_arithmetic_as_numbers():

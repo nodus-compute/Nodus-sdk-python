@@ -56,6 +56,7 @@ from .errors import (
     NotFoundError,
     RateLimitError,
     SignatureError,
+    SpendCheckUnavailableError,
     ValidationError,
     error_from_response,
 )
@@ -115,6 +116,7 @@ __all__ = [
     "RateLimitError",
     "BudgetExceededError",
     "CapacityUnavailableError",
+    "SpendCheckUnavailableError",
     "SignatureError",
     "APIError",
     "APIConnectionError",
