@@ -218,6 +218,78 @@ def test_the_ledger_command_prints_what_the_run_charged(monkeypatch, capsys):
     assert "0.00" in out, "a zero balance is a fact, not a reason to print nothing"
 
 
+HOSTILE = "\x1b[2J\x1b]0;pwned\x07wl_abc\rerror: everything is fine"
+
+
+def _has_control_characters(text: str) -> bool:
+    return any(ch in text for ch in "\x1b\x07\r\x00")
+
+
+def test_text_from_the_server_cannot_repaint_the_terminal(monkeypatch, capsys):
+    """Ids, statuses, routes and logs are written by something other than us.
+
+    A terminal obeys escape sequences in whatever it is handed, so a job that
+    prints one -- or a control plane that returns one in a field -- could clear
+    the screen, retitle the window, or use a carriage return to overwrite a
+    line with text of its choosing. None of it is ours to pass through.
+    """
+
+    class _Fake:
+        def __init__(self, *a, **kw):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return None
+
+        def get(self, workload_id):
+            wl = nodus.Workload.__new__(nodus.Workload)
+            nodus._WorkloadState.__init__(wl)
+            wl._client = self
+            wl._absorb(
+                {
+                    "id": HOSTILE,
+                    "status": HOSTILE,
+                    "route": {"offer_id": HOSTILE, "fit_class": HOSTILE, "region": HOSTILE},
+                }
+            )
+            return wl
+
+        def events(self, workload_id, **kw):
+            return [nodus.Event.from_dict({"id": 1, "event_type": HOSTILE})]
+
+        def logs(self, workload_id, *, stage=None, generation=None):
+            return f"step-1\n{HOSTILE}\nstep-2"
+
+    monkeypatch.setattr(cli, "Client", _Fake)
+    for argv in (["get", "wl_abc"], ["events", "wl_abc"], ["logs", "wl_abc"],
+                 ["explain", "wl_abc"]):
+        cli.main(argv)
+        out = capsys.readouterr().out
+        assert not _has_control_characters(out), f"{argv} passed an escape through: {out!r}"
+
+
+def test_an_error_message_from_the_server_is_cleaned_too(monkeypatch, capsys):
+    class _Fake:
+        def __init__(self, *a, **kw):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return None
+
+        def get(self, workload_id):
+            raise nodus.NotFoundError(f"no such workload {HOSTILE}", status_code=404)
+
+    monkeypatch.setattr(cli, "Client", _Fake)
+    assert cli.main(["get", "wl_abc"]) == 2
+    assert not _has_control_characters(capsys.readouterr().err)
+
+
 def test_explain_still_reads_the_route_out_of_the_control_plane(monkeypatch, capsys):
     """The half that was never the price book: why this route, from the plane that chose it."""
 

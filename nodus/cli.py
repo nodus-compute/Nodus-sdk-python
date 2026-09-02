@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from typing import Any
 
@@ -16,13 +17,26 @@ from . import Client, __version__
 from .errors import NodusError, NotFoundError
 from .types import ContinuityMode
 
+# C0 and C1 control characters, less the tab and newline that make output
+# readable. A terminal acts on escape sequences in whatever it is handed, and
+# nearly everything this command prints was written somewhere else: a field
+# from the control plane, or the job's own stdout. An escape can clear the
+# screen or retitle the window, and a carriage return can overwrite the line
+# just printed with a sentence of the writer's choosing.
+_CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+
+
+def _safe(text: Any) -> str:
+    """Text from elsewhere, with the characters a terminal acts on removed."""
+    return _CONTROL.sub("", str(text))
+
 
 def _fmt_workload(wl: Any) -> str:
     # cost_now_usd, not spend_usd: a charge is booked when a lease closes, so a
     # list of running workloads would otherwise show $0.00 for all of them.
-    route = wl.route.sku if wl.route else "-"
-    status = getattr(wl.status, "value", wl.status)
-    return f"{wl.id}  {status:<13} {route:<28} ${wl.cost_now_usd:.2f}"
+    route = _safe(wl.route.sku) if wl.route else "-"
+    status = _safe(getattr(wl.status, "value", wl.status))
+    return f"{_safe(wl.id)}  {status:<13} {route:<28} ${wl.cost_now_usd:.2f}"
 
 
 def _split_command(argv: list[str]) -> tuple[list[str], list[str]]:
@@ -80,10 +94,10 @@ def _cmd_events(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
         if args.follow:
             for ev in client.stream_events(args.workload_id, poll_seconds=args.poll):
-                print(f"{ev.seq:>5}  {ev.type}")
+                print(f"{ev.seq:>5}  {_safe(ev.type)}")
         else:
             for ev in client.events(args.workload_id):
-                print(f"{ev.seq:>5}  {ev.type}")
+                print(f"{ev.seq:>5}  {_safe(ev.type)}")
     return 0
 
 
@@ -94,18 +108,19 @@ def _cmd_artifacts(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
         for art in client.artifacts(args.workload_id):
             mark = "final" if art.final else "checkpoint"
-            print(f"{art.stage_id}  gen{art.generation}/seq{art.sequence}  {mark}  {art.manifest_id}")
+            print(f"{_safe(art.stage_id)}  gen{art.generation}/seq{art.sequence}"
+                  f"  {mark}  {_safe(art.manifest_id)}")
             for name, out in sorted(art.outputs.items()):
-                print(f"    output {name}  {out.sha256[:12]}  {out.bytes}B")
+                print(f"    output {_safe(name)}  {_safe(out.sha256[:12])}  {out.bytes}B")
             for f in art.files:
-                print(f"    file   {f.uri}  {f.sha256[:12]}  {f.bytes}B")
+                print(f"    file   {_safe(f.uri)}  {_safe(f.sha256[:12])}  {f.bytes}B")
     return 0
 
 
 def _cmd_cancel(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
         client.cancel(args.workload_id)
-    print(f"cancel requested for {args.workload_id}")
+    print(f"cancel requested for {_safe(args.workload_id)}")
     return 0
 
 
@@ -117,12 +132,12 @@ def _cmd_ledger(args: argparse.Namespace) -> int:
             return 0
         for e in led.entries:
             side, amount = ("debit", e.debit_usd) if e.debit_usd else ("credit", e.credit_usd)
-            print(f"  {e.entry_type:<18} {side:<7} ${amount:.6f}")
+            print(f"  {_safe(e.entry_type):<18} {side:<7} ${amount:.6f}")
         st = led.settlement
         # Both numbers, always: the charge is what the customer pays, the
         # balance is what closing left — exactly $0.00 when the books are square.
         print(f"  {'charged':<18} {'total':<7} ${led.charged_usd:.6f}")
-        print(f"  {'settlement':<18} {st.status:<7} balance ${st.balance_usd:.6f}")
+        print(f"  {'settlement':<18} {_safe(st.status):<7} balance ${st.balance_usd:.6f}")
     return 0
 
 
@@ -144,7 +159,7 @@ def _cmd_logs(args: argparse.Namespace) -> int:
     if not out:
         print(_NO_LOG_YET)
         return 1
-    lines = out.splitlines()
+    lines = _safe(out).splitlines()
     if args.tail and len(lines) > args.tail:
         lines = lines[-args.tail:]
     print("\n".join(lines))
@@ -154,10 +169,10 @@ def _cmd_logs(args: argparse.Namespace) -> int:
 def _fmt_route(route: Any) -> list[str]:
     mem = (route.resources or {}).get("device_memory_gb") or route.memory_gb
     lines = [
-        f"{'catalog SKU':<22} {route.sku}",
-        f"{'fit':<22} {route.fit_class}"
+        f"{'catalog SKU':<22} {_safe(route.sku)}",
+        f"{'fit':<22} {_safe(route.fit_class)}"
         + (f"  |  {mem:g} GB" if mem else "")
-        + (f"  |  {route.region}" if getattr(route, 'region', '') else ""),
+        + (f"  |  {_safe(route.region)}" if getattr(route, 'region', '') else ""),
         f"{'rate':<22} ${route.price_usd_hour:.4f}/h",
         f"{'expected hours':<22} {route.expected_hours:.2f}",
         f"{'expected cost':<22} ${route.expected_cost_usd:.2f}",
@@ -175,9 +190,10 @@ def _cmd_explain(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
         wl = client.get(args.workload_id)
         if not wl.route:
-            print(f"{wl.id} has no route yet (status {getattr(wl.status, 'value', wl.status)})")
+            print(f"{_safe(wl.id)} has no route yet "
+                  f"(status {_safe(getattr(wl.status, 'value', wl.status))})")
             return 1
-        print(f"workload  {wl.id}")
+        print(f"workload  {_safe(wl.id)}")
         print()
         for line in _fmt_route(wl.route):
             print(f"  {line}")
@@ -268,7 +284,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return handlers[args.cmd]()
     except NodusError as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        print(f"error: {_safe(exc)}", file=sys.stderr)
         return 2
     except KeyboardInterrupt:
         return 130
