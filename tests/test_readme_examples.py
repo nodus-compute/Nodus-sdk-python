@@ -1,11 +1,7 @@
 """Every ``nodus ...`` line the README shows must parse with the real CLI.
 
-The README is the first thing a customer copies from, and a documented flag
-that argparse rejects is a broken promise this suite can catch for free. Each
-fenced-code line that invokes ``nodus`` is extracted and handed to
-``cli.build_parser()`` — split at the first bare ``--`` the same way
-``cli.main`` splits it, because everything after that separator belongs to the
-customer's program, not to ``nodus``.
+Lines are split at the first bare ``--`` the same way ``cli.main`` splits them:
+everything after it belongs to the customer's program.
 """
 
 from __future__ import annotations

@@ -38,10 +38,8 @@ jobs:
       # twine check is what catches a README PyPI will not render, before a
       # release rather than after it.
       - run: python -m twine check dist/*
-      # The wheel is the artifact customers download, and a suite run from a
-      # source checkout never imports it. Install it into a clean venv and run
-      # the tests from outside the tree, so `import nodus` can only resolve to
-      # the installed wheel.
+      # Run the suite from outside the tree so `import nodus` can only resolve
+      # to the installed wheel — the artifact customers download.
       - name: test the installed wheel
         run: |
           python -m venv "$RUNNER_TEMP/wheel-venv"
