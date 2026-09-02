@@ -18,8 +18,8 @@ with nodus.Client() as client:
 pip install nodus_compute
 ```
 
-The distribution is `nodus_compute`; the import is `nodus` — the same split as
-`pip install scikit-learn` and `import sklearn`.
+The distribution is `nodus_compute`; the import is `nodus`.
+<!-- import-name decision pending -->
 
 ## Point it at your account
 
@@ -57,8 +57,10 @@ with nodus.Client() as client:
     print(done.status, done.cost_now_usd)
 ```
 
-Only `command` is required. Everything else narrows the search or bounds the
-cost; omit `budget` and the run is uncapped.
+Nothing is strictly required. Omit `image` and the default `python:3.11-slim`
+fills in; omit `command` and the image's own entrypoint runs. Everything else
+narrows the search or bounds the cost; omit `budget` and the run is uncapped —
+the SDK warns rather than inventing a ceiling on your money.
 
 **Your image must be able to fetch a small binary** — it needs `curl`, `wget`,
 or `python3` on the PATH. Most ML images have one. A bare `ubuntu` image has
@@ -81,11 +83,15 @@ stops it.
 
 ```python
 for event in client.stream_events(wl.id):
-    print(event.type, event.message)
+    print(event.type, event.payload)
 
 print(client.logs(wl.id))           # the job's own stdout and stderr
 print(wl.refresh().cost_now_usd)    # charged plus what is accruing right now
 ```
+
+`logs()` is not a live tail. The log is a committed artifact, so it lags the
+process by a checkpoint and raises `NotFoundError` until the first checkpoint
+carries one — for live progress, watch the events.
 
 ## Async
 
@@ -99,27 +105,37 @@ async with nodus.AsyncClient() as client:
 
 ## Errors
 
-Every failure is a subclass of `NodusError`, so one `except` catches the lot:
+Every failure is a subclass of `NodusError`, so one `except` catches the lot.
+The column that matters when writing a handler is whether the condition clears
+on its own — the SDK already retries the ones that do, and never retries the
+ones that do not.
 
-| Raised | When |
-|---|---|
-| `ConfigurationError` | a setting is missing, before any request |
-| `AuthenticationError` | the key is wrong or revoked |
-| `ValidationError` | the brief was rejected, with the reason |
-| `BudgetExceededError` | the run would pass your account's spend cap |
-| `CapacityUnavailableError` | nothing in the market fits the brief |
-| `NotFoundError` | no such workload |
-| `RateLimitError` | too many requests; honours `Retry-After` |
-| `APIConnectionError` / `APITimeoutError` | the network, not the API |
+| Raised | When | Clears on its own? |
+|---|---|---|
+| `ConfigurationError` | a setting is missing, before any request | never |
+| `AuthenticationError` | the key is wrong or revoked | never |
+| `SignatureError` | a signed request was rejected — the key is fine, the signature is not | never |
+| `ValidationError` | the brief was rejected, with the reason | never |
+| `IdempotencyConflictError` | an `Idempotency-Key` was reused with a different payload | never |
+| `NotFoundError` | no such workload | never |
+| `BudgetExceededError` | the run would pass your account's spend cap | only if you lower the ask or raise the cap |
+| `RateLimitError` | too many requests; honours `Retry-After` | yes, with time |
+| `CapacityUnavailableError` | nothing in the market fits the brief | yes |
+| `APIConnectionError` / `APITimeoutError` | the network, not the API | yes |
+| `APIError` | any other 4xx/5xx | for 5xx, usually |
 
 ## Command line
 
+Everything after a bare `--` is your program's own command line, passed through
+untouched:
+
 ```bash
-nodus run --command "python train.py" --budget 20
-nodus status wl_…
+nodus run --budget 20 -- python train.py
+nodus get wl_…
 nodus logs wl_…
 ```
 
 ## Licence
 
-Apache-2.0. See [LICENSE](./LICENSE).
+Apache-2.0. See
+[LICENSE](https://github.com/Nodus-compute/Nodus-sdk-python/blob/main/LICENSE).
