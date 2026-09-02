@@ -721,7 +721,14 @@ def test_money_that_is_not_a_number_is_not_shown_as_money():
             "as_of": "2026-09-01T12:00:00Z",
         },
     }
-    with client_with(lambda r: httpx.Response(200, json=body)) as c:
+    # Serialised by hand: NaN and Infinity have to arrive as wire bytes, which
+    # httpx's own json= refuses to write.
+    raw = json.dumps(body)
+    with client_with(
+        lambda r: httpx.Response(
+            200, content=raw, headers={"Content-Type": "application/json"}
+        )
+    ) as c:
         wl = c.get("wl_abc")
     assert math.isfinite(wl.spend_usd) and wl.spend_usd == 0.0
     assert math.isfinite(wl.meter.accruing_usd) and wl.meter.accruing_usd == 0.0
@@ -745,7 +752,12 @@ def test_a_malformed_ledger_row_still_parses():
                      "credit_usd": "five", "evidence": "none"}],
         "settlement": {"status": "closed", "balance_usd": float("nan")},
     }
-    with client_with(lambda r: httpx.Response(200, json=body)) as c:
+    raw = json.dumps(body)
+    with client_with(
+        lambda r: httpx.Response(
+            200, content=raw, headers={"Content-Type": "application/json"}
+        )
+    ) as c:
         led = c.ledger("wl_abc")
     assert led.entries[0].credit_usd == 0.0
     assert led.entries[0].evidence == {}
