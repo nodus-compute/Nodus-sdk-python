@@ -21,10 +21,17 @@ def nodus_config(tmp_path, monkeypatch):
     Autouse because the hazard is the tests that do not mention it: whether
     ``nodus.Client()`` raises now depends on a file in ``$HOME``, and a suite
     that reads one passes or fails by whose machine it ran on.
+
+    Redirected twice on purpose. ``config_path`` is what the code calls, and
+    ``Path.home`` is what it calls in turn: a test that drops the first patch
+    still cannot reach a real home through the second. One that undid only the
+    first wrote a key into ``~/.nodus`` before this existed.
     """
-    path = tmp_path / "home" / ".nodus" / "config.toml"
+    home = tmp_path / "home"
+    path = home / ".nodus" / "config.toml"
     path.parent.mkdir(parents=True)
     monkeypatch.setattr(_config, "config_path", lambda: path)
+    monkeypatch.setattr(pathlib.Path, "home", classmethod(lambda cls: home))
     return path
 
 

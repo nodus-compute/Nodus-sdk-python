@@ -21,34 +21,37 @@ from ._brief import STATUS_FILTERS
 from .errors import NodusError, NotFoundError
 from .types import ContinuityMode
 
-# C0 and C1 controls, minus tab and newline. Nearly everything printed here was
-# written somewhere else, and a terminal acts on whatever escapes it is handed.
-# Tab and newline stay because this also cleans a workload's own log, and a log
-# with its line breaks stripped is one long unreadable line.
+# Nearly everything printed here was written somewhere else, and a terminal
+# acts on whatever escapes it is handed. The rule between the two cleaners:
+# _safe is only for values that may legitimately span lines, and every value
+# that is one line by definition goes through _safe_line. A newline in a
+# one-line value is not formatting -- it forges a whole row of output that
+# reads exactly like the tool's own.
+#
+# C0 and C1 controls, minus tab and newline. This keeps them because it also
+# cleans a workload's own log, which is nothing but lines.
 _CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
 
-# For values that are one line by definition -- a code, an address, a tenant.
-# There a newline is never formatting: it forges a whole extra line of output,
-# and a fake "Enter it at: ..." is indistinguishable from the real one.
+# The same, sparing nothing: an id, a status, a SKU, a code, an address.
 _CONTROL_LINE = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 
 
 def _safe(text: Any) -> str:
-    """Text from elsewhere, with the characters a terminal acts on removed."""
+    """Many-line text from elsewhere, with what a terminal acts on removed."""
     return _CONTROL.sub("", str(text))
 
 
 def _safe_line(text: Any) -> str:
-    """A single-line value from elsewhere, with tab and newline gone too."""
+    """A one-line value from elsewhere, with tab and newline gone too."""
     return _CONTROL_LINE.sub("", str(text))
 
 
 def _fmt_workload(wl: Any) -> str:
     # cost_now_usd, not spend_usd and not the meter: settled charges do not move
     # while a lease is open, and the meter counts only this billing period.
-    route = _safe(wl.route.sku) if wl.route else "-"
-    status = _safe(getattr(wl.status, "value", wl.status))
-    return f"{_safe(wl.id)}  {status:<13} {route:<28} ${wl.cost_now_usd:.2f}"
+    route = _safe_line(wl.route.sku) if wl.route else "-"
+    status = _safe_line(getattr(wl.status, "value", wl.status))
+    return f"{_safe_line(wl.id)}  {status:<13} {route:<28} ${wl.cost_now_usd:.2f}"
 
 
 def _split_command(argv: list[str]) -> tuple[list[str], list[str]]:
@@ -105,10 +108,10 @@ def _cmd_events(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
         if args.follow:
             for ev in client.stream_events(args.workload_id, poll_seconds=args.poll):
-                print(f"{ev.seq:>5}  {_safe(ev.type)}")
+                print(f"{ev.seq:>5}  {_safe_line(ev.type)}")
         else:
             for ev in client.events(args.workload_id):
-                print(f"{ev.seq:>5}  {_safe(ev.type)}")
+                print(f"{ev.seq:>5}  {_safe_line(ev.type)}")
     return 0
 
 
@@ -119,19 +122,19 @@ def _cmd_artifacts(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
         for art in client.artifacts(args.workload_id):
             mark = "final" if art.final else "checkpoint"
-            print(f"{_safe(art.stage_id)}  gen{art.generation}/seq{art.sequence}"
-                  f"  {mark}  {_safe(art.manifest_id)}")
+            print(f"{_safe_line(art.stage_id)}  gen{art.generation}/seq{art.sequence}"
+                  f"  {mark}  {_safe_line(art.manifest_id)}")
             for name, out in sorted(art.outputs.items()):
-                print(f"    output {_safe(name)}  {_safe(out.sha256[:12])}  {out.bytes}B")
+                print(f"    output {_safe_line(name)}  {_safe_line(out.sha256[:12])}  {out.bytes}B")
             for f in art.files:
-                print(f"    file   {_safe(f.uri)}  {_safe(f.sha256[:12])}  {f.bytes}B")
+                print(f"    file   {_safe_line(f.uri)}  {_safe_line(f.sha256[:12])}  {f.bytes}B")
     return 0
 
 
 def _cmd_cancel(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
         client.cancel(args.workload_id)
-    print(f"cancel requested for {_safe(args.workload_id)}")
+    print(f"cancel requested for {_safe_line(args.workload_id)}")
     return 0
 
 
@@ -143,12 +146,12 @@ def _cmd_ledger(args: argparse.Namespace) -> int:
             return 0
         for e in led.entries:
             side, amount = ("debit", e.debit_usd) if e.debit_usd else ("credit", e.credit_usd)
-            print(f"  {_safe(e.entry_type):<18} {side:<7} ${amount:.6f}")
+            print(f"  {_safe_line(e.entry_type):<18} {side:<7} ${amount:.6f}")
         st = led.settlement
         # Both numbers, always: the charge is what the customer pays, the
         # balance is what closing left — exactly $0.00 when the books are square.
         print(f"  {'charged':<18} {'total':<7} ${led.charged_usd:.6f}")
-        print(f"  {'settlement':<18} {_safe(st.status):<7} balance ${st.balance_usd:.6f}")
+        print(f"  {'settlement':<18} {_safe_line(st.status):<7} balance ${st.balance_usd:.6f}")
     return 0
 
 
@@ -180,10 +183,10 @@ def _cmd_logs(args: argparse.Namespace) -> int:
 def _fmt_route(route: Any) -> list[str]:
     mem = (route.resources or {}).get("device_memory_gb") or route.memory_gb
     lines = [
-        f"{'catalog SKU':<22} {_safe(route.sku)}",
-        f"{'fit':<22} {_safe(route.fit_class)}"
+        f"{'catalog SKU':<22} {_safe_line(route.sku)}",
+        f"{'fit':<22} {_safe_line(route.fit_class)}"
         + (f"  |  {mem:g} GB" if mem else "")
-        + (f"  |  {_safe(route.region)}" if getattr(route, 'region', '') else ""),
+        + (f"  |  {_safe_line(route.region)}" if getattr(route, 'region', '') else ""),
         f"{'rate':<22} ${route.price_usd_hour:.4f}/h",
         f"{'expected hours':<22} {route.expected_hours:.2f}",
         f"{'expected cost':<22} ${route.expected_cost_usd:.2f}",
@@ -201,10 +204,10 @@ def _cmd_explain(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
         wl = client.get(args.workload_id)
         if not wl.route:
-            print(f"{_safe(wl.id)} has no route yet "
-                  f"(status {_safe(getattr(wl.status, 'value', wl.status))})")
+            print(f"{_safe_line(wl.id)} has no route yet "
+                  f"(status {_safe_line(getattr(wl.status, 'value', wl.status))})")
             return 1
-        print(f"workload  {_safe(wl.id)}")
+        print(f"workload  {_safe_line(wl.id)}")
         print()
         for line in _fmt_route(wl.route):
             print(f"  {line}")
@@ -271,10 +274,13 @@ def _cmd_login(args: argparse.Namespace) -> int:
         except BaseException as exc:
             # The key exists on the server whether or not this write worked.
             # Showing it once is the only way it is not lost while still live.
+            # Quoted, not raw: the write failing is itself evidence the key
+            # holds something the file would not take, and a control character
+            # is exactly that. repr stays copy-pasteable and cannot act.
             print(
-                f"Could not write {config.config_path()}: {exc}. Your key is: "
-                f"{creds.api_key} - it will not be shown again. Store it, or "
-                "revoke it in the console.",
+                f"Could not write {config.config_path()}: {_safe_line(exc)}. "
+                f"Your key is: {creds.api_key!r} - it will not be shown again. "
+                "Store it, or revoke it in the console.",
                 file=sys.stderr,
             )
             if isinstance(exc, Exception):

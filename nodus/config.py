@@ -80,18 +80,20 @@ def _parse_simple_toml(text: str, where: str | os.PathLike[str]) -> dict[str, An
             continue
         if line.startswith("[") and line.endswith("]"):
             table = data
-            for part in line[1:-1].split("."):
+            for part in _split_outside_quotes(line[1:-1], ".", where, number, raw):
                 name = _read_key(part.strip(), where, number, raw)
                 nested = table.setdefault(name, {})
                 if not isinstance(nested, dict):
                     raise _unreadable(where, number, raw)
                 table = nested
             continue
-        head, sep, value = line.partition("=")
-        value = value.strip()
-        if not sep or len(value) < 2 or value[0] != value[-1]:
+        parts = _split_outside_quotes(line, "=", where, number, raw, limit=1)
+        if len(parts) != 2:
             raise _unreadable(where, number, raw)
-        key = _read_key(head.strip(), where, number, raw)
+        value = parts[1].strip()
+        if len(value) < 2 or value[0] != value[-1]:
+            raise _unreadable(where, number, raw)
+        key = _read_key(parts[0].strip(), where, number, raw)
         if value[0] == '"':
             table[key] = _unescape(value[1:-1], where, number, raw)
         elif value[0] == "'":
@@ -99,6 +101,48 @@ def _parse_simple_toml(text: str, where: str | os.PathLike[str]) -> dict[str, An
         else:
             raise _unreadable(where, number, raw)
     return data
+
+
+def _split_outside_quotes(
+    text: str,
+    on: str,
+    where: str | os.PathLike[str],
+    number: int,
+    raw: str,
+    limit: int | None = None,
+) -> list[str]:
+    """Split on a separator, ignoring the ones inside a quoted key.
+
+    ``"a=b"`` and ``[other."a.b"]`` are both shapes :func:`_dump` itself emits,
+    and splitting before unquoting tears them in half.
+    """
+    parts: list[str] = []
+    current: list[str] = []
+    quote = ""
+    escaped = False
+    for char in text:
+        if escaped:
+            current.append(char)
+            escaped = False
+        elif quote and char == "\\" and quote == '"':
+            current.append(char)
+            escaped = True
+        elif quote:
+            current.append(char)
+            if char == quote:
+                quote = ""
+        elif char in ('"', "'"):
+            current.append(char)
+            quote = char
+        elif char == on and (limit is None or len(parts) < limit):
+            parts.append("".join(current))
+            current = []
+        else:
+            current.append(char)
+    if quote or escaped:
+        raise _unreadable(where, number, raw)
+    parts.append("".join(current))
+    return parts
 
 
 def _read_key(text: str, where: str | os.PathLike[str], number: int, raw: str) -> str:
@@ -166,14 +210,18 @@ def _load(path: Path) -> dict[str, Any]:
     return _parse_simple_toml(text, path)
 
 
+def _not_a_section(path: Path) -> ConfigurationError:
+    return ConfigurationError(
+        f"{path} has a [{PROFILE}] entry that is not a section, so there is "
+        "nowhere to keep the credentials. Delete the file and run: nodus login"
+    )
+
+
 def _profile(path: Path) -> dict[str, Any]:
     data = _load(path)
     section = data.get(PROFILE, {})
     if not isinstance(section, dict):
-        raise ConfigurationError(
-            f"{path} has a [{PROFILE}] entry that is not a section. "
-            "Delete the file and run: nodus login"
-        )
+        raise _not_a_section(path)
     return section
 
 
@@ -336,21 +384,27 @@ def _write_atomic(path: Path, text: str) -> None:
 
 
 def _writable_profile(data: dict[str, Any], path: Path) -> dict[str, Any]:
-    """The ``[default]`` table, or a refusal if something else holds that name.
+    """The ``[default]`` table, or a refusal if it cannot hold a credential.
 
-    ``default = "hello"`` is a valid TOML entry that re-serialises cleanly, so
-    nothing upstream of this notices it; only the attempt to store a key under
-    it fails. That has to be found before a key exists, not after.
+    Two shapes get past everything upstream. ``default = "hello"`` is a valid
+    entry that re-serialises cleanly, and ``[default.api_key]`` is a table
+    sitting where a string goes — assigning over it would delete somebody's
+    section without a word, against this module's own promise that every key
+    survives or is refused by name. Both have to be found before a key exists.
     """
     section = data.get(PROFILE)
     if section is None:
         section = data[PROFILE] = {}
     if not isinstance(section, dict):
-        raise ConfigurationError(
-            f"{path} has a [{PROFILE}] entry that is not a section, so there "
-            "is nowhere to store the credentials. Delete the file and run: "
-            "nodus login"
-        )
+        raise _not_a_section(path)
+    for name in CREDENTIAL_FIELDS + ("base_url",):
+        if isinstance(section.get(name), dict):
+            raise ConfigurationError(
+                f"{path} has [{PROFILE}.{name}] as a section, and the "
+                f"credentials need {name} to be text. Storing one would "
+                "delete it. Edit the file by hand, or delete it and run: "
+                "nodus login"
+            )
     return section
 
 
@@ -372,6 +426,11 @@ def ensure_writable() -> None:
     """
     path = config_path()
     _prepare_directory(path)
+    # Anything a previous run could not tidy away. One probe per login is a
+    # slow leak into the directory holding the credential.
+    for stale in path.parent.glob(".probe-*"):
+        with contextlib.suppress(OSError):
+            stale.unlink()
     if path.exists() and not path.is_file():
         raise ConfigurationError(
             f"{path} is not a file, so the credentials cannot be written "
@@ -397,14 +456,12 @@ def ensure_writable() -> None:
             "Fix its permissions and run: nodus login"
         ) from exc
     # The probe proved the point the moment it was created; failing to tidy it
-    # away is not a reason to refuse a login, and must not escape as a
-    # traceback or leave the file behind.
-    try:
-        with contextlib.suppress(OSError):
-            os.close(handle)
-    finally:
-        with contextlib.suppress(OSError):
-            os.unlink(probe)
+    # away is not a reason to refuse a login. One that survives is swept by the
+    # next call rather than accumulating.
+    with contextlib.suppress(OSError):
+        os.close(handle)
+    with contextlib.suppress(OSError):
+        os.unlink(probe)
 
 
 def save_credentials(

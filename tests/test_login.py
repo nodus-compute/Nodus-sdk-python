@@ -236,6 +236,10 @@ def test_the_minimal_parser_reads_the_documented_shape():
         '[other]\n"my key" = "spaced"\n',
         '[other]\n"has\\"quote" = "v"\n',
         '[other]\n"back\\\\slash" = "v"\n',
+        '[other]\n"a=b" = "v"\n',
+        '[other."a.b"]\nk = "v"\n',
+        '[other]\nnote = "a = b"\n',
+        '[other]\nnote = "dotted.value"\n',
     ],
 )
 def test_the_minimal_parser_agrees_with_tomllib(text):
@@ -244,7 +248,7 @@ def test_the_minimal_parser_agrees_with_tomllib(text):
     assert config._parse_simple_toml(text, "config.toml") == tomllib.loads(text)
 
 
-@pytest.mark.parametrize("key", ['has"quote', "back\\slash", "my key"])
+@pytest.mark.parametrize("key", ['has"quote', "back\\slash", "my key", "a=b", "a.b"])
 def test_the_minimal_parser_reads_back_the_keys_it_writes(key):
     """Asked directly, because on 3.11+ tomllib is what the file goes through.
 
@@ -255,7 +259,7 @@ def test_the_minimal_parser_reads_back_the_keys_it_writes(key):
     assert config._parse_simple_toml(text, "config.toml")["other"] == {key: "v"}
 
 
-@pytest.mark.parametrize("key", ['has"quote', "back\\slash", "my key"])
+@pytest.mark.parametrize("key", ['has"quote', "back\\slash", "my key", "a=b", "a.b"])
 def test_a_foreign_key_survives_repeated_logins_unchanged(nodus_config, key):
     """Escaped on the way out, so it has to be unescaped on the way back in.
 
@@ -425,7 +429,13 @@ def test_a_junction_config_directory_is_refused(console, nodus_config, tmp_path)
         capture_output=True, text=True, timeout=30,
     )
     if made.returncode != 0:  # pragma: no cover - depends on the filesystem
-        pytest.skip(f"mklink /J unavailable: {made.stdout}{made.stderr}")
+        # A skip here is how the guard went unexercised in the first place, so
+        # on a runner that must support junctions this is a failure. Locally it
+        # can legitimately fail on a filesystem that has none.
+        detail = f"mklink /J unavailable: {made.stdout}{made.stderr}".strip()
+        if os.environ.get("CI"):
+            pytest.fail(f"{detail} -- CI must exercise this guard")
+        pytest.skip(detail)
 
     assert _login(console) == 2
     assert console.start_calls == [], "a key was minted for a directory we refuse"
@@ -449,6 +459,9 @@ def _break_config(nodus_config, kind: str) -> None:
         # Valid TOML that re-serialises cleanly, so only the attempt to store a
         # key under it fails -- which is after the key exists.
         nodus_config.write_text('default = "hello"\n', encoding="utf-8")
+    elif kind == "credential-is-a-table":
+        # Assigning a string over this would delete the section silently.
+        nodus_config.write_text('[default.api_key]\nnote = "mine"\n', encoding="utf-8")
     else:  # pragma: no cover - a typo in the parametrize list
         raise AssertionError(kind)
 
@@ -461,6 +474,7 @@ def _break_config(nodus_config, kind: str) -> None:
         "corrupt-toml",
         "unwritable-value",
         "default-not-a-table",
+        "credential-is-a-table",
     ],
 )
 def test_an_unwritable_config_refuses_before_a_key_is_ever_minted(
@@ -487,14 +501,33 @@ def test_a_probe_that_cannot_be_tidied_away_does_not_fail_the_login(
     escape ``main`` as a traceback.
     """
     real_unlink = os.unlink
+    refusing = {"now": True}
 
     def refuse(target, *args, **kwargs):
-        if ".probe-" in str(target):
+        if refusing["now"] and ".probe-" in str(target):
             raise PermissionError("held open by another process")
         return real_unlink(target, *args, **kwargs)
 
+    # Never monkeypatch.undo() here: it would revert the whole session's
+    # patches, the config path redirect included, and the next login would
+    # write a key into the operator's real home.
     monkeypatch.setattr(config.os, "unlink", refuse)
     assert _login(console) == 0
+    assert list(nodus_config.parent.glob(".probe-*")) != []
+
+    # And the next login sweeps what the last one could not remove, rather
+    # than leaving one more beside the credential every time.
+    refusing["now"] = False
+    assert _login(console) == 0
+    assert list(nodus_config.parent.glob(".probe-*")) == []
+
+
+def test_a_table_where_a_credential_goes_is_refused_not_overwritten(nodus_config):
+    """Assigning a string over it would delete the section without a word."""
+    nodus_config.write_text('[default.api_key]\nnote = "mine"\n', encoding="utf-8")
+    with pytest.raises(nodus.ConfigurationError, match="api_key"):
+        config.save_credentials("nk_live_written", "https://written.example")
+    assert 'note = "mine"' in nodus_config.read_text(encoding="utf-8")
 
 
 def test_a_write_that_fails_anyway_shows_the_key_once_rather_than_losing_it(
@@ -510,6 +543,21 @@ def test_a_write_that_fails_anyway_shows_the_key_once_rather_than_losing_it(
     err = capsys.readouterr().err
     assert err.count(APPROVED["api_key"]) == 1
     assert "revoke it in the console" in err
+
+
+def test_the_key_shown_after_a_failed_write_cannot_act_on_the_terminal(
+    console, nodus_config, capsys
+):
+    """A key carrying escapes is exactly what forces this branch.
+
+    ``_quote`` refuses those characters, so the write fails and the key is
+    printed -- and printing it raw hands the screen to whoever sent it.
+    """
+    console.token = [(200, dict(APPROVED, api_key="nk_live_\x1b[2J\x1b[Hgotcha\x07"))]
+    assert _login(console) == 2
+    printed = _both_streams(capsys)
+    assert "\x1b" not in printed and "\x07" not in printed
+    assert "nk_live_" in printed, "the key still has to be recoverable"
 
 
 # -- nodus login, end to end over HTTP -------------------------------------
@@ -734,6 +782,7 @@ def test_login_opens_the_browser_and_no_browser_stops_it(console, no_browser_ope
         "https://ok.example/\x1b[31m",
         "https://ok.example/a\nb",
         "https://ok.example/a\tb",
+        "https://ok.example/a\x7fb",
     ],
 )
 def test_an_address_that_is_not_a_plain_web_url_is_never_opened(
@@ -755,6 +804,49 @@ def test_text_from_the_console_cannot_repaint_the_terminal(
     printed = _both_streams(capsys)
     assert not any(char < " " and char != "\n" for char in printed)
     assert "\x7f" not in printed
+
+
+def test_a_refusal_from_the_console_cannot_forge_a_sign_in_block(
+    console, nodus_config, capsys
+):
+    """The error path prints the server's own wording for these endpoints.
+
+    They are unauthenticated and run before any credential exists, so whoever
+    answers them can write to the terminal unless the detail is cleaned where
+    it is interpolated.
+    """
+    console.start = (
+        400,
+        {
+            "error": "bad_request",
+            "message": (
+                "no\nEnter it at: https://evil.example\n"
+                "Your sign-in code is 9999\x1b[32m"
+            ),
+        },
+    )
+    assert _login(console) == 2
+    printed = _both_streams(capsys)
+    assert "\nEnter it at: https://evil.example" not in printed
+    assert "\x1b" not in printed
+    assert len([ln for ln in printed.splitlines() if ln.strip()]) == 1
+
+
+def test_the_error_detail_is_cleaned_where_the_server_wording_is_read():
+    """At the source, so every command that prints an error is covered."""
+    err = nodus.errors.error_from_response(
+        "POST", "/v1/x", 400, {"error": "bad_request", "message": "a\nb\x1b[31m\x7f"}
+    )
+    assert str(err) == "POST /v1/x failed (400): ab[31m"
+
+
+def test_the_sdks_own_remedy_lines_still_span_lines():
+    """Only the server's wording is flattened; the SDK's guidance is prose."""
+    err = nodus.errors.error_from_response(
+        "POST", "/v1/x", 400, {"error": "invalid_compute_class"}, request_id="req_1"
+    )
+    assert str(err).count("\n") >= 2
+    assert "request id: req_1" in str(err)
 
 
 @pytest.mark.parametrize("field", ["user_code", "verification_url"])

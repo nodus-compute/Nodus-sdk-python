@@ -31,11 +31,18 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both ends here too. The junction guard is Windows-only and the
+        # fallback TOML parser is 3.10-only, so on a 3.13-only Windows job the
+        # two never meet -- and a file written by one is read by the other.
+        python-version: ["3.10", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[dev]"
       - run: python -m pytest -q
 

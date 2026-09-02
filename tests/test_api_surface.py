@@ -213,9 +213,113 @@ def test_the_ledger_command_prints_what_the_run_charged(monkeypatch, capsys):
 
 HOSTILE = "\x1b[2J\x1b]0;pwned\x07wl_abc\rerror: everything is fine"
 
+#: A newline needs no escape sequence to lie. Every row these commands print
+#: is one line, so a value carrying one forges a whole extra row that reads
+#: exactly like a real one -- a charge that was never made, a run that does
+#: not exist.
+FORGING = "wl_ok\nwl_evil        completed     nodus:a100-80-us-east   $0.00"
+
 
 def _has_control_characters(text: str) -> bool:
     return any(ch in text for ch in "\x1b\x07\r\x00")
+
+
+def _row_printing_client(value: str):
+    """A client whose every one-line field is ``value``."""
+    from nodus.types import Artifact, Ledger
+
+    class _Fake:
+        def __init__(self, *a, **kw):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return None
+
+        def _workload(self):
+            wl = nodus.Workload.__new__(nodus.Workload)
+            nodus._WorkloadState.__init__(wl)
+            wl._client = self
+            wl._absorb(
+                {
+                    "id": value,
+                    "status": value,
+                    "route": {
+                        "offer_id": value,
+                        "fit_class": value,
+                        "region": value,
+                        "price_usd_hour": 1.0,
+                    },
+                }
+            )
+            return wl
+
+        def get(self, workload_id):
+            return self._workload()
+
+        def list(self, **kw):
+            return [self._workload()]
+
+        def events(self, workload_id, **kw):
+            return [nodus.Event.from_dict({"id": 1, "event_type": value})]
+
+        def cancel(self, workload_id):
+            return None
+
+        def artifacts(self, workload_id):
+            return [
+                Artifact.from_dict(
+                    {
+                        "stage_id": value,
+                        "manifest_id": value,
+                        "generation": 1,
+                        "sequence": 1,
+                        "outputs": {value: {"sha256": value, "bytes": 1}},
+                        "files": [{"uri": value, "sha256": value, "bytes": 1}],
+                    }
+                )
+            ]
+
+        def ledger(self, workload_id):
+            return Ledger.from_dict(
+                {
+                    "entries": [{"id": "led_1", "entry_type": value, "credit_usd": 5.0}],
+                    "settlement": {"status": value, "balance_usd": 0.0},
+                }
+            )
+
+    return _Fake
+
+
+ROW_COMMANDS = [
+    ["list"],
+    ["get", "wl_abc"],
+    ["events", "wl_abc"],
+    ["artifacts", "wl_abc"],
+    ["ledger", "wl_abc"],
+    ["explain", "wl_abc"],
+    ["cancel", "wl_abc"],
+]
+
+
+@pytest.mark.parametrize("argv", ROW_COMMANDS, ids=lambda a: a[0])
+def test_a_server_value_cannot_add_a_row_to_any_listing(argv, monkeypatch, capsys):
+    """One line per row, whatever the server called things.
+
+    Counted against the same command on a clean value: a newline that survives
+    anywhere shows up as a row the control plane never sent.
+    """
+    monkeypatch.setattr(cli, "Client", _row_printing_client("wl_ok"))
+    cli.main(list(argv))
+    clean = len(capsys.readouterr().out.splitlines())
+
+    monkeypatch.setattr(cli, "Client", _row_printing_client(FORGING))
+    cli.main(list(argv))
+    forged = capsys.readouterr().out
+    assert len(forged.splitlines()) == clean, f"{argv} gained a row: {forged!r}"
+    assert not _has_control_characters(forged)
 
 
 def test_text_from_the_server_cannot_repaint_the_terminal(monkeypatch, capsys):
