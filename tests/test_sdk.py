@@ -564,6 +564,77 @@ def test_a_settlement_carries_no_total_the_server_never_sends():
     assert st.balance_usd == 0.0
 
 
+# -- a malformed field is not a crash --------------------------------------
+
+
+def test_a_malformed_money_field_does_not_end_a_wait():
+    """An 18-hour wait must not die of one bad field in one poll.
+
+    ``float()`` on whatever the body carried raised a bare TypeError -- not a
+    NodusError, so the wait's own failure policy never saw it and the caller
+    got a traceback for a workload that was still running and still billing.
+    """
+    bodies = [
+        {**WORKLOAD, "status": "running", "spend_usd": {"usd": 5}},
+        {**WORKLOAD, "status": "completed"},
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=bodies.pop(0) if bodies else WORKLOAD)
+
+    with client_with(handler) as c:
+        wl = c.wait("wl_abc", poll_seconds=0)
+    assert wl.succeeded
+
+
+def test_money_that_is_not_a_number_is_not_shown_as_money():
+    """NaN and infinity format as "nan" and "inf" in a dollar figure."""
+    import math
+
+    body = {
+        **WORKLOAD,
+        "spend_usd": float("nan"),
+        "meter": {
+            "settled_usd": float("nan"),
+            "accruing_usd": 1e400,
+            "accruing_rate_usd_hour": "six dollars",
+            "total_now_usd": None,
+            "as_of": "2026-09-01T12:00:00Z",
+        },
+    }
+    with client_with(lambda r: httpx.Response(200, json=body)) as c:
+        wl = c.get("wl_abc")
+    assert math.isfinite(wl.spend_usd) and wl.spend_usd == 0.0
+    assert math.isfinite(wl.meter.accruing_usd) and wl.meter.accruing_usd == 0.0
+    assert math.isfinite(wl.cost_now_usd)
+
+
+def test_a_payload_that_is_not_an_object_is_not_read_as_one():
+    """``payload.outcome.max_cost_usd`` is three assumptions about a free-form
+    field, and the first one raised AttributeError."""
+    body = {**WORKLOAD, "payload": "surprise", "stages": "nope", "route": "gone",
+            "revision": {"n": 2}}
+    with client_with(lambda r: httpx.Response(200, json=body)) as c:
+        wl = c.get("wl_abc")
+    assert wl.budget_usd == 0.0
+    assert wl.stages == []
+    assert wl.revision == 1
+
+
+def test_a_malformed_ledger_row_still_parses():
+    body = {
+        "entries": [{"id": "led_1", "entry_type": "customer_charge",
+                     "credit_usd": "five", "evidence": "none"}],
+        "settlement": {"status": "closed", "balance_usd": float("nan")},
+    }
+    with client_with(lambda r: httpx.Response(200, json=body)) as c:
+        led = c.ledger("wl_abc")
+    assert led.entries[0].credit_usd == 0.0
+    assert led.entries[0].evidence == {}
+    assert led.settlement.balance_usd == 0.0
+    assert led.charged_usd == 0.0
+
+
 # -- an id is one path segment ---------------------------------------------
 
 

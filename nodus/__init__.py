@@ -351,7 +351,7 @@ class _WorkloadState:
         claiming the workload has none — worse for ``status``, where None is
         never terminal and a wait polling it can never end.
         """
-        from .types import _dt  # local import: internal helper
+        from .types import _dt, _int, _num, _obj, _rows  # local import: internal helpers
 
         # Submit answers with "workload_id"; every read endpoint answers with
         # "id". Accepting both is what makes run() work against the real
@@ -359,20 +359,21 @@ class _WorkloadState:
         # "submit returned no workload id" on a 202 that had in fact created
         # the workload. Unit tests missed it because the fixtures used a shape
         # POST /v1/workloads has never returned.
+        d = _obj(d)
         self.id = d.get("id") or d.get("workload_id") or self.id
         if "status" in d:
             self.status = WorkloadStatus.coerce(d.get("status"))
         self.route = Route.from_dict(d.get("route")) or self.route
         if "spend_usd" in d:
-            self.spend_usd = float(d.get("spend_usd") or 0.0)
+            self.spend_usd = _num(d.get("spend_usd"))
         self.meter = Meter.from_dict(d.get("meter")) or self.meter
-        outcome = (d.get("payload") or {}).get("outcome") or {}
+        outcome = _obj(_obj(d.get("payload")).get("outcome"))
         ceiling = d.get("budget_usd") or outcome.get("max_cost_usd")
         if ceiling is not None:
-            self.budget_usd = float(ceiling)
-        self.revision = int(d.get("revision") or self.revision)
+            self.budget_usd = _num(ceiling, self.budget_usd)
+        self.revision = _int(d.get("revision"), self.revision) or self.revision
         if "stages" in d:
-            self.stages = [StageRun.from_dict(s) for s in (d.get("stages") or [])]
+            self.stages = [StageRun.from_dict(s) for s in _rows(d.get("stages"))]
         self.error = d.get("error") or d.get("error_message") or self.error
         self.created_at = _dt(d.get("created_at")) or self.created_at
         self.updated_at = _dt(d.get("updated_at")) or self.updated_at
