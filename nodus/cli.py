@@ -11,9 +11,11 @@ import argparse
 import json
 import re
 import sys
+import warnings
+import webbrowser
 from typing import Any
 
-from . import Client, __version__
+from . import Client, __version__, _redact, _resolve_base_url, config, login
 from ._brief import STATUS_FILTERS
 from .errors import NodusError, NotFoundError
 from .types import ContinuityMode
@@ -199,11 +201,73 @@ def _cmd_explain(args: argparse.Namespace) -> int:
     return 0
 
 
+def _open_browser(url: str) -> bool:
+    """Best effort, and only for a web address.
+
+    The address arrives from the console, and ``webbrowser.open`` hands
+    whatever it is given to the platform's handler: a ``file:`` or
+    ``javascript:`` URL would be acted on locally.
+    """
+    if not url.lower().startswith(("http://", "https://")):
+        return False
+    try:
+        return bool(webbrowser.open(url))
+    except Exception:
+        return False
+
+
+def _cmd_login(args: argparse.Namespace) -> int:
+    base_url = _resolve_base_url(args.base_url)
+    with login.open_http(base_url) as http:
+        device = login.start_device_authorization(http)
+        print(f"Your sign-in code is {_safe(device.user_code)}")
+        print()
+        print(f"Enter it at: {_safe(device.verification_url)}")
+        if not args.no_browser and _open_browser(device.verification_url):
+            print("Opened that page in your browser.")
+        print()
+        print("Waiting for you to approve it...")
+        creds = login.poll_for_credentials(http, device, base_url)
+    # A caveat about the file belongs in the sentence a person is reading, not
+    # in a UserWarning with a source line under it.
+    with warnings.catch_warnings(record=True) as caveats:
+        warnings.simplefilter("always")
+        path = config.save_credentials(creds.api_key, creds.base_url)
+    who = _safe(creds.tenant) if creds.tenant else _redact(creds.api_key)
+    print(f"Signed in as {who}.")
+    print(f"Wrote {path}")
+    for caveat in caveats:
+        print(f"Note: {_safe(caveat.message)}", file=sys.stderr)
+    return 0
+
+
+def _cmd_logout(args: argparse.Namespace) -> int:
+    path = config.config_path()
+    if not config.clear_api_key():
+        print(f"No stored key to remove: {path}")
+        return 0
+    print(f"Removed the stored key from {path}")
+    print("That key still works until you revoke it in the console: deleting the")
+    print("local copy does not revoke it.")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="nodus", description="Submit and observe Nodus workloads.")
     p.add_argument("--version", action="version", version=f"nodus {__version__}")
     p.add_argument("--base-url", default=None, help="override NODUS_BASE_URL")
     sub = p.add_subparsers(dest="cmd", required=True)
+
+    # SUPPRESS, not None: a subparser default is copied over the namespace the
+    # top-level parser already filled, so `nodus --base-url X login` would lose
+    # its address to the subcommand that also offers the flag.
+    i = sub.add_parser("login", help="sign in and store an API key")
+    i.add_argument("--base-url", default=argparse.SUPPRESS,
+                   help="which deployment to sign in to")
+    i.add_argument("--no-browser", action="store_true",
+                   help="print the address instead of opening it")
+
+    sub.add_parser("logout", help="delete the stored API key")
 
     r = sub.add_parser("run", help="submit a brief")
     r.add_argument("--model", default=None, help="what the work is, e.g. '7B fine-tune'")
@@ -269,6 +333,8 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
     handlers = {
+        "login": lambda: _cmd_login(args),
+        "logout": lambda: _cmd_logout(args),
         "run": lambda: _cmd_run(args, command),
         "list": lambda: _cmd_list(args),
         "get": lambda: _cmd_get(args),

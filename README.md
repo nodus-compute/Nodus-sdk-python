@@ -21,10 +21,28 @@ pip install nodus_compute
 The distribution is `nodus_compute`; the import is `nodus`.
 <!-- import-name decision pending -->
 
-## Point it at your account
+## Sign in
 
-Two settings. Sign in at <https://nodus.run/console/>, create an API key — it is
-shown once — and the console's quickstart comes with both already filled in.
+```bash
+nodus login --base-url https://your-api-address
+```
+
+It prints a short code and opens your browser once. Approve the code there and
+it writes your key to `~/.nodus/config.toml` — nothing to copy, and no key on
+your clipboard. `--no-browser` prints the address instead of opening it.
+
+`--base-url` is the API address your account was given; export
+`NODUS_BASE_URL` once and you can drop the flag. There is no built-in address:
+a guessed one is either nobody's deployment or somebody else's.
+
+```bash
+nodus logout
+```
+
+That deletes the stored key. The key itself keeps working until you revoke it
+in the console — deleting the local copy is not a revocation.
+
+### Or set the two variables yourself
 
 ```bash
 export NODUS_API_KEY=nk_live_…
@@ -33,9 +51,13 @@ export NODUS_BASE_URL=https://…
 
 Or pass them directly: `nodus.Client(api_key=…, base_url=…)`.
 
-There is no built-in address. With neither setting the client raises
-`ConfigurationError` before it opens a socket, naming what is missing — it does
-not dial a guess and hand you a name-lookup error.
+Highest source wins, decided one setting at a time: explicit argument, then
+environment, then `~/.nodus/config.toml`. Environment above the file so a stale
+login on the same machine can never outrank what CI injected.
+
+With none of them the client raises `ConfigurationError` before it opens a
+socket, naming what is missing — it does not dial a guess and hand you a
+name-lookup error.
 
 ## Running work
 
@@ -130,6 +152,7 @@ Everything after a bare `--` is your program's own command line, passed through
 untouched:
 
 ```bash
+nodus login --base-url https://your-api-address
 nodus run --budget 20 -- python train.py
 nodus get wl_…
 nodus logs wl_…

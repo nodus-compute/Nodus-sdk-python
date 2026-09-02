@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- `nodus login`: approve a short code in the browser once and the SDK writes
+  `~/.nodus/config.toml` itself — no key to copy and no address to look up.
+  `--no-browser` prints the address instead of opening it; `nodus logout`
+  deletes the stored key and says that revoking it is a separate act in the
+  console.
+- `Client()` and `AsyncClient()` read that file when nothing else supplies a
+  setting. Precedence is resolved per setting, highest first: explicit
+  argument, environment, then the file — so a stale login cannot outrank what
+  CI injected.
+- `ConfigurationError` now offers `nodus login` alongside the two exports.
+
 ## 0.1.1 — 2026-09-02
 
 Documentation and packaging; no change to what the client sends or raises.

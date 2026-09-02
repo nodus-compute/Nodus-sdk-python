@@ -4,9 +4,12 @@ Submit workload requirements and outcomes; Nodus matches infrastructure,
 manages cost to completion, and recovers through reclaim. You describe the work
 and its constraints — never a machine, an instance type, or a supplier.
 
-Two settings are required, and both come from the console at
-https://nodus.run/console/ — the quickstart shown there has your key and the
-API address already in it:
+Sign in once and the client finds its own settings:
+
+    nodus login --base-url https://your-api-address
+
+That approves a code in your browser and writes ~/.nodus/config.toml. Or set
+the two settings yourself, which is what CI does:
 
     export NODUS_BASE_URL=https://…
     export NODUS_API_KEY=nk_live_…
@@ -43,6 +46,7 @@ from typing import Any, AsyncIterator, Iterator
 import httpx
 
 from ._brief import build_payload, status_filter
+from .config import read_credentials
 from .errors import (
     APIConnectionError,
     APIError,
@@ -263,8 +267,22 @@ def _setup_help(missing: list[str]) -> str:
         "    export NODUS_BASE_URL=https://your-api-address\n"
         "    export NODUS_API_KEY=nk_live_your_key\n"
         "\n"
-        "Or pass them straight in: nodus.Client(api_key=..., base_url=...)."
+        "Or pass them straight in: nodus.Client(api_key=..., base_url=...).\n"
+        "Or run: nodus login"
     )
+
+
+#: What ``nodus login`` needs before it can dial anything, and where it comes
+#: from. There is no default address for the same reason there is no default
+#: key: a guess is either nobody's deployment or somebody else's.
+_LOGIN_NEEDS_BASE_URL = (
+    "nodus login needs the address of the Nodus deployment to sign in to,\n"
+    "and none is set. It is the API address your account was given.\n"
+    "\n"
+    "    nodus login --base-url https://your-api-address\n"
+    "\n"
+    "Or set it once: export NODUS_BASE_URL=https://your-api-address"
+)
 
 
 def _is_header_safe(value: str) -> bool:
@@ -276,24 +294,7 @@ def _is_header_safe(value: str) -> bool:
     return bool(value) and value.isascii() and value.isprintable() and " " not in value
 
 
-def _resolve(api_key: str | None, base_url: str | None) -> tuple[str, str]:
-    key = (api_key or os.environ.get("NODUS_API_KEY") or "").strip()
-    url = (base_url or os.environ.get("NODUS_BASE_URL") or "").strip().rstrip("/")
-    missing = [
-        name
-        for name, value in (("NODUS_BASE_URL", url), ("NODUS_API_KEY", key))
-        if not value
-    ]
-    if missing:
-        raise ConfigurationError(_setup_help(missing))
-    for name, value in (("NODUS_BASE_URL", url), ("NODUS_API_KEY", key)):
-        if not _is_header_safe(value):
-            raise ConfigurationError(
-                f"{name} contains a character that cannot be sent: it must be "
-                "printable ASCII with no spaces or line breaks. Check for a "
-                "newline picked up from a file, or a smart quote pasted from a "
-                "browser."
-            )
+def _check_scheme(url: str, stacklevel: int) -> None:
     scheme = url.split("://", 1)[0].lower()
     if scheme not in ("http", "https"):
         raise ConfigurationError(
@@ -305,9 +306,56 @@ def _resolve(api_key: str | None, base_url: str | None) -> tuple[str, str]:
             f"base_url {url!r} is http://, so the API key is sent in cleartext to "
             "anyone on the path. Use https:// for anything but a control plane "
             "running on this machine.",
-            stacklevel=3,
+            stacklevel=stacklevel,
         )
+
+
+def _check_header_safe(name: str, value: str) -> None:
+    if not _is_header_safe(value):
+        raise ConfigurationError(
+            f"{name} contains a character that cannot be sent: it must be "
+            "printable ASCII with no spaces or line breaks. Check for a "
+            "newline picked up from a file, or a smart quote pasted from a "
+            "browser."
+        )
+
+
+def _resolve(api_key: str | None, base_url: str | None) -> tuple[str, str]:
+    """Both settings, highest source first, decided one setting at a time.
+
+    Env above the file so a stale login can never outrank what CI injected;
+    per setting because a stored key against an env address is the normal way
+    to point the same account at staging.
+    """
+    key = (api_key or os.environ.get("NODUS_API_KEY") or "").strip()
+    url = (base_url or os.environ.get("NODUS_BASE_URL") or "").strip().rstrip("/")
+    if not key or not url:
+        stored_key, stored_url = read_credentials()
+        key = key or stored_key.strip()
+        url = url or stored_url.strip().rstrip("/")
+    missing = [
+        name
+        for name, value in (("NODUS_BASE_URL", url), ("NODUS_API_KEY", key))
+        if not value
+    ]
+    if missing:
+        raise ConfigurationError(_setup_help(missing))
+    _check_header_safe("NODUS_BASE_URL", url)
+    _check_header_safe("NODUS_API_KEY", key)
+    _check_scheme(url, stacklevel=4)
     return key, url
+
+
+def _resolve_base_url(base_url: str | None) -> str:
+    """The address alone, for ``nodus login`` — which has no key yet."""
+    url = (base_url or os.environ.get("NODUS_BASE_URL") or "").strip().rstrip("/")
+    if not url:
+        url = read_credentials()[1].strip().rstrip("/")
+    if not url:
+        raise ConfigurationError(_LOGIN_NEEDS_BASE_URL)
+    _check_header_safe("NODUS_BASE_URL", url)
+    _check_scheme(url, stacklevel=3)
+    return url
 
 
 def _is_loopback(url: str) -> bool:
