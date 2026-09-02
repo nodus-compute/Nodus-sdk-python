@@ -271,6 +271,19 @@ def _resolve(api_key: str | None, base_url: str | None) -> tuple[str, str]:
     return key, url
 
 
+def _was_replayed(headers: dict[str, str]) -> bool:
+    """Whether the control plane answered from an idempotency record.
+
+    Header names are case-insensitive, and the header carries "true"; anything
+    else is read as a fresh submission, because claiming a replay that did not
+    happen is the reading that loses a run.
+    """
+    for name, value in headers.items():
+        if name.lower() == "idempotent-replayed":
+            return value.strip().lower() == "true"
+    return False
+
+
 def _headers(api_key: str) -> dict[str, str]:
     return {
         "Authorization": f"Bearer {api_key}",
@@ -295,6 +308,11 @@ class _WorkloadState:
     meter: Meter | None = None
     revision: int = 1
     stages: list[StageRun] = field(default_factory=list)
+    #: True when this handle came back from a submission the control plane had
+    #: already accepted under the same Idempotency-Key. A replay answers with
+    #: the original 202, so this is the only thing that distinguishes the retry
+    #: that worked from a run this call created.
+    replayed: bool = False
     error: str | None = None
     created_at: Any = None
     updated_at: Any = None
@@ -477,6 +495,7 @@ class Client(_Transport):
         idempotency_key: str | None = None,
         params: dict[str, Any] | None = None,
         text: bool = False,
+        headers_out: dict[str, str] | None = None,
     ) -> Any:
         headers = {"Idempotency-Key": idempotency_key} if idempotency_key else {}
         attempt = 0
@@ -511,6 +530,8 @@ class Client(_Transport):
                     continue
                 self._raise(method, path, resp)
 
+            if headers_out is not None:
+                headers_out.update(resp.headers)
             if not resp.content:
                 return "" if text else None
             # The log endpoint answers text/plain, because its whole purpose is
@@ -585,14 +606,17 @@ class Client(_Transport):
             extra=extra,
             **unknown,
         )
+        answered: dict[str, str] = {}
         res = self._request(
             "POST",
             "/v1/workloads",
             json=payload,
             idempotency_key=idempotency_key or f"nodus-{uuid.uuid4()}",
+            headers_out=answered,
         )
         wl = Workload(self)
         wl._absorb(res or {})
+        wl.replayed = _was_replayed(answered)
         if not wl.id:
             raise NodusError("submit returned no workload id", body=res)
         return wl
@@ -869,6 +893,7 @@ class AsyncClient(_Transport):
         idempotency_key: str | None = None,
         params: dict[str, Any] | None = None,
         text: bool = False,
+        headers_out: dict[str, str] | None = None,
     ) -> Any:
         headers = {"Idempotency-Key": idempotency_key} if idempotency_key else {}
         attempt = 0
@@ -903,6 +928,8 @@ class AsyncClient(_Transport):
                     continue
                 self._raise(method, path, resp)
 
+            if headers_out is not None:
+                headers_out.update(resp.headers)
             if not resp.content:
                 return "" if text else None
             # The log endpoint answers text/plain, because its whole purpose is
@@ -955,14 +982,17 @@ class AsyncClient(_Transport):
             extra=extra,
             **unknown,
         )
+        answered: dict[str, str] = {}
         res = await self._request(
             "POST",
             "/v1/workloads",
             json=payload,
             idempotency_key=idempotency_key or f"nodus-{uuid.uuid4()}",
+            headers_out=answered,
         )
         wl = AsyncWorkload(self)
         wl._absorb(res or {})
+        wl.replayed = _was_replayed(answered)
         if not wl.id:
             raise NodusError("submit returned no workload id", body=res)
         return wl

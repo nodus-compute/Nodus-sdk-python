@@ -258,6 +258,46 @@ def test_run_reads_the_legacy_submit_shape():
     assert wl.status == nodus.WorkloadStatus.ACCEPTED
 
 
+def test_a_replayed_submission_says_it_was_replayed():
+    """A replay answers 202 with the original body, exactly like a fresh submit.
+
+    The only thing that tells them apart is the Idempotent-Replayed header, and
+    without it a retry loop cannot report whether it created a workload or found
+    the one it made last time -- so the retry that worked reads as a second run.
+    """
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            202, json=SUBMIT_ACCEPTED, headers={"Idempotent-Replayed": "true"}
+        )
+
+    with client_with(handler) as c:
+        wl = c.run(model="x", budget=1, idempotency_key="nightly-2026-09-01")
+    assert wl.replayed is True
+
+
+def test_a_fresh_submission_is_not_marked_replayed():
+    with client_with(lambda r: httpx.Response(202, json=SUBMIT_ACCEPTED)) as c:
+        wl = c.run(model="x", budget=1)
+    assert wl.replayed is False
+
+
+def test_the_async_client_reports_a_replay_too():
+    async def go():
+        c = nodus.AsyncClient(api_key="nk_live_test", base_url="https://nodus.invalid")
+        c._http = httpx.AsyncClient(
+            base_url="https://nodus.invalid",
+            transport=httpx.MockTransport(
+                lambda r: httpx.Response(
+                    202, json=SUBMIT_ACCEPTED, headers={"Idempotent-Replayed": "true"}
+                )
+            ),
+        )
+        async with c:
+            return (await c.run(model="x", budget=1, idempotency_key="k")).replayed
+
+    assert asyncio.run(go()) is True
+
+
 def test_caller_supplied_idempotency_key_is_used_verbatim():
     """The docs tell people to pass a stable key for cross-call retries."""
     seen = {}
@@ -733,7 +773,7 @@ def test_the_async_client_reads_the_same_wire_shape():
 
 def test_sync_and_async_handles_expose_the_same_attributes():
     shared = {"id", "status", "route", "spend_usd", "budget_usd", "stages",
-              "error", "is_terminal", "succeeded", "created_at", "updated_at"}
+              "error", "replayed", "is_terminal", "succeeded", "created_at", "updated_at"}
     for cls in (nodus.Workload, nodus.AsyncWorkload):
         for name in shared:
             assert hasattr(cls, name) or name in cls.__annotations__ or \
