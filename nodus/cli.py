@@ -17,12 +17,8 @@ from . import Client, __version__
 from .errors import NodusError, NotFoundError
 from .types import ContinuityMode
 
-# C0 and C1 control characters, less the tab and newline that make output
-# readable. A terminal acts on escape sequences in whatever it is handed, and
-# nearly everything this command prints was written somewhere else: a field
-# from the control plane, or the job's own stdout. An escape can clear the
-# screen or retitle the window, and a carriage return can overwrite the line
-# just printed with a sentence of the writer's choosing.
+# C0 and C1 controls, minus tab and newline. Nearly everything printed here was
+# written somewhere else, and a terminal acts on whatever escapes it is handed.
 _CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
 
 

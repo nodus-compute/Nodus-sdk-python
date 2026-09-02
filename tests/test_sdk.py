@@ -213,12 +213,8 @@ def test_missing_base_url_says_what_to_set_and_where_to_get_it(monkeypatch):
     ["nk_live_x\r\nX-Evil: 1", "nk_live_x\nmore", "nk_live_é", "nk_live_x\x00", "nk_live x\t"],
 )
 def test_a_key_that_cannot_be_a_header_is_refused_at_the_door(key):
-    """The key goes into Authorization verbatim, so its bytes matter.
-
-    A key carrying CRLF was accepted and built into the header as written --
-    the shape of a header injection, and at best a protocol error thrown from
-    somewhere unrelated much later. A credential is checked where it is read.
-    """
+    """The key goes into Authorization verbatim, so its bytes matter: a
+    credential is checked where it is read, not thrown from the transport."""
     with pytest.raises(nodus.ConfigurationError) as exc:
         nodus.Client(api_key=key, base_url="https://nodus.invalid")
     assert "NODUS_API_KEY" in str(exc.value)
@@ -226,7 +222,7 @@ def test_a_key_that_cannot_be_a_header_is_refused_at_the_door(key):
 
 @pytest.mark.parametrize("url", ["https://nodus.invalid\nX: 1", "https://nodés.invalid"])
 def test_a_base_url_that_is_not_printable_ascii_is_a_configuration_error(url):
-    """It raised httpx.InvalidURL, which no ``except nodus.NodusError`` catches."""
+    """A bad URL is a ConfigurationError, not an httpx type no except clause names."""
     with pytest.raises(nodus.ConfigurationError):
         nodus.Client(api_key="nk_live_test", base_url=url)
 
@@ -236,12 +232,7 @@ SECRET = "nk_live_9f3a2b7c1d4e6f80"
 
 @pytest.mark.parametrize("client", [nodus.Client, nodus.AsyncClient])
 def test_the_key_is_not_sitting_in_the_clients_own_attributes(client):
-    """``vars(client)`` and ``repr(client)`` are what a crash reporter sends.
-
-    The key was stored as a plain attribute, so every automatic dump of a
-    client -- a logged exception, a debugger, an error tracker -- carried a
-    live credential out of the process.
-    """
+    """``vars(client)`` and ``repr(client)`` are what a crash reporter sends."""
     c = client(api_key=SECRET, base_url="https://nodus.invalid")
     assert SECRET not in repr(vars(c)), "the key is in the instance dictionary"
     assert SECRET not in repr(c)
@@ -292,13 +283,13 @@ def test_a_loopback_address_is_not_nagged(url):
 
 
 def test_the_scheme_is_read_case_insensitively():
-    """A URL is not wrong for being shouted. HTTPS:// was refused outright."""
+    """A URL is not wrong for being shouted: the scheme check is case-insensitive."""
     c = nodus.Client(api_key="nk_live_test", base_url="HTTPS://nodus.invalid")
     assert c.base_url == "HTTPS://nodus.invalid"
 
 
 def test_a_non_ascii_idempotency_key_is_refused_rather_than_encoded():
-    """It raised UnicodeEncodeError from inside the transport, mid-submit."""
+    """Refused at the door: the transport cannot encode it into a header."""
     calls: list[str] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -360,12 +351,8 @@ def test_run_reads_the_legacy_submit_shape():
 
 
 def test_a_second_cancel_is_a_second_request_not_a_replay():
-    """``cancel-{id}`` named one request for the life of the workload.
-
-    An idempotency record answers from what it stored, so a later cancel --
-    after a stage restarted, or from someone else on the account -- was
-    replayed rather than performed, and the workload kept running.
-    """
+    """Each cancel carries a fresh key: a fixed one would make every later
+    cancel a replay of the first, answered without being performed."""
     keys: list[str] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -705,12 +692,7 @@ def test_a_settlement_carries_no_total_the_server_never_sends():
 
 
 def test_a_malformed_money_field_does_not_end_a_wait():
-    """An 18-hour wait must not die of one bad field in one poll.
-
-    ``float()`` on whatever the body carried raised a bare TypeError -- not a
-    NodusError, so the wait's own failure policy never saw it and the caller
-    got a traceback for a workload that was still running and still billing.
-    """
+    """An 18-hour wait must not die of one bad field in one poll."""
     bodies = [
         {**WORKLOAD, "status": "running", "spend_usd": {"usd": 5}},
         {**WORKLOAD, "status": "completed"},
@@ -747,8 +729,7 @@ def test_money_that_is_not_a_number_is_not_shown_as_money():
 
 
 def test_a_payload_that_is_not_an_object_is_not_read_as_one():
-    """``payload.outcome.max_cost_usd`` is three assumptions about a free-form
-    field, and the first one raised AttributeError."""
+    """``payload.outcome.max_cost_usd`` is three assumptions about a free-form field."""
     body = {**WORKLOAD, "payload": "surprise", "stages": "nope", "route": "gone",
             "revision": {"n": 2}}
     with client_with(lambda r: httpx.Response(200, json=body)) as c:
@@ -788,12 +769,8 @@ TRAVERSALS = [
 
 @pytest.mark.parametrize("bad", TRAVERSALS)
 def test_a_workload_id_cannot_walk_out_of_its_own_path(bad):
-    """``/v1/workloads/{id}`` is a template, and an id is a segment of it.
-
-    httpx normalises dot segments before it sends, so an id of ``../../v1/
-    webhooks`` left the workload namespace entirely and read back the webhook
-    signing secret. The same id can arrive from the server, through _absorb.
-    """
+    """``/v1/workloads/{id}`` is a template, and an id is one segment of it:
+    httpx normalises dot segments, so ``..`` walks into another endpoint."""
     paths: list[str] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -1356,12 +1333,7 @@ def test_a_long_retry_after_is_clamped_rather_than_discarded():
 
 
 def test_an_infinite_retry_after_is_not_a_number_of_seconds():
-    """``float("inf")`` parses, and then the client sleeps until the heat death.
-
-    "inf" and "nan" are accepted by float() and were carried through as if they
-    were durations -- a header a hostile or broken server controls, turned into
-    a hang the caller cannot tell from a lost connection.
-    """
+    """``float("inf")`` parses, but it is not a number of seconds to sleep."""
     import math
 
     for hint in ("inf", "-inf", "nan", "Infinity"):
@@ -1373,11 +1345,7 @@ def test_an_infinite_retry_after_is_not_a_number_of_seconds():
 
 
 def test_one_call_cannot_sleep_past_the_cap_by_retrying(monkeypatch):
-    """The 300-second ceiling was per attempt, so three attempts held for 600.
-
-    A cap that a retry loop multiplies is not a cap. What the caller
-    experiences is one call that does not return for ten minutes.
-    """
+    """A cap a retry loop can multiply is not a cap: the ceiling bounds the call."""
     slept: list[float] = []
     monkeypatch.setattr(nodus.time, "sleep", lambda s: slept.append(s))
 
@@ -1576,12 +1544,7 @@ def test_generation_zero_is_still_a_filter():
 
 
 def test_a_log_bigger_than_the_cap_is_refused_before_it_is_all_in_memory(monkeypatch):
-    """A training log is whatever the job printed, and the SDK held all of it.
-
-    The endpoint answers text/plain with no length the client agreed to, so a
-    chatty run put its entire stdout into the caller's process -- measured at
-    210MB. It is read in pieces now, and stops at the ceiling.
-    """
+    """A log is read in pieces and refused at the ceiling, never held whole."""
     monkeypatch.setattr(nodus, "_LOG_MAX_BYTES", 64 * 1024)
     served: list[int] = []
 

@@ -134,9 +134,8 @@ _RETRY_METHODS = frozenset({"GET", "PUT", "DELETE", "POST"})
 _RETRY_AFTER_CAP = 300.0
 
 
-# Most a single log read will hold in memory. The endpoint answers with whatever
-# the job printed and no length the client ever agreed to, so without a ceiling
-# the caller's process is sized by someone else's print statements.
+# Ceiling on one log read: the endpoint sends whatever the job printed, so
+# without one the caller's memory is sized by someone else's print statements.
 _LOG_MAX_BYTES = 64 * 1024 * 1024
 
 
@@ -154,9 +153,8 @@ def _retry_after(resp: httpx.Response) -> float | None:
     except ValueError:
         pass
     else:
-        # float() accepts "inf" and "nan". Neither is a number of seconds, and
-        # honouring the first is a hang the caller cannot tell from a dropped
-        # connection -- from a header the server chooses.
+        # float() accepts "inf" and "nan"; honouring either turns a header the
+        # server chooses into a hang. Only finite seconds count.
         return max(0.0, seconds) if math.isfinite(seconds) else None
     try:
         when = parsedate_to_datetime(raw)
@@ -268,12 +266,10 @@ def _setup_help(missing: list[str]) -> str:
 
 
 def _is_header_safe(value: str) -> bool:
-    """Whether this can be sent verbatim in a header or a URL.
+    """Whether this can travel verbatim in a header or a URL.
 
-    Printable ASCII and no spaces: a control character in a credential is a
-    header injection waiting for a server that tolerates one, and a non-ASCII
-    one is a UnicodeEncodeError thrown from inside the transport, long after
-    the setting that caused it was read.
+    Printable ASCII, no spaces: a control character is a header injection, and
+    non-ASCII raises from inside the transport long after the setting was read.
     """
     return bool(value) and value.isascii() and value.isprintable() and " " not in value
 
@@ -326,11 +322,9 @@ _WORKLOAD_ID = re.compile(r"\A[A-Za-z0-9_-]+\Z")
 def _valid_id(workload_id: Any) -> str:
     """One path segment, checked before it can become part of a URL.
 
-    ``/v1/workloads/{id}`` is a template, and httpx resolves dot segments before
-    it sends: an id of ``../../v1/webhooks`` left the workload namespace and
-    read back the webhook signing secret. An id that arrives from the server and
-    is followed on the next refresh reaches the same place, so this is checked
-    wherever an id becomes a path -- not only where a caller typed one.
+    httpx resolves dot segments, so an id carrying ``/`` or ``..`` addresses a
+    different endpoint — the webhook secret included. Server-supplied ids are
+    checked too: a handle refreshes on the id it is holding.
     """
     if isinstance(workload_id, str) and _WORKLOAD_ID.match(workload_id):
         return workload_id
@@ -344,9 +338,9 @@ def _valid_id(workload_id: Any) -> str:
 def _valid_idempotency_key(key: str) -> str:
     """A key that can survive being a header.
 
-    A non-ASCII one raised UnicodeEncodeError from inside the transport, mid
-    submit, naming neither the key nor the call; one carrying CRLF was a header
-    the server would reject on every attempt, retried to the end of the budget.
+    Non-ASCII cannot be encoded into one and CRLF makes a header the server
+    rejects on every attempt — either failure surfaces from inside the
+    transport, after the retry budget, naming neither the key nor the call.
     """
     if _is_header_safe(key):
         return key
@@ -369,10 +363,7 @@ def _was_replayed(headers: dict[str, str]) -> bool:
 
 
 def _redact(key: str) -> str:
-    """A key as it should appear anywhere it might be read by someone else.
-
-    Enough of it to tell which credential is configured, never enough to use.
-    """
+    """Enough of the key to tell which credential is configured, never enough to use."""
     return f"{key[:6]}...{key[-4:]}" if len(key) > 12 else "***"
 
 
@@ -510,10 +501,8 @@ class _Transport:
     def _hold(self, attempt: int, resp: httpx.Response | None, slept: float) -> float | None:
         """Seconds to wait before the next attempt, or None to stop retrying.
 
-        The Retry-After ceiling used to bound one sleep rather than one call, so
-        two retries of a 300-second hint held a single call for ten minutes --
-        a cap a loop can multiply is not a cap, and what the caller sees is a
-        function that does not return.
+        The ceiling bounds the whole call, not each sleep inside it: a cap a
+        retry loop can multiply is not a cap.
         """
         left = _RETRY_AFTER_CAP - slept
         if left <= 0:
@@ -578,9 +567,8 @@ class Client(_Transport):
     ):
         super().__init__(max_retries)
         key, self.base_url = _resolve(api_key, base_url)
-        # The credential itself is handed to the transport and kept nowhere
-        # else: an attribute holding it is copied out by every automatic dump
-        # of this object -- a logged exception, a debugger, an error tracker.
+        # The credential lives only in the transport: an attribute holding it
+        # is copied out by every automatic dump — logs, debuggers, trackers.
         self._api_key_shown = _redact(key)
         self._http = httpx.Client(
             base_url=self.base_url, timeout=timeout, headers=_headers(key)
@@ -614,8 +602,7 @@ class Client(_Transport):
     ) -> Any:
         headers = {"Idempotency-Key": _valid_idempotency_key(idempotency_key)} if idempotency_key else {}
         attempt = 0
-        # One waiting budget for the whole call, so retries cannot multiply the
-        # ceiling into a wait the caller reads as a hang.
+        # One waiting budget for the whole call, spent across every retry.
         slept = 0.0
         while True:
             delay: float | None = None
@@ -818,9 +805,8 @@ class Client(_Transport):
         self._request(
             "POST",
             f"/v1/workloads/{_valid_id(workload_id)}/cancel",
-            # Fresh per call: a fixed key named one request for the life of the
-            # workload, so a later cancel was answered from the first one's
-            # record instead of being performed.
+            # Fresh per call: one key for the life of the workload makes every
+            # later cancel a replay of the first, answered without being done.
             idempotency_key=idempotency_key or f"cancel-{workload_id}-{uuid.uuid4()}",
         )
 
@@ -1056,8 +1042,7 @@ class AsyncClient(_Transport):
     ) -> Any:
         headers = {"Idempotency-Key": _valid_idempotency_key(idempotency_key)} if idempotency_key else {}
         attempt = 0
-        # One waiting budget for the whole call, so retries cannot multiply the
-        # ceiling into a wait the caller reads as a hang.
+        # One waiting budget for the whole call, spent across every retry.
         slept = 0.0
         while True:
             delay: float | None = None
@@ -1240,9 +1225,8 @@ class AsyncClient(_Transport):
         await self._request(
             "POST",
             f"/v1/workloads/{_valid_id(workload_id)}/cancel",
-            # Fresh per call: a fixed key named one request for the life of the
-            # workload, so a later cancel was answered from the first one's
-            # record instead of being performed.
+            # Fresh per call: one key for the life of the workload makes every
+            # later cancel a replay of the first, answered without being done.
             idempotency_key=idempotency_key or f"cancel-{workload_id}-{uuid.uuid4()}",
         )
 

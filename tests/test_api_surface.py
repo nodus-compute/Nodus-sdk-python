@@ -109,10 +109,8 @@ def test_the_package_ships_its_types():
 def test_the_command_prints_only_ascii():
     """A console on a legacy code page cannot encode a typographic dash.
 
-    Windows still opens cmd.exe on the OEM code page, where printing an em
-    dash raises UnicodeEncodeError -- so the run that had just been submitted
-    ended in a traceback instead of printing its own id. The docstrings are
-    exempt because nothing prints them; the constants are what reach a screen.
+    Only what reaches a screen matters: constants are checked, docstrings are
+    exempt because nothing prints them.
     """
     import ast
     import pathlib
@@ -226,13 +224,8 @@ def _has_control_characters(text: str) -> bool:
 
 
 def test_text_from_the_server_cannot_repaint_the_terminal(monkeypatch, capsys):
-    """Ids, statuses, routes and logs are written by something other than us.
-
-    A terminal obeys escape sequences in whatever it is handed, so a job that
-    prints one -- or a control plane that returns one in a field -- could clear
-    the screen, retitle the window, or use a carriage return to overwrite a
-    line with text of its choosing. None of it is ours to pass through.
-    """
+    """Ids, statuses, routes and logs are written by something other than us,
+    and a terminal obeys whatever escape sequences it is handed."""
 
     class _Fake:
         def __init__(self, *a, **kw):

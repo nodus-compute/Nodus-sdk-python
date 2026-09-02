@@ -106,13 +106,9 @@ TERMINAL = frozenset(s.value for s in TERMINAL_STATUSES)
 def _num(value: Any, default: float = 0.0) -> float:
     """A float from a field nothing here controls.
 
-    Every number on this surface arrives over the wire, so ``float()`` on it is
-    a call that can raise in the middle of a poll -- and a bare TypeError is not
-    a NodusError, so it escapes a wait's failure policy entirely.
-
-    Non-finite is refused along with unparseable: NaN and infinity are floats,
-    so they pass every numeric check, then print as "$nan" and compare false
-    against every budget they were meant to be checked against.
+    A raw ``float()`` on wire data can raise mid-poll with an error no failure
+    policy catches; NaN and infinity pass numeric checks yet compare false
+    against every budget, so non-finite is refused along with unparseable.
     """
     if value is None or isinstance(value, bool):
         return default
