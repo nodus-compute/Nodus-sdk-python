@@ -171,11 +171,9 @@ class BudgetExceededError(NodusError):
     def headroom_usd(self) -> float | None:
         """What is left under the cap, as the control plane measured it.
 
-        Never derived. Headroom is the cap less settled, accruing AND committed
-        money, so subtracting month-to-date from the cap here answered with a
-        larger number than the guard enforces -- on the very account that had
-        just been refused. ``None`` means the refusal did not carry it, and the
-        message says why in the control plane's own words.
+        Never derived: headroom nets settled, accruing and committed money, so
+        cap minus month-to-date overstates it. ``None`` means the refusal did
+        not carry it.
         """
         return self._amount("remaining_headroom_usd")
 

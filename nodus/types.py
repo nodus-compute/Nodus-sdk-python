@@ -345,10 +345,8 @@ CUSTOMER_CHARGE = "customer_charge"
 class Settlement:
     """Whether the books for one workload are closed, and what is left on them.
 
-    ``balance_usd`` is a residual, not a price: closing a settlement posts the
-    entry that squares debits against credits, so a settlement that closed
-    cleanly balances at exactly $0.00. What the run cost is
-    :attr:`Ledger.charged_usd`.
+    ``balance_usd`` is a residual, not a price: a settlement that closed
+    cleanly balances at $0.00. What the run cost is :attr:`Ledger.charged_usd`.
     """
 
     status: str = "none"
@@ -382,12 +380,10 @@ class Ledger:
 
     @property
     def charged_usd(self) -> float:
-        """What the customer was charged for this workload, from the evidence.
+        """What the customer was charged for this workload.
 
-        The sum of the customer_charge credits — the same arithmetic the control
-        plane projects ``spend_usd`` from, so the two reconcile against each
-        other. The settlement's own balance is what is left after closing, which
-        is zero whenever nothing went wrong.
+        The sum of the customer_charge credits — the same arithmetic the
+        control plane projects ``spend_usd`` from, so the two reconcile.
         """
         return sum(e.credit_usd for e in self.entries if e.entry_type == CUSTOMER_CHARGE)
 

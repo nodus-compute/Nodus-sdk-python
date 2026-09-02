@@ -48,13 +48,9 @@ SUBMIT_ACCEPTED = {
     "revision": 1,
 }
 
-# GET /v1/workloads/{id} as internal/api marshals it: models.Workload's fields
-# plus a meter, which is a value and not a pointer — every read carries one, so
-# a fixture without a meter is a shape the control plane cannot produce.
-#
-# This one finished in July and is read in September, which is the case the
-# money surface has to survive: the meter counts the BILLING PERIOD, so it is
-# all zeros, while spend_usd is every customer_charge this workload ever took.
+# GET /v1/workloads/{id} as internal/api marshals it — every read carries a
+# meter. This run finished in a past billing period, so the meter is all zeros
+# while spend_usd holds every charge the workload ever took.
 WORKLOAD = {
     "id": "wl_abc",
     "tenant_id": "tn_acme",
@@ -259,12 +255,7 @@ def test_run_reads_the_legacy_submit_shape():
 
 
 def test_a_replayed_submission_says_it_was_replayed():
-    """A replay answers 202 with the original body, exactly like a fresh submit.
-
-    The only thing that tells them apart is the Idempotent-Replayed header, and
-    without it a retry loop cannot report whether it created a workload or found
-    the one it made last time -- so the retry that worked reads as a second run.
-    """
+    """A replay answers 202 with the original body; only the header tells them apart."""
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             202, json=SUBMIT_ACCEPTED, headers={"Idempotent-Replayed": "true"}
@@ -511,10 +502,9 @@ def test_artifacts_map_the_manifest_row_shape():
     assert not hasattr(art, "verified")
 
 
-# GET /v1/workloads/{id}/ledger as internal/api/pilot.go writes it. A
-# customer_charge is a CREDIT, and settlement carries a balance rather than a
-# total: settle_close posts the entry that zeroes the books, so a healthy
-# closed settlement balances at exactly $0.00.
+# GET /v1/workloads/{id}/ledger as internal/api/pilot.go writes it: a
+# customer_charge is a CREDIT, and settlement carries the balance settle_close
+# leaves — exactly $0.00 when healthy.
 LEDGER = {
     "workload_id": "wl_abc",
     "entries": [
@@ -558,23 +548,16 @@ def test_ledger_parses_entries_and_settlement():
 
 
 def test_the_ledger_totals_what_the_customer_was_charged():
-    """The settlement balances to zero; the charge is what the customer pays.
-
-    ``balance_usd`` is what is left on the books after settle_close posts the
-    entry that squares them, so it is $0.00 for every healthy settlement.
-    Reading it as the price of the run reports a free workload. What was
-    charged is the sum of the customer_charge credits.
-    """
+    """The charge is the sum of customer_charge credits, not the settlement balance."""
     with client_with(lambda r: httpx.Response(200, json=LEDGER)) as c:
         led = c.ledger("wl_abc")
     assert led.charged_usd == 5.0
 
 
 def test_a_settlement_carries_no_total_the_server_never_sends():
-    """``total_usd`` was read from two keys the control plane has never sent."""
+    """A settlement's amount comes only from ``balance_usd``, the key pilot.go writes."""
     assert not hasattr(nodus.Settlement(), "total_usd")
-    # A body carrying the old spelling must not resurrect it: the amount comes
-    # from the key pilot.go writes, and from no other.
+    # A stray money key in the body is ignored, not read as the amount.
     st = nodus.Settlement.from_dict(
         {"status": "closed", "balance_usd": 0.0, "total_usd": 99.0}
     )
@@ -683,12 +666,8 @@ def test_client_errors_are_not_retried():
 
 
 def test_a_submit_that_times_out_hands_back_the_key_that_makes_the_retry_safe():
-    """A timeout is not a refusal. The workload may exist, and may be billing.
-
-    The key that was sent is the only thing that makes a retry the same
-    submission instead of a second paid run, and it was discarded with the
-    request -- a caller who let run() mint one could not name it afterwards.
-    """
+    """A timeout is not a refusal: the workload may exist and be billing, and
+    the key on the error is what makes a retry the same submission."""
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectTimeout("too slow", request=request)
 
@@ -828,14 +807,7 @@ def test_a_field_this_sdk_does_not_model_travels_in_extra():
 
 
 def test_extra_cannot_overwrite_the_brief_that_was_just_built():
-    """``extra`` adds fields; it does not get to delete the cost ceiling.
-
-    It was merged with dict.update, so extra={"outcome": ...} REPLACED the
-    outcome object holding max_cost_usd. budget=400 submitted uncapped, and the
-    warning that would have said so had already run against the pre-merge
-    payload -- so the one submission that most needed telling was the one that
-    said nothing.
-    """
+    """``extra`` adds fields; it does not get to delete the cost ceiling."""
     with pytest.raises(TypeError) as exc:
         build_payload(model="x", budget=400, extra={"outcome": {"note": "hi"}})
     message = str(exc.value)
@@ -866,9 +838,8 @@ def test_a_typod_keyword_never_reaches_the_network():
 # -- what it is costing right now ------------------------------------------
 
 
-# A list row as store.WorkloadListItem marshals it, running inside the billing
-# period that has charged it: one closed lease at $2.50, one open lease six
-# dollars into its hour.
+# A list row as store.WorkloadListItem marshals it: one closed lease at $2.50,
+# one open lease six dollars into its hour, all in this billing period.
 RUNNING_METERED = {
     "id": "wl_abc",
     "status": "running",
@@ -885,9 +856,8 @@ RUNNING_METERED = {
     },
 }
 
-# The same run, still going, but started in the period BEFORE this one: $100 of
-# it has already been charged and fell out of the meter's window, and the lease
-# running now has put $6 on top of that.
+# The same run started in the period before this one: half its $200 of charges
+# fall outside the meter's window, and the open lease has $6 accruing.
 RUNNING_ACROSS_A_PERIOD_BOUNDARY = {
     "id": "wl_abc",
     "status": "running",
@@ -921,12 +891,8 @@ def test_a_running_workload_reports_what_it_is_costing_now():
 
 
 def test_a_workload_charged_in_an_earlier_period_still_reports_what_it_cost():
-    """A finished run is not free because the month rolled over.
-
-    The meter counts the billing period; ``spend_usd`` counts the workload. A
-    July run read in September sends a meter of zeros, and a client that reports
-    the meter alone tells the customer their $291.40 job cost $0.00.
-    """
+    """A finished run is not free because the month rolled over: the meter
+    counts the billing period, ``spend_usd`` counts the workload."""
     with client_with(lambda r: httpx.Response(200, json=WORKLOAD)) as c:
         wl = c.get("wl_abc")
     assert wl.meter is not None and wl.meter.total_now_usd == 0.0
@@ -934,12 +900,8 @@ def test_a_workload_charged_in_an_earlier_period_still_reports_what_it_cost():
 
 
 def test_a_run_that_crossed_a_period_boundary_counts_both_halves():
-    """What is settled and what is accruing are two scopes, and both are owed.
-
-    The meter's settled half stops at the period boundary while its accruing
-    half does not, so neither number alone is the price of a run that has been
-    going since last month: $200 charged, $6 running up, $206 owed.
-    """
+    """What is settled and what is accruing are two scopes, and both are owed:
+    $200 charged, $6 running up, $206 owed."""
     body = RUNNING_ACROSS_A_PERIOD_BOUNDARY
     with client_with(lambda r: httpx.Response(200, json=body)) as c:
         wl = c.get("wl_abc")
@@ -1040,13 +1002,8 @@ def test_budget_refusal_exposes_the_arithmetic_as_numbers():
 
 
 def test_the_refusal_carries_the_money_that_is_not_settled_yet():
-    """Two of the four numbers the guard refused on were being dropped.
-
-    A cap is not measured against settled charges alone: the account is also on
-    the hook for what open leases are running up and what admitted work is
-    committed to spend. The 402 sends both, and they are most of the gap
-    between the cap and the refusal on a busy account.
-    """
+    """The 402 carries all four numbers the guard refused on, accruing and
+    committed money included."""
     err = _raised(
         402,
         {
@@ -1064,12 +1021,7 @@ def test_the_refusal_carries_the_money_that_is_not_settled_yet():
 
 
 def test_headroom_is_the_servers_number_or_none_at_all():
-    """cap - month_to_date is not headroom, and guessing it overstates it.
-
-    The control plane subtracts accruing and committed money as well, so the
-    client-side subtraction reported comfortable headroom to an account that
-    had none -- and the caller resubmitted against a number nothing enforces.
-    """
+    """cap - month_to_date is not headroom, and guessing it overstates it."""
     err = _raised(
         402,
         {
@@ -1159,13 +1111,8 @@ def test_a_brief_with_no_budget_says_it_is_uncapped():
 
 
 def test_a_money_warning_blames_the_brief_that_caused_it(recwarn):
-    """Under the filter people actually run, the second one has to arrive too.
-
-    The default filter shows a warning once per source location. Blaming a line
-    inside the SDK makes every uncapped submission after the first one in a
-    process silent -- and a nightly job that submits in a loop gets told once,
-    on a run nobody was watching.
-    """
+    """The default filter is one warning per location: blamed on the caller,
+    both briefs are told; blamed on the SDK, only the first would be."""
     with client_with(lambda r: httpx.Response(202, json=SUBMIT_ACCEPTED)) as c:
         with warnings.catch_warnings(record=True) as seen:
             warnings.simplefilter("default")
@@ -1189,11 +1136,7 @@ def test_a_money_warning_blames_a_direct_brief_too(recwarn):
 
 
 def test_a_staged_brief_is_warned_about_a_budget_like_any_other():
-    """A pipeline of five stages is the brief with the most to spend, not the least.
-
-    The warning was scoped to single-source briefs, so the submissions that rent
-    the most hosts were the ones that never mentioned being uncapped.
-    """
+    """A staged pipeline is the brief with the most to spend, not the least."""
     with pytest.warns(UserWarning, match="budget="):
         build_payload(stages=[{"id": "train"}])
     with warnings.catch_warnings():
@@ -1202,11 +1145,7 @@ def test_a_staged_brief_is_warned_about_a_budget_like_any_other():
 
 
 def test_stages_refuse_the_source_they_would_throw_away():
-    """``stages=`` replaces the top-level source, so image= alongside it is a lie.
-
-    They were accepted and dropped: the brief that was submitted ran a
-    different image from the one the caller wrote down.
-    """
+    """``stages=`` replaces the top-level source, so image= alongside it is a lie."""
     with pytest.raises(TypeError) as exc:
         build_payload(stages=[{"id": "train"}], budget=1, image="ubuntu:22.04",
                       command=["python", "train.py"])

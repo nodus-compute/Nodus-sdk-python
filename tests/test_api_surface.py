@@ -143,12 +143,7 @@ def test_the_command_answers_a_missing_log_with_a_sentence(monkeypatch, capsys):
 
 
 def test_the_ledger_command_prints_what_the_run_charged(monkeypatch, capsys):
-    """A settled ledger balances to zero, and the command used to print nothing.
-
-    The settlement's own amount is a balance, so it is $0.00 whenever the books
-    are square — and the render suppressed a falsy amount, which is every
-    healthy settlement there is. What the customer pays has to be on the screen.
-    """
+    """A healthy settlement balances to $0.00; the charge still reaches the screen."""
     from nodus.types import Ledger
 
     led = Ledger.from_dict(

@@ -274,9 +274,8 @@ def _resolve(api_key: str | None, base_url: str | None) -> tuple[str, str]:
 def _was_replayed(headers: dict[str, str]) -> bool:
     """Whether the control plane answered from an idempotency record.
 
-    Header names are case-insensitive, and the header carries "true"; anything
-    else is read as a fresh submission, because claiming a replay that did not
-    happen is the reading that loses a run.
+    Anything but a case-insensitive "true" reads as a fresh submission:
+    claiming a replay that did not happen is the reading that loses a run.
     """
     for name, value in headers.items():
         if name.lower() == "idempotent-replayed":
@@ -308,10 +307,8 @@ class _WorkloadState:
     meter: Meter | None = None
     revision: int = 1
     stages: list[StageRun] = field(default_factory=list)
-    #: True when this handle came back from a submission the control plane had
-    #: already accepted under the same Idempotency-Key. A replay answers with
-    #: the original 202, so this is the only thing that distinguishes the retry
-    #: that worked from a run this call created.
+    #: True when the control plane answered from an idempotency record: the
+    #: submission already existed, this call did not create a second run.
     replayed: bool = False
     error: str | None = None
     created_at: Any = None
@@ -361,14 +358,9 @@ class _WorkloadState:
     def cost_now_usd(self) -> float:
         """What this workload has cost as of the last read.
 
-        Two scopes are added, because neither field alone is the price of a run.
-        ``meter.settled_usd`` counts the current billing period, so a workload
-        charged last month meters at zero; ``spend_usd`` counts every charge the
-        workload ever took, but it is a projection written when a lease settles,
-        so it lags one. The larger of the two is what has been charged. Then
-        ``meter.accruing_usd`` — an open lease's money, which no charge row
-        exists for yet, and which is not period-scoped — is what is being spent
-        on top of it right now.
+        ``meter.settled_usd`` counts only the current billing period and
+        ``spend_usd`` lags a settling lease, so what has been charged is the
+        larger of the two; ``meter.accruing_usd`` is open leases' money on top.
         """
         if self.meter is None:
             return self.spend_usd
@@ -427,11 +419,9 @@ class _Transport:
     ) -> NodusError:
         """A failure that leaves the caller unable to say what happened.
 
-        A timeout is not a refusal: the request may have arrived, and if it did,
-        the workload exists and is billing. Retrying without the key that was
-        sent is how one brief becomes two paid runs -- and a caller who let
-        ``run()`` mint the key could not name it, because it died with the
-        request. It travels on the error instead.
+        The request may have arrived, in which case the workload exists and is
+        billing. The key travels on the error so a retry can be the same
+        submission instead of a second paid one.
         """
         if not idempotency_key:
             return cls(message)
@@ -581,9 +571,8 @@ class Client(_Transport):
         are running so a resubmission cannot become a second paid workload.
 
         A raised :class:`APITimeoutError` or :class:`APIConnectionError` does
-        not mean nothing was submitted: the request may have arrived and the
-        workload may be running. Retry with the key on ``err.payload``, which is
-        the one that was sent, so the retry cannot become a second paid run.
+        not mean nothing was submitted. Retry with the key on ``err.payload`` —
+        the one that was sent — so the retry cannot become a second paid run.
         """
         payload = build_payload(
             command=command,

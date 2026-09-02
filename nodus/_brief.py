@@ -23,12 +23,9 @@ _PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
 def _caller_stacklevel() -> int:
     """How far up the stack the code that wrote the brief is.
 
-    Counted rather than written down, because there is no one right number:
-    ``client.run()`` and ``build_payload()`` are different depths, and every
-    helper added between the brief and the warning moves them both. A warning
-    reported against the SDK's own source is worse than a wrong file name --
-    the default filter shows one warning per location, so the first uncapped
-    submission in a process is told and every one after it is silent.
+    Counted, not hardcoded: ``run()`` and ``build_payload()`` sit at different
+    depths, and the default filter shows one warning per location — a warning
+    blamed on SDK source silences every submission after the first.
     """
     frame = inspect.currentframe()
     frame = frame.f_back if frame is not None else None  # the warning's own frame
@@ -206,8 +203,7 @@ def build_payload(
 
     if stages:
         # A staged brief has a source per stage, so a top-level one has nowhere
-        # to go. Silently dropping it submitted a pipeline that ran something
-        # other than what the caller wrote down.
+        # to go: dropping it would run something other than what the brief says.
         discarded = sorted(
             name
             for name, value in (
@@ -248,8 +244,8 @@ def build_payload(
 def _merge_extra(payload: dict[str, Any], extra: dict[str, Any] | None) -> None:
     """Add fields this SDK version does not model. Never replace one it does.
 
-    A dict.update let ``extra={"outcome": ...}`` overwrite the outcome object
-    holding the cost ceiling, so a brief passing budget=400 submitted uncapped.
+    A key that collides with the built brief would overwrite it — ``outcome``
+    included, which is where the cost ceiling lives.
     """
     if not extra:
         return
@@ -268,10 +264,10 @@ def _merge_extra(payload: dict[str, Any], extra: dict[str, Any] | None) -> None:
 
 
 def _warn_about_the_money(payload: dict[str, Any]) -> None:
-    """The free warnings, read off the payload as it will be sent.
+    """Money warnings, read off the payload as it will be sent.
 
-    After the merge, not before: a warning drawn from a draft of the brief can
-    describe a submission that never happened.
+    After the merge, not before: a warning drawn from a draft can describe a
+    submission that never happens.
     """
     _warn_if_it_is_uncapped(payload.get("outcome") or {})
     source = payload.get("source") or {}
