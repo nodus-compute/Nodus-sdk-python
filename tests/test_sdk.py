@@ -1218,6 +1218,43 @@ def test_a_long_retry_after_is_clamped_rather_than_discarded():
     assert nodus.Client._backoff(0, resp) == 300.0, "a backoff must not hold for ten minutes"
 
 
+def test_an_infinite_retry_after_is_not_a_number_of_seconds():
+    """``float("inf")`` parses, and then the client sleeps until the heat death.
+
+    "inf" and "nan" are accepted by float() and were carried through as if they
+    were durations -- a header a hostile or broken server controls, turned into
+    a hang the caller cannot tell from a lost connection.
+    """
+    import math
+
+    for hint in ("inf", "-inf", "nan", "Infinity"):
+        err = _raised(429, {"error": "rate_limited"}, {"Retry-After": hint})
+        assert err.retry_after is None, f"{hint} was read as a duration"
+        resp = httpx.Response(429, headers={"Retry-After": hint})
+        backoff = nodus.Client._backoff(0, resp)
+        assert math.isfinite(backoff) and backoff <= 300.0
+
+
+def test_one_call_cannot_sleep_past_the_cap_by_retrying(monkeypatch):
+    """The 300-second ceiling was per attempt, so three attempts held for 600.
+
+    A cap that a retry loop multiplies is not a cap. What the caller
+    experiences is one call that does not return for ten minutes.
+    """
+    slept: list[float] = []
+    monkeypatch.setattr(nodus.time, "sleep", lambda s: slept.append(s))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            429, json={"error": "rate_limited"}, headers={"Retry-After": "300"}
+        )
+
+    with client_with(handler, max_retries=2) as c:
+        with pytest.raises(nodus.RateLimitError):
+            c.get("wl_abc")
+    assert sum(slept) <= 300.0, f"one call slept {sum(slept)}s: {slept}"
+
+
 def test_retry_after_in_http_date_form_is_understood():
     from email.utils import format_datetime
     from datetime import datetime, timedelta, timezone

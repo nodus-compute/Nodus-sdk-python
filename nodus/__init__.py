@@ -28,6 +28,7 @@ API address already in it:
 from __future__ import annotations
 
 import asyncio
+import math
 import os
 import re
 import time
@@ -142,9 +143,14 @@ def _retry_after(resp: httpx.Response) -> float | None:
     if not raw:
         return None
     try:
-        return max(0.0, float(raw))
+        seconds = float(raw)
     except ValueError:
         pass
+    else:
+        # float() accepts "inf" and "nan". Neither is a number of seconds, and
+        # honouring the first is a hang the caller cannot tell from a dropped
+        # connection -- from a header the server chooses.
+        return max(0.0, seconds) if math.isfinite(seconds) else None
     try:
         when = parsedate_to_datetime(raw)
     except (TypeError, ValueError):
@@ -438,6 +444,19 @@ class _Transport:
                 return hinted
         return min(8.0, 0.5 * (2**attempt))
 
+    def _hold(self, attempt: int, resp: httpx.Response | None, slept: float) -> float | None:
+        """Seconds to wait before the next attempt, or None to stop retrying.
+
+        The Retry-After ceiling used to bound one sleep rather than one call, so
+        two retries of a 300-second hint held a single call for ten minutes --
+        a cap a loop can multiply is not a cap, and what the caller sees is a
+        function that does not return.
+        """
+        left = _RETRY_AFTER_CAP - slept
+        if left <= 0:
+            return None
+        return min(self._backoff(attempt, resp), left)
+
     @staticmethod
     def _unreached(
         cls: type[NodusError], message: str, idempotency_key: str | None
@@ -514,14 +533,21 @@ class Client(_Transport):
     ) -> Any:
         headers = {"Idempotency-Key": idempotency_key} if idempotency_key else {}
         attempt = 0
+        # One waiting budget for the whole call, so retries cannot multiply the
+        # ceiling into a wait the caller reads as a hang.
+        slept = 0.0
         while True:
+            delay: float | None = None
             try:
                 resp = self._http.request(
                     method, path, json=json, headers=headers, params=params
                 )
             except httpx.TimeoutException as exc:
                 if attempt < self.max_retries:
-                    time.sleep(self._backoff(attempt, None))
+                    delay = self._hold(attempt, None, slept)
+                if delay is not None:
+                    time.sleep(delay)
+                    slept += delay
                     attempt += 1
                     continue
                 raise self._unreached(
@@ -529,7 +555,10 @@ class Client(_Transport):
                 ) from exc
             except httpx.HTTPError as exc:
                 if attempt < self.max_retries:
-                    time.sleep(self._backoff(attempt, None))
+                    delay = self._hold(attempt, None, slept)
+                if delay is not None:
+                    time.sleep(delay)
+                    slept += delay
                     attempt += 1
                     continue
                 raise self._unreached(
@@ -540,9 +569,12 @@ class Client(_Transport):
 
             if resp.status_code >= 400:
                 if self._should_retry(method, resp.status_code, attempt):
-                    time.sleep(self._backoff(attempt, resp))
-                    attempt += 1
-                    continue
+                    delay = self._hold(attempt, resp, slept)
+                    if delay is not None:
+                        time.sleep(delay)
+                        slept += delay
+                        attempt += 1
+                        continue
                 self._raise(method, path, resp)
 
             if headers_out is not None:
@@ -911,14 +943,21 @@ class AsyncClient(_Transport):
     ) -> Any:
         headers = {"Idempotency-Key": idempotency_key} if idempotency_key else {}
         attempt = 0
+        # One waiting budget for the whole call, so retries cannot multiply the
+        # ceiling into a wait the caller reads as a hang.
+        slept = 0.0
         while True:
+            delay: float | None = None
             try:
                 resp = await self._http.request(
                     method, path, json=json, headers=headers, params=params
                 )
             except httpx.TimeoutException as exc:
                 if attempt < self.max_retries:
-                    await asyncio.sleep(self._backoff(attempt, None))
+                    delay = self._hold(attempt, None, slept)
+                if delay is not None:
+                    await asyncio.sleep(delay)
+                    slept += delay
                     attempt += 1
                     continue
                 raise self._unreached(
@@ -926,7 +965,10 @@ class AsyncClient(_Transport):
                 ) from exc
             except httpx.HTTPError as exc:
                 if attempt < self.max_retries:
-                    await asyncio.sleep(self._backoff(attempt, None))
+                    delay = self._hold(attempt, None, slept)
+                if delay is not None:
+                    await asyncio.sleep(delay)
+                    slept += delay
                     attempt += 1
                     continue
                 raise self._unreached(
@@ -937,9 +979,12 @@ class AsyncClient(_Transport):
 
             if resp.status_code >= 400:
                 if self._should_retry(method, resp.status_code, attempt):
-                    await asyncio.sleep(self._backoff(attempt, resp))
-                    attempt += 1
-                    continue
+                    delay = self._hold(attempt, resp, slept)
+                    if delay is not None:
+                        await asyncio.sleep(delay)
+                        slept += delay
+                        attempt += 1
+                        continue
                 self._raise(method, path, resp)
 
             if headers_out is not None:
