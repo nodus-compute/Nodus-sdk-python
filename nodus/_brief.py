@@ -163,7 +163,6 @@ def _reject_unknown(unknown: dict[str, Any], known: tuple[str, ...]) -> None:
 
 def build_payload(
     *,
-    source: str | None = None,
     image: str | None = None,
     command: list[str] | str | None = None,
     requirements: dict[str, Any] | None = None,
@@ -236,7 +235,7 @@ def build_payload(
         discarded = sorted(
             name
             for name, value in (
-                ("image", image), ("command", command), ("source", source)
+                ("image", image), ("command", command)
             )
             if value
         )
@@ -250,7 +249,7 @@ def build_payload(
             )
         payload["stages"] = [dict(s) for s in stages]
     else:
-        src: dict[str, Any] = {"image": image or source or DEFAULT_IMAGE}
+        src: dict[str, Any] = {"image": image or DEFAULT_IMAGE}
         cmd = _as_command(command)
         if cmd:
             src["command"] = cmd

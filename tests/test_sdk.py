@@ -1153,6 +1153,25 @@ def test_a_brief_field_the_control_plane_cannot_honour_is_refused(brief, why):
     assert why in message, "the refusal should say what to reach for instead"
 
 
+def test_source_is_not_a_second_undocumented_spelling_of_image():
+    """``run(source=...)`` set the image without ever being part of the brief.
+
+    It bound to a private parameter, so it slipped past the check that refuses
+    a keyword this SDK does not model -- and then turned up as the did-you-mean
+    suggestion for real typos, recommending a name no documentation has.
+    """
+    from nodus._brief import BRIEF_FIELDS
+
+    assert "source" not in BRIEF_FIELDS
+    with pytest.raises(TypeError) as exc:
+        build_payload(model="x", budget=1, source="ubuntu:22.04")
+    assert "source" in str(exc.value)
+
+    with client_with(lambda r: httpx.Response(202, json=SUBMIT_ACCEPTED)) as c:
+        with pytest.raises(TypeError):
+            c.run(model="x", budget=1, source="ubuntu:22.04")
+
+
 def test_an_unsupported_field_never_reaches_the_network():
     calls: list[str] = []
 
