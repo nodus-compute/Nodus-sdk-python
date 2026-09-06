@@ -223,6 +223,10 @@ class StageRun:
     latest_manifest: dict[str, Any] | None = None
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
+    last_loss: float | None = None
+    metric_rate: float | None = None
+    metric_step: int | None = None
+
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "StageRun":
         d = _obj(d)
@@ -234,7 +238,30 @@ class StageRun:
             total_units=_int(d.get("total_units")),
             latest_manifest=d.get("latest_manifest"),
             raw=d,
+            last_loss=_num(d.get("last_loss"), None),
+            metric_rate=_num(d.get("metric_rate"), None),
+            metric_step=(int(d["metric_step"]) if isinstance(d.get("metric_step"), int)
+                         and not isinstance(d["metric_step"], bool) else None),
         )
+
+
+@dataclass
+class Output:
+    """A downloadable customer output from a completed stage."""
+
+    name: str = ""
+    stage_id: str = ""
+    sha256: str = ""
+    bytes: int = 0
+    download: str = ""
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "Output":
+        d = _obj(d)
+        return cls(name=_text(d.get("name")), stage_id=_text(d.get("stage_id")),
+                   sha256=_text(d.get("sha256")), bytes=_int(d.get("bytes")),
+                   download=_text(d.get("download")), raw=d)
 
 
 #: An object holding a tar of a checkpoint subtree rather than a single file.

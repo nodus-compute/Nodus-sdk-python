@@ -67,6 +67,7 @@ def _cmd_run(args: argparse.Namespace, command: list[str]) -> int:
     with Client(base_url=args.base_url) as client:
         wl = client.run(
             model=args.model,
+            compute_class=args.compute_class,
             image=args.image,
             command=command or None,
             peak_memory_gb=args.peak_memory_gb,
@@ -370,6 +371,8 @@ def build_parser() -> argparse.ArgumentParser:
     r = sub.add_parser("run", help="submit a brief")
     r.add_argument("--model", default=None, help="what the work is, e.g. '7B fine-tune'")
     r.add_argument("--image", default=None)
+    r.add_argument("--compute-class", choices=("vm", "accelerator"), default=None,
+                   help="Choose CPU/VM or accelerator capacity; omission leaves placement to Nodus")
     r.add_argument("--peak-memory-gb", type=float, default=None)
     r.add_argument("--hours", type=float, default=None, help="expected runtime")
     r.add_argument("--budget", type=float, default=None, help="max cost to completion, USD")

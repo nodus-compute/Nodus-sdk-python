@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Login-first README, canonical task guides and parameter references, plus
+  executable documentation checks. Existing wiki paths link to the new guides.
+- Sync and async `outputs()`, `download_output()`, and `routing()` methods.
+  Downloads stream to a temporary file and verify SHA-256 and declared length
+  before replacing the destination; response-provided URLs are never followed.
+- Optional typed request dictionaries and stage loss, rate, and step metrics.
+- `nodus run --compute-class vm|accelerator` selects the compute category.
+  Existing calls and defaults are unchanged.
+- Public OpenAPI contract copy and a cross-repository synchronization command.
+
 - `nodus login`: approve a short code in the browser once and the SDK writes
   `~/.nodus/config.toml` itself — no key to copy and no address to look up.
   `--no-browser` prints the address instead of opening it; `nodus logout`

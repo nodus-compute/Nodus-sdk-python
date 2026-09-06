@@ -42,10 +42,14 @@ from datetime import datetime
 from email.utils import parsedate_to_datetime
 from importlib.metadata import PackageNotFoundError, version as _distribution_version
 from typing import Any, AsyncIterator, Iterator
+from pathlib import Path
+
+from ._outputs import download_path, verified_file
 
 import httpx
 
 from ._brief import build_payload, status_filter
+from .requests import Source, Requirements, Policy, ContinuitySpec, StageInput, StageSpec
 from .config import _is_header_safe, read_credentials
 from .errors import (
     APIConnectionError,
@@ -76,6 +80,7 @@ from .types import (
     LedgerEntry,
     ManifestFile,
     Meter,
+    Output,
     Route,
     Settlement,
     StageRun,
@@ -98,6 +103,13 @@ __all__ = [
     "AsyncWorkload",
     "Route",
     "StageRun",
+    "Output",
+    "Source",
+    "Requirements",
+    "Policy",
+    "ContinuitySpec",
+    "StageInput",
+    "StageSpec",
     "Artifact",
     "ManifestFile",
     "Event",
@@ -718,13 +730,13 @@ class Client(_Transport):
         expected_runtime_hours: float | None = None,
         budget: float | None = None,
         compute_class: ComputeClass | str | None = None,
-        continuity: ContinuityMode | str | dict[str, Any] | None = None,
+        continuity: ContinuityMode | str | ContinuitySpec | dict[str, Any] | None = None,
         finish_by: datetime | str | None = None,
         data_regions: list[str] | None = None,
-        stages: list[dict[str, Any]] | None = None,
+        stages: list[StageSpec] | list[dict[str, Any]] | None = None,
         framework: str | None = None,
-        policy: dict[str, Any] | None = None,
-        requirements: dict[str, Any] | None = None,
+        policy: Policy | dict[str, Any] | None = None,
+        requirements: Requirements | dict[str, Any] | None = None,
         idempotency_key: str | None = None,
         extra: dict[str, Any] | None = None,
         **unknown: Any,
@@ -869,6 +881,48 @@ class Client(_Transport):
     def artifacts(self, workload_id: str) -> list[Artifact]:
         res = self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/artifacts")
         return [Artifact.from_dict(a) for a in (res or {}).get("artifacts") or []]
+
+    def outputs(self, workload_id: str) -> list[Output]:
+        """List customer outputs from completed stages."""
+        res = self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/outputs")
+        return [Output.from_dict(row) for row in (res or {}).get("outputs") or []]
+
+    def routing(self, workload_id: str) -> list[dict[str, Any]]:
+        """Return placement history, oldest first, as server-provided mappings."""
+        res = self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/routing")
+        return (res or {}).get("placements") or []
+
+    def download_output(
+        self, workload_id: str, name: str, destination: str | os.PathLike[str],
+        *, stage: str | None = None,
+    ) -> Path:
+        """Stream an output to destination and verify its SHA-256 before replacing it.
+
+        Pass stage when multiple stages publish the same name. Failed transfers
+        leave an existing destination intact; retry the call to restart.
+        """
+        path = download_path(_valid_id(workload_id), name)
+        params = {"stage": stage} if stage is not None else None
+        try:
+            with self._http.stream("GET", path, params=params, follow_redirects=False,
+                                       headers={"Accept-Encoding": "identity"}) as resp:
+                if resp.status_code != 200:
+                    body = bytearray()
+                    for chunk in resp.iter_bytes(chunk_size=16 * 1024):
+                        body.extend(chunk[:64 * 1024 - len(body)])
+                        if len(body) >= 64 * 1024:
+                            break
+                    error = httpx.Response(resp.status_code, headers=resp.headers,
+                                           content=bytes(body), request=resp.request)
+                    self._raise("GET", path, error)
+                with verified_file(destination, resp.headers) as write:
+                    for chunk in resp.iter_bytes(chunk_size=1024 * 1024):
+                        write(chunk)
+        except httpx.TimeoutException as exc:
+            raise APITimeoutError("Output download timed out; retry to restart.") from exc
+        except httpx.HTTPError as exc:
+            raise APIConnectionError("Output download interrupted; retry to restart.") from exc
+        return Path(destination)
 
     def ledger(self, workload_id: str) -> Ledger:
         return Ledger.from_dict(self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/ledger"))
@@ -1022,6 +1076,20 @@ class Workload(_WorkloadState):
     def artifacts(self) -> list[Artifact]:
         return self._client.artifacts(self.id)
 
+    def outputs(self) -> list[Output]:
+        """List customer outputs from completed stages."""
+        return self._client.outputs(self.id)
+
+    def routing(self) -> list[dict[str, Any]]:
+        """Read this workload's placement history."""
+        return self._client.routing(self.id)
+
+    def download_output(
+        self, name: str, destination: str | os.PathLike[str], *, stage: str | None = None
+    ) -> Path:
+        """Download a named output and verify it before replacing destination."""
+        return self._client.download_output(self.id, name, destination, stage=stage)
+
     def ledger(self) -> Ledger:
         return self._client.ledger(self.id)
 
@@ -1158,13 +1226,13 @@ class AsyncClient(_Transport):
         expected_runtime_hours: float | None = None,
         budget: float | None = None,
         compute_class: ComputeClass | str | None = None,
-        continuity: ContinuityMode | str | dict[str, Any] | None = None,
+        continuity: ContinuityMode | str | ContinuitySpec | dict[str, Any] | None = None,
         finish_by: datetime | str | None = None,
         data_regions: list[str] | None = None,
-        stages: list[dict[str, Any]] | None = None,
+        stages: list[StageSpec] | list[dict[str, Any]] | None = None,
         framework: str | None = None,
-        policy: dict[str, Any] | None = None,
-        requirements: dict[str, Any] | None = None,
+        policy: Policy | dict[str, Any] | None = None,
+        requirements: Requirements | dict[str, Any] | None = None,
         idempotency_key: str | None = None,
         extra: dict[str, Any] | None = None,
         **unknown: Any,
@@ -1293,6 +1361,48 @@ class AsyncClient(_Transport):
         res = await self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/artifacts")
         return [Artifact.from_dict(a) for a in (res or {}).get("artifacts") or []]
 
+    async def outputs(self, workload_id: str) -> list[Output]:
+        """List customer outputs from completed stages."""
+        res = await self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/outputs")
+        return [Output.from_dict(row) for row in (res or {}).get("outputs") or []]
+
+    async def routing(self, workload_id: str) -> list[dict[str, Any]]:
+        """Return placement history, oldest first, as server-provided mappings."""
+        res = await self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/routing")
+        return (res or {}).get("placements") or []
+
+    async def download_output(
+        self, workload_id: str, name: str, destination: str | os.PathLike[str],
+        *, stage: str | None = None,
+    ) -> Path:
+        """Stream an output to destination and verify its SHA-256 before replacing it.
+
+        Pass stage when multiple stages publish the same name. Failed transfers
+        leave an existing destination intact; retry the call to restart.
+        """
+        path = download_path(_valid_id(workload_id), name)
+        params = {"stage": stage} if stage is not None else None
+        try:
+            async with self._http.stream("GET", path, params=params, follow_redirects=False,
+                                       headers={"Accept-Encoding": "identity"}) as resp:
+                if resp.status_code != 200:
+                    body = bytearray()
+                    async for chunk in resp.aiter_bytes(chunk_size=16 * 1024):
+                        body.extend(chunk[:64 * 1024 - len(body)])
+                        if len(body) >= 64 * 1024:
+                            break
+                    error = httpx.Response(resp.status_code, headers=resp.headers,
+                                           content=bytes(body), request=resp.request)
+                    self._raise("GET", path, error)
+                with verified_file(destination, resp.headers) as write:
+                    async for chunk in resp.aiter_bytes(chunk_size=1024 * 1024):
+                        write(chunk)
+        except httpx.TimeoutException as exc:
+            raise APITimeoutError("Output download timed out; retry to restart.") from exc
+        except httpx.HTTPError as exc:
+            raise APIConnectionError("Output download interrupted; retry to restart.") from exc
+        return Path(destination)
+
     async def ledger(self, workload_id: str) -> Ledger:
         return Ledger.from_dict(await self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/ledger"))
 
@@ -1412,6 +1522,20 @@ class AsyncWorkload(_WorkloadState):
 
     async def artifacts(self) -> list[Artifact]:
         return await self._client.artifacts(self.id)
+
+    async def outputs(self) -> list[Output]:
+        """List customer outputs from completed stages."""
+        return await self._client.outputs(self.id)
+
+    async def routing(self) -> list[dict[str, Any]]:
+        """Read this workload's placement history."""
+        return await self._client.routing(self.id)
+
+    async def download_output(
+        self, name: str, destination: str | os.PathLike[str], *, stage: str | None = None
+    ) -> Path:
+        """Download a named output and verify it before replacing destination."""
+        return await self._client.download_output(self.id, name, destination, stage=stage)
 
     async def ledger(self) -> Ledger:
         return await self._client.ledger(self.id)

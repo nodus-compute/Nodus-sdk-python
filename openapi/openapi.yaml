@@ -1,0 +1,1806 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Nodus Workloads API",
+    "version": "1.0.0",
+    "description": "Provider-neutral infrastructure execution for AI workloads. This contract describes customer API-key workload and webhook operations. Console sign-in, operator, runner and supplier protocols are outside its scope. Obtain a key using nodus login or the console; use the deployment API origin as the base URL. No paid workload is executed by viewing this contract."
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Set this to your deployment API origin (the same NODUS_BASE_URL used by the SDK)."
+    }
+  ],
+  "security": [
+    {
+      "ApiKey": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Workloads"
+    },
+    {
+      "name": "Webhooks"
+    }
+  ],
+  "paths": {
+    "/v1/workloads": {
+      "post": {
+        "operationId": "createWorkload",
+        "summary": "Submit a workload",
+        "tags": [
+          "Workloads"
+        ],
+        "responses": {
+          "202": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmitResult"
+                }
+              }
+            },
+            "headers": {
+              "Idempotent-Replayed": {
+                "description": "true on a replay of the original submission.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable; additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required stable key per logical submission; replay the same payload with the same key. Different payload returns 409."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkloadPayload"
+              }
+            }
+          }
+        },
+        "description": "202 means accepted, not running. 402 budget_exceeded is the account monthly cap; 409 is an idempotency conflict; 503 spend_check_unavailable may be retried using the same key."
+      },
+      "get": {
+        "operationId": "listWorkloads",
+        "summary": "List workloads",
+        "tags": [
+          "Workloads"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "workloads": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/WorkloadListItem"
+                      }
+                    },
+                    "next_offset": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable; additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Page size; 1\u2013100; omitted, nonpositive, or over 100 defaults to 50."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Offset returned by the previous page; omitted starts at zero."
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated statuses; active and terminal expand to lifecycle groups. Unknown tokens are ignored."
+          }
+        ]
+      }
+    },
+    "/v1/workloads/{id}": {
+      "get": {
+        "operationId": "getWorkload",
+        "summary": "Get workload status, stages, route and meter",
+        "tags": [
+          "Workloads"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workload"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable; additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "id"
+          }
+        ]
+      }
+    },
+    "/v1/workloads/{id}/events": {
+      "get": {
+        "operationId": "listWorkloadEvents",
+        "summary": "Read lifecycle events",
+        "tags": [
+          "Workloads"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "events": {
+                      "type": [
+                        "array",
+                        "null"
+                      ],
+                      "items": {
+                        "$ref": "#/components/schemas/WorkloadEvent"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable; additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "id"
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Exclusive numeric event ID cursor; at most 100 events per response."
+          }
+        ]
+      }
+    },
+    "/v1/workloads/{id}/cancel": {
+      "post": {
+        "operationId": "cancelWorkload",
+        "summary": "Request cancellation",
+        "tags": [
+          "Workloads"
+        ],
+        "responses": {
+          "202": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable; additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "id"
+          }
+        ],
+        "description": "Returns cancel_requested. Poll workload status for the terminal result. Calling after completion is safe and does not change the terminal result."
+      }
+    },
+    "/v1/workloads/{id}/artifacts": {
+      "get": {
+        "operationId": "listWorkloadArtifacts",
+        "summary": "List checkpoint manifest metadata",
+        "tags": [
+          "Workloads"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "artifacts": {
+                      "type": [
+                        "array",
+                        "null"
+                      ],
+                      "items": {
+                        "$ref": "#/components/schemas/Artifact"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable; additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "id"
+          }
+        ]
+      }
+    },
+    "/v1/workloads/{id}/ledger": {
+      "get": {
+        "operationId": "getWorkloadLedger",
+        "summary": "Get posted ledger and settlement",
+        "tags": [
+          "Workloads"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "workload_id": {
+                      "type": "string"
+                    },
+                    "entries": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CustomerLedgerEntry"
+                      }
+                    },
+                    "settlement": {
+                      "$ref": "#/components/schemas/Settlement"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable; additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "id"
+          }
+        ],
+        "description": "Settlement balance_usd is the accounting balance, not the total charge. Derive charges from customer_charge ledger entry credits; meter.total_now_usd includes current accrual."
+      }
+    },
+    "/v1/workloads/{id}/routing": {
+      "get": {
+        "operationId": "getWorkloadRouting",
+        "summary": "Inspect placement history",
+        "tags": [
+          "Workloads"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "workload_id": {
+                      "type": "string"
+                    },
+                    "placements": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/RoutingPlacement"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable; additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "id"
+          }
+        ],
+        "description": "Oldest first; Nodus catalog identifiers and resource facts only."
+      }
+    },
+    "/v1/workloads/{id}/outputs": {
+      "get": {
+        "operationId": "listWorkloadOutputs",
+        "summary": "List downloadable outputs",
+        "tags": [
+          "Workloads"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "workload_id": {
+                      "type": "string"
+                    },
+                    "outputs": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Output"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable; additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "id"
+          }
+        ],
+        "description": "Outputs from completed stages, excluding reserved runner names. Follow the stage-qualified download path using the same authenticated API origin."
+      }
+    },
+    "/v1/workloads/{id}/outputs/{name}": {
+      "get": {
+        "operationId": "downloadWorkloadOutput",
+        "summary": "Download a named output",
+        "tags": [
+          "Workloads"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "X-Nodus-SHA256": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "SHA-256 of stored bytes, when available."
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable; additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "id"
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "name"
+          },
+          {
+            "name": "stage",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required to disambiguate duplicate output names across stages; otherwise 409 ambiguous_output."
+          }
+        ],
+        "description": "404 when absent; 410 when a legacy local-only artifact cannot be retrieved. Verify X-Nodus-SHA256 when present."
+      }
+    },
+    "/v1/workloads/{id}/logs": {
+      "get": {
+        "operationId": "getWorkloadLogs",
+        "summary": "Read the latest committed stdout/stderr snapshot",
+        "tags": [
+          "Workloads"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "headers": {
+              "X-Nodus-SHA256": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "SHA-256 of stored bytes, when available."
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable; additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "id"
+          },
+          {
+            "name": "stage",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "stage"
+          },
+          {
+            "name": "generation",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Positive generation; omit for latest matching committed log."
+          }
+        ],
+        "description": "Not a live stream. 404 until a log is committed. X-Nodus-Stage-Id and X-Nodus-Generation identify the returned attempt."
+      }
+    },
+    "/v1/webhooks": {
+      "get": {
+        "operationId": "getWebhook",
+        "summary": "Read the account webhook",
+        "tags": [
+          "Webhooks"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "url": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable; additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "404 if not configured. Secret is never returned by GET."
+      },
+      "put": {
+        "operationId": "putWebhook",
+        "summary": "Create or replace the account webhook",
+        "tags": [
+          "Webhooks"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "url": {
+                      "type": "string"
+                    },
+                    "secret": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable; additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "secret": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "url"
+                ]
+              }
+            }
+          }
+        },
+        "description": "One webhook per account. Use public HTTPS. Omitted secret generates one; save the PUT response securely."
+      },
+      "delete": {
+        "operationId": "deleteWebhook",
+        "summary": "Delete the account webhook",
+        "tags": [
+          "Webhooks"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable; additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiKey": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "Nodus API key"
+      }
+    },
+    "schemas": {
+      "WorkloadPayload": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/WorkloadSource"
+          },
+          "inputs": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/WorkloadInput"
+            },
+            "description": "Accepted legacy URI metadata; does not upload or automatically materialize local data. Fetch data in your command, or use explicit stage output dependencies."
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/Requirements"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/Outcome"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/Policy"
+          },
+          "continuity": {
+            "$ref": "#/components/schemas/Continuity"
+          },
+          "framework": {
+            "type": "string",
+            "enum": [
+              "",
+              "train_eval"
+            ],
+            "description": "train_eval expands prepare/train/eval using your command and NODUS_STAGE_ID. Prefer explicit stages for custom pipelines."
+          },
+          "stages": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/StagePayload"
+            }
+          }
+        },
+        "x-go-source": "internal/models/models.go",
+        "x-go-type": "WorkloadPayload",
+        "description": "Customer workload request. Supply source.image/source.command, explicit stages, or the train_eval framework with source.command. Unknown JSON fields are currently ignored for compatibility: use documented names. The SDK validates its top-level arguments. Numeric fields retain existing server behavior; no stronger validation is implied here."
+      },
+      "WorkloadSource": {
+        "type": "object",
+        "properties": {
+          "image": {
+            "type": "string",
+            "default": "python:3.11-slim",
+            "description": "Container image. Include your code and dependencies; local files are not uploaded automatically."
+          },
+          "command": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Explicit argv is recommended. Use sh -c explicitly for shell syntax. An omitted command is accepted for compatibility; do not rely on image ENTRYPOINT execution across deployments."
+          }
+        },
+        "x-go-source": "internal/models/models.go",
+        "x-go-type": "WorkloadSource"
+      },
+      "WorkloadInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "uri": {
+            "type": "string"
+          }
+        },
+        "x-go-source": "internal/models/models.go",
+        "x-go-type": "WorkloadInput"
+      },
+      "Requirements": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "compute_class": {
+            "type": "string",
+            "enum": [
+              "",
+              "vm",
+              "accelerator"
+            ],
+            "description": "Empty/omitted defaults to accelerator. vm requests general CPU infrastructure."
+          },
+          "dataset_bytes": {
+            "type": "integer"
+          },
+          "expected_runtime_hours": {
+            "type": "number",
+            "description": "Estimated runtime in hours, used for placement and account admission. Omitted/nonpositive values use the profiler estimate; account admission estimates omitted runtime at one hour. Not a timeout."
+          },
+          "peak_memory_gb": {
+            "type": "number",
+            "description": "Peak memory fit hint in GB. Placement derives infrastructure; this is not an instance SKU."
+          },
+          "notes": {
+            "type": "string"
+          }
+        },
+        "x-go-source": "internal/models/models.go",
+        "x-go-type": "Requirements"
+      },
+      "Outcome": {
+        "type": "object",
+        "properties": {
+          "max_cost_usd": {
+            "type": "number",
+            "description": "Per-workload cost ceiling in USD. Zero/omitted means uncapped. Account monthly spend cap is separate. Use a positive value for an explicit ceiling."
+          },
+          "complete_by": {
+            "type": "string",
+            "description": "RFC3339 completion deadline, or empty/omitted for none. Example: 2026-12-01T18:00:00Z."
+          }
+        },
+        "x-go-source": "internal/models/models.go",
+        "x-go-type": "Outcome"
+      },
+      "Policy": {
+        "type": "object",
+        "properties": {
+          "data_regions": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Allowed placement regions. SDK data_regions maps here. Empty/omitted imposes no region filter."
+          }
+        },
+        "x-go-source": "internal/models/models.go",
+        "x-go-type": "Policy"
+      },
+      "Continuity": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "",
+              "checkpointed",
+              "restartable",
+              "ephemeral"
+            ],
+            "description": "Top-level empty/omitted defaults to checkpointed. A stage with omitted mode inherits the whole workload continuity object."
+          },
+          "resume_on_interruption": {
+            "type": "boolean",
+            "default": true,
+            "description": "Omission defaults to true. Explicit false disables resumption; per-stage mode omission inherits workload continuity."
+          }
+        },
+        "x-go-source": "internal/models/models.go",
+        "x-go-type": "Continuity"
+      },
+      "StagePayload": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/WorkloadSource"
+          },
+          "inputs": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/StageInput"
+            }
+          },
+          "continuity": {
+            "$ref": "#/components/schemas/Continuity"
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/Requirements",
+            "description": "Nonzero/nonempty stage fields override workload requirements; omitted/zero fields inherit individually."
+          },
+          "depends_on": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "total_units": {
+            "type": "integer"
+          },
+          "outputs": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Named output paths relative to the stage working directory. Declare files produced by your command; downstream from_output must match a declared name."
+          }
+        },
+        "x-go-source": "internal/models/models.go",
+        "x-go-type": "StagePayload",
+        "required": [
+          "id",
+          "source"
+        ]
+      },
+      "StageInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "from_stage": {
+            "type": "string"
+          },
+          "from_output": {
+            "type": "string"
+          }
+        },
+        "x-go-source": "internal/models/models.go",
+        "x-go-type": "StageInput"
+      },
+      "Workload": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer"
+          },
+          "spend_usd": {
+            "type": "number"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/WorkloadPayload"
+          },
+          "route": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CustomerRouteSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "latest_checkpoint": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CheckpointSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stages": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/StageRunSummary"
+            }
+          },
+          "meter": {
+            "$ref": "#/components/schemas/Meter"
+          }
+        },
+        "x-go-source": "internal/models/models.go",
+        "x-go-type": "Workload"
+      },
+      "CustomerRouteSummary": {
+        "type": "object",
+        "properties": {
+          "fit_class": {
+            "type": "string"
+          },
+          "compute_class": {
+            "type": "string"
+          },
+          "resources": {
+            "$ref": "#/components/schemas/ResourceAttributes"
+          },
+          "memory_gb": {
+            "type": "number"
+          },
+          "offer_id": {
+            "type": "string"
+          },
+          "price_usd_hour": {
+            "type": "number"
+          },
+          "interruptible": {
+            "type": "boolean"
+          },
+          "region": {
+            "type": "string"
+          },
+          "expected_cost_usd": {
+            "type": "number"
+          },
+          "expected_hours": {
+            "type": "number"
+          },
+          "remaining_budget_usd": {
+            "type": "number"
+          },
+          "cost": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CostBreakdown"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "score_breakdown": {
+            "$ref": "#/components/schemas/ScoreBreakdown"
+          },
+          "fallback_graph": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/CustomerFallbackBranch"
+            }
+          },
+          "rejected": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/CustomerRejectedOffer"
+            }
+          }
+        },
+        "x-go-source": "internal/models/models.go",
+        "x-go-type": "CustomerRouteSummary"
+      },
+      "ResourceAttributes": {
+        "type": "object",
+        "properties": {
+          "vcpus": {
+            "type": "number"
+          },
+          "host_memory_gb": {
+            "type": "number"
+          },
+          "device_memory_gb": {
+            "type": "number"
+          },
+          "disk_gb": {
+            "type": "number"
+          },
+          "network_gbps": {
+            "type": "number"
+          },
+          "accelerator": {
+            "type": "string"
+          }
+        },
+        "x-go-source": "internal/models/models.go",
+        "x-go-type": "ResourceAttributes"
+      },
+      "CostBreakdown": {
+        "type": "object",
+        "properties": {
+          "runtime_hours": {
+            "type": "number"
+          },
+          "provision_hours": {
+            "type": "number"
+          },
+          "billed_hours": {
+            "type": "number"
+          },
+          "billing_increment_min": {
+            "type": "number"
+          },
+          "compute_usd": {
+            "type": "number"
+          },
+          "expected_reclaims": {
+            "type": "number"
+          },
+          "lost_hours_per_reclaim": {
+            "type": "number"
+          },
+          "reclaim_usd": {
+            "type": "number"
+          },
+          "interruption_usd": {
+            "type": "number"
+          },
+          "reserve_usd": {
+            "type": "number"
+          },
+          "total_usd": {
+            "type": "number"
+          }
+        },
+        "x-go-source": "internal/models/models.go",
+        "x-go-type": "CostBreakdown"
+      },
+      "ScoreBreakdown": {
+        "type": "object",
+        "properties": {
+          "fit": {
+            "type": "number"
+          },
+          "time_to_result": {
+            "type": "number"
+          },
+          "cost_to_complete": {
+            "type": "number"
+          },
+          "recovery_value": {
+            "type": "number"
+          },
+          "health": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          }
+        },
+        "x-go-source": "internal/models/models.go",
+        "x-go-type": "ScoreBreakdown"
+      },
+      "CustomerFallbackBranch": {
+        "type": "object",
+        "properties": {
+          "failure_class": {
+            "type": "string"
+          },
+          "expected_recovery_hours": {
+            "type": "number"
+          },
+          "expected_cost_usd": {
+            "type": "number"
+          }
+        },
+        "x-go-source": "internal/models/models.go",
+        "x-go-type": "CustomerFallbackBranch"
+      },
+      "CustomerRejectedOffer": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string"
+          }
+        },
+        "x-go-source": "internal/models/models.go",
+        "x-go-type": "CustomerRejectedOffer"
+      },
+      "CheckpointSummary": {
+        "type": "object",
+        "properties": {
+          "manifest_id": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "integer"
+          },
+          "sequence": {
+            "type": "integer"
+          }
+        },
+        "x-go-source": "internal/models/models.go",
+        "x-go-type": "CheckpointSummary"
+      },
+      "StageRunSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "continuity_mode": {
+            "type": "string"
+          },
+          "completed_units": {
+            "type": "integer"
+          },
+          "total_units": {
+            "type": "integer"
+          },
+          "last_loss": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metric_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metric_step": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "latest_manifest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CheckpointSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "x-go-source": "internal/models/models.go",
+        "x-go-type": "StageRunSummary"
+      },
+      "WorkloadEvent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "event_id": {
+            "type": "string"
+          },
+          "event_type": {
+            "type": "string"
+          },
+          "payload": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {}
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "x-go-source": "internal/models/models.go",
+        "x-go-type": "WorkloadEvent"
+      },
+      "Meter": {
+        "type": "object",
+        "properties": {
+          "settled_usd": {
+            "type": "number"
+          },
+          "accruing_usd": {
+            "type": "number"
+          },
+          "accruing_rate_usd_hour": {
+            "type": "number"
+          },
+          "total_now_usd": {
+            "type": "number"
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "x-go-source": "internal/store/meter.go",
+        "x-go-type": "Meter"
+      },
+      "WorkloadListItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "spend_usd": {
+            "type": "number"
+          },
+          "revision": {
+            "type": "integer"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "meter": {
+            "$ref": "#/components/schemas/Meter"
+          }
+        },
+        "x-go-source": "internal/store/pilot.go",
+        "x-go-type": "WorkloadListItem"
+      },
+      "CustomerLedgerEntry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "correlation_id": {
+            "type": "string"
+          },
+          "entry_type": {
+            "type": "string"
+          },
+          "debit_usd": {
+            "type": "number"
+          },
+          "credit_usd": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {}
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "x-go-source": "internal/store/pilot.go",
+        "x-go-type": "CustomerLedgerEntry"
+      },
+      "RoutingPlacement": {
+        "type": "object",
+        "properties": {
+          "workload_id": {
+            "type": "string"
+          },
+          "stage_id": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "integer"
+          },
+          "sku": {
+            "type": "string"
+          },
+          "fit_class": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "compute_class": {
+            "type": "string"
+          },
+          "continuity_mode": {
+            "type": "string"
+          },
+          "interruptible": {
+            "type": "boolean"
+          },
+          "placement": {
+            "type": "string"
+          },
+          "provision_attempts": {
+            "type": "integer"
+          },
+          "provisioned_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "running_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "boot_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "boot_ok": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "price_usd_hour": {
+            "type": "number"
+          },
+          "predicted_cost_usd": {
+            "type": "number"
+          },
+          "predicted_hours": {
+            "type": "number"
+          },
+          "predicted_boot_seconds": {
+            "type": "number"
+          },
+          "predicted_interrupt_rate": {
+            "type": "number"
+          },
+          "actual_cost_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "actual_hours": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "checkpoints": {
+            "type": "integer"
+          },
+          "checkpoint_bytes": {
+            "type": "integer"
+          },
+          "output_bytes": {
+            "type": "integer"
+          },
+          "restore_bytes": {
+            "type": "integer"
+          },
+          "restored_from": {
+            "type": "string"
+          },
+          "checkpoint_seconds": {
+            "type": "number"
+          },
+          "interrupted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "interrupt_trigger": {
+            "type": "string"
+          },
+          "lost_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recovery_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "superseded_by": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "outcome": {
+            "type": "string"
+          }
+        },
+        "x-go-source": "internal/store/route_insights.go",
+        "x-go-type": "RoutingPlacement"
+      },
+      "SubmitResult": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "workload_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "workload_id",
+          "status",
+          "revision"
+        ]
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error",
+          "message"
+        ]
+      },
+      "Output": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "stage_id": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "bytes": {
+            "type": "integer"
+          },
+          "download": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "stage_id",
+          "sha256",
+          "bytes",
+          "download"
+        ]
+      },
+      "Settlement": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "balance_usd": {
+            "type": "number"
+          },
+          "correlation_id": {
+            "type": "string"
+          },
+          "closed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "Artifact": {
+        "type": "object",
+        "properties": {
+          "manifest_id": {
+            "type": "string"
+          },
+          "stage_id": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "integer"
+          },
+          "sequence": {
+            "type": "integer"
+          },
+          "manifest": {
+            "type": "object",
+            "description": "Checkpoint manifest metadata; use outputs/download for produced files."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    }
+  },
+  "externalDocs": {
+    "url": "https://github.com/nodus-compute/Nodus-sdk-python/tree/main/docs"
+  },
+  "x-source-revision": "fd919e576d7300722d687111625114383475fcf4"
+}
