@@ -3,13 +3,13 @@
 ## One-time setup on PyPI
 
 1. **Create the project owner account.** Register on PyPI under a company
-   address, not a personal one — the account that first uploads owns the name,
+   address, not a personal one, the account that first uploads owns the name,
    and moving it later is a support ticket.
 2. **Turn on two-factor auth.** PyPI requires it for anyone who uploads.
 3. **Add a Trusted Publisher** so no API token ever exists to leak. On PyPI:
    *Your projects → Publishing → Add a new pending publisher*
    - PyPI project name: `nodus_compute`
-   - Owner: `Nodus-compute` — the GitHub org that owns the repository, not the
+   - Owner: `Nodus-compute`, the GitHub org that owns the repository, not the
      package name
    - Repository: `Nodus-sdk-python`
    - Workflow: `publish.yml`
@@ -17,7 +17,7 @@
 4. **Set the Environment to `pypi` on PyPI's side of the publisher.** The
    environment field there is optional, and PyPI enforces only what is filled
    in: with owner, repository and workflow alone, *any* run of `publish.yml` can
-   mint a publish token — including one that never passed through the protected
+   mint a publish token, including one that never passed through the protected
    environment and its reviewers. Naming the environment on PyPI makes it
    refuse a token minted outside `environment: pypi`, which is what turns the
    next step into an actual gate.
@@ -50,5 +50,5 @@ first if a release is at all uncertain.
 
 - `python -m pytest -q` passes
 - `python -m build && python -m twine check dist/*` passes
-- the README renders — `twine check` catches what PyPI would reject
+- the README renders, `twine check` catches what PyPI would reject
 - the version in `pyproject.toml` matches the tag

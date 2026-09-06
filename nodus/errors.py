@@ -82,7 +82,7 @@ class ConfigurationError(NodusError):
 class AuthenticationError(NodusError):
     """401/403. The key is missing, unknown, revoked, or expired.
 
-    Never retry — a rejected credential does not become valid on its own.
+    Never retry, a rejected credential does not become valid on its own.
     """
 
 
@@ -121,7 +121,7 @@ class RateLimitError(NodusError):
 
     @property
     def retry_after_header(self) -> str | None:
-        """The header verbatim — seconds or an HTTP-date, as it arrived."""
+        """The header verbatim, seconds or an HTTP-date, as it arrived."""
         return self._retry_after_header
 
     def __init__(
@@ -199,7 +199,7 @@ class CapacityUnavailableError(NodusError):
     """Reserved. No control plane path raises this today.
 
     Kept because removing an exported name breaks ``except`` clauses somebody
-    wrote. A brief no route fits is refused at submit as a validation problem;
+    wrote. A brief no route fits is refused at submit as a validation problem.
     a 503 is :class:`SpendCheckUnavailableError`.
     """
 
@@ -223,7 +223,7 @@ class APITimeoutError(NodusError):
     """A client-side deadline elapsed.
 
     The per-request ``timeout``, or ``timeout_seconds`` on ``wait()``. For
-    ``wait()`` the workload is unaffected and keeps running — a client deadline
+    ``wait()`` the workload is unaffected and keeps running, a client deadline
     is not a cancellation.
     """
 
@@ -287,7 +287,7 @@ def error_from_response(
     """Map an HTTP response onto the most specific exception class.
 
     The message carries three things: what failed, what to do about it, and
-    which request it was — the last is what support can correlate on.
+    which request it was, the last is what support can correlate on.
     """
     message = f"{method} {path} failed ({status_code})"
     if isinstance(body, dict):

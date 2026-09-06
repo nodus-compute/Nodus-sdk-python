@@ -1,167 +1,137 @@
+<div align="center">
+
 # Nodus Python SDK
 
-Run a training job on rented GPUs from Python. Nodus places the work on the
-cheapest capacity that fits, checkpoints it, and resumes it if the machine is
-taken back — so a fine-tune that would have died at hour six finishes.
+**One interface for running AI workloads on GPUs.**
 
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
+
+[Documentation](docs/index.md) · [Parameter reference](docs/reference/parameters/index.md) · [Examples](examples/README.md) · [Issues](https://github.com/Nodus-compute/Nodus-sdk-python/issues)
+
+</div>
+
+Provide a container image, a command, and a budget. Nodus finds GPU capacity and
+runs your workload. Use the same Python client for training, fine-tuning, or a
+batch of experiments.
+
+## 1. Install and sign in
+
+```bash
+git clone https://github.com/nodus-compute/Nodus-sdk-python.git
+cd Nodus-sdk-python
+git switch docs-api-clarity-20260906
+python -m pip install -e .
+nodus login --base-url https://YOUR_NODUS_API_HOST
+```
+
+These instructions use the features in this checkout. PyPI version 0.1.1 does
+not include device login or output download helpers. The commands select the preview branch for this review.
+Use the release installation instructions once these features are published.
+
+Obtain your account access and API address from your Nodus onboarding contact.
+Replace the placeholder URL with that address. Approve
+the displayed code in your browser. The CLI saves credentials for subsequent
+commands and Python clients. Device login requires a deployment with device
+authorization enabled. API keys also work directly.
+
+| Where you run | Authentication |
+|---|---|
+| Laptop | `nodus login --base-url https://YOUR_NODUS_API_HOST` |
+| Headless server | Add `--no-browser`. Open the displayed URL on another device |
+| CI / production | Set both `NODUS_API_KEY` and `NODUS_BASE_URL` using your secret manager |
+| Explicit configuration | `nodus.Client(api_key=key, base_url=url)` |
+
+Settings resolve individually: explicit arguments → environment → saved login.
+See [authentication](docs/getting-started/authentication.md) for setup and logout.
+
+## 2. Run your first workload
+
+This GPU smoke test prints the available GPU name. No local script is uploaded.
+It submits paid compute with a $5 workload budget. Available capacity and account
+limits still determine admission.
+
+```bash
+nodus run --compute-class accelerator \
+  --image pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime \
+  --model GPU-smoke-test --budget 5 --wait \
+  -- python -c 'print(__import__("torch").cuda.get_device_name(0))'
+```
+
+Or use Python (`nodus_compute` is the package name. `nodus` is the import):
+
+<!-- test: first-workload -->
 ```python
 import nodus
 
 with nodus.Client() as client:
-    wl = client.run(command=["python", "train.py"], budget=20)
-    print(client.wait(wl.id).status)
-```
-
-## Install
-
-```bash
-pip install nodus_compute
-```
-
-The distribution is `nodus_compute`; the import is `nodus`.
-<!-- import-name decision pending -->
-
-## Sign in
-
-```bash
-nodus login --base-url https://your-api-address
-```
-
-It prints a short code and opens your browser once. Approve the code there and
-it writes your key to `~/.nodus/config.toml` — nothing to copy, and no key on
-your clipboard. `--no-browser` prints the address instead of opening it.
-
-`--base-url` is the API address your account was given; export
-`NODUS_BASE_URL` once and you can drop the flag. There is no built-in address:
-a guessed one is either nobody's deployment or somebody else's.
-
-> **Status:** verified against a local test double; not yet run against a
-> deployed control plane. The console endpoints it calls are being built.
-
-```bash
-nodus logout
-```
-
-That deletes the stored key. The key itself keeps working until you revoke it
-in the console — deleting the local copy is not a revocation.
-
-### Or set the two variables yourself
-
-```bash
-export NODUS_API_KEY=nk_live_…
-export NODUS_BASE_URL=https://…
-```
-
-Or pass them directly: `nodus.Client(api_key=…, base_url=…)`.
-
-Highest source wins, decided one setting at a time: explicit argument, then
-environment, then `~/.nodus/config.toml`. Environment above the file so a stale
-login on the same machine can never outrank what CI injected.
-
-With none of them the client raises `ConfigurationError` before it opens a
-socket, naming what is missing — it does not dial a guess and hand you a
-name-lookup error.
-
-## Running work
-
-`run()` takes a flat brief and returns a `Workload`:
-
-```python
-import nodus
-
-with nodus.Client() as client:
-    wl = client.run(
-        image="python:3.11-slim",
-        command=["python", "train.py", "--epochs", "3"],
-        peak_memory_gb=24,          # picks capacity that fits
-        expected_runtime_hours=6,   # informs the estimate
-        budget=40,                  # a ceiling, not a reservation
+    workload = client.run(
+        image="pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime",
+        command=["python", "-c", "import torch\nassert torch.cuda.is_available()\nprint(torch.cuda.get_device_name(0))"],
+        compute_class="accelerator",
+        model="GPU-smoke-test",
+        budget=5,
     )
-
-    done = client.wait(wl.id)       # polls until the run is over
+    print("Workload:", workload.id)
+    done = workload.wait()
     print(done.status, done.cost_now_usd)
+    if not done.succeeded:
+        raise RuntimeError(f"Workload {done.id} ended: {done.status}")
 ```
 
-Nothing is strictly required. Omit `image` and the default `python:3.11-slim`
-fills in; omit `command` and the image's own entrypoint runs. Everything else
-narrows the search or bounds the cost; omit `budget` and the run is uncapped —
-the SDK warns rather than inventing a ceiling on your money.
+`run()` returns after acceptance. `wait()` returns for completed, failed, or
+cancelled work. Check `succeeded`. The Python example requests cancellation on
+Ctrl+C. The CLI does the same while waiting. Resource cleanup happens remotely
+after the cancellation request. Closing a client alone does not cancel work.
 
-**Your image must be able to fetch a small binary** — it needs `curl`, `wget`,
-or `python3` on the PATH. Most ML images have one. A bare `ubuntu` image has
-none of them, and a machine that cannot fetch the runner is a machine you are
-billed for while it does nothing.
+## 3. Inspect and manage the run
 
-## Waiting
-
-`wait()` polls until the workload is terminal and **has no deadline of its
-own**. An 18-hour run is normal, and a client that gave up on one would not stop
-it — the work would carry on and keep billing while your program believed it had
-failed. A transient network failure does not end the wait either; only a
-permanent one (a revoked key, an unknown workload) is raised.
-
-Pass `timeout_seconds=` if you want a bound. It ends the *waiting*, not the run:
-`APITimeoutError` is raised, the workload continues, and `.cancel()` is what
-stops it.
-
-## Watching it
-
-```python
-for event in client.stream_events(wl.id):
-    print(event.type, event.payload)
-
-print(client.logs(wl.id))           # the job's own stdout and stderr
-print(wl.refresh().cost_now_usd)    # charged plus what is accruing right now
-```
-
-`logs()` is not a live tail. The log is a committed artifact, so it lags the
-process by a checkpoint and raises `NotFoundError` until the first checkpoint
-carries one — for live progress, watch the events.
-
-## Async
-
-`AsyncClient` mirrors `Client` method for method:
-
-```python
-async with nodus.AsyncClient() as client:
-    wl = await client.run(command=["python", "train.py"])
-    done = await client.wait(wl.id)
-```
-
-## Errors
-
-Every failure is a subclass of `NodusError`, so one `except` catches the lot.
-The column that matters when writing a handler is whether the condition clears
-on its own — the SDK already retries the ones that do, and never retries the
-ones that do not.
-
-| Raised | When | Clears on its own? |
-|---|---|---|
-| `ConfigurationError` | a setting is missing, before any request | never |
-| `AuthenticationError` | the key is wrong or revoked | never |
-| `SignatureError` | a signed request was rejected — the key is fine, the signature is not | never |
-| `ValidationError` | the brief was rejected, with the reason | never |
-| `IdempotencyConflictError` | an `Idempotency-Key` was reused with a different payload | never |
-| `NotFoundError` | no such workload | never |
-| `BudgetExceededError` | the run would pass your account's spend cap | only if you lower the ask or raise the cap |
-| `RateLimitError` | too many requests; honours `Retry-After` | yes, with time |
-| `CapacityUnavailableError` | nothing in the market fits the brief | yes |
-| `APIConnectionError` / `APITimeoutError` | the network, not the API | yes |
-| `APIError` | any other 4xx/5xx | for 5xx, usually |
-
-## Command line
-
-Everything after a bare `--` is your program's own command line, passed through
-untouched:
+Use the workload ID printed above:
 
 ```bash
-nodus login --base-url https://your-api-address
-nodus run --budget 20 -- python train.py
-nodus get wl_…
-nodus logs wl_…
+nodus get WORKLOAD_ID
+nodus events WORKLOAD_ID --follow
+nodus logs WORKLOAD_ID
+nodus artifacts WORKLOAD_ID
+nodus explain WORKLOAD_ID
+nodus ledger WORKLOAD_ID
+nodus cancel WORKLOAD_ID
 ```
 
-## Licence
+Events show lifecycle progress. Logs are committed artifacts, so they may be
+unavailable before the first commit. [Monitoring and outputs](docs/guides/monitoring-and-outputs.md)
+explains how to retrieve results.
 
-Apache-2.0. See
-[LICENSE](https://github.com/Nodus-compute/Nodus-sdk-python/blob/main/LICENSE).
+## Run your own workloads
+
+| Goal | Guide |
+|---|---|
+| Package and run a Python script | [Containers and scripts](docs/guides/containers-and-scripts.md) |
+| Run a GPU training or fine-tuning command | [GPU workloads](docs/guides/gpu-workloads.md) |
+| Submit concurrent experiments | [Async sweeps](docs/guides/async-sweeps.md) |
+| Connect stages and declared outputs | [Multi-stage workloads](docs/guides/multi-stage-workloads.md) |
+| Retry safely in automation | [CI and idempotency](docs/guides/ci-and-idempotency.md) |
+| Look up advanced submission options | [All parameters](docs/reference/parameters/index.md) |
+
+Your script, dependencies, and accessible data must be available inside the image
+or fetched by your program. The SDK does not upload your working directory.
+Container images need `curl`, `wget`, or `python3` for runner bootstrap.
+
+## Before submitting
+
+Set a budget, use an image containing your code and dependencies, and keep the
+returned workload ID. Reuse an `idempotency_key` when retrying the same submission.
+Nodus currently supports GPU workloads. CPU-only VM provisioning is not offered.
+
+The first example prints a GPU name in its logs. For downloadable files, declare
+stage outputs as shown in [multi-stage workloads](docs/guides/multi-stage-workloads.md).
+See [troubleshooting](docs/operations/errors.md) if submission or execution fails.
+
+## Development
+
+```bash
+python -m pip install -e '.[dev]'
+python -m pytest
+```
+
+See [RELEASING.md](RELEASING.md) for release steps. Licensed under [Apache-2.0](LICENSE).

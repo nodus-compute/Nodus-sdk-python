@@ -157,7 +157,7 @@ def _finite(value: Any) -> bool:
     """A real number, not a bool, and not one JSON let through as NaN.
 
     ``json`` accepts the literals ``NaN`` and ``Infinity``, and every ordering
-    comparison against NaN is False — so an unguarded ``value <= 0`` admits it
+    comparison against NaN is False, so an unguarded ``value <= 0`` admits it
     and a deadline built from it is never reached.
     """
     return (

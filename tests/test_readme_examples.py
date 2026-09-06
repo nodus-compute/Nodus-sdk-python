@@ -1,55 +1,133 @@
-"""Every ``nodus ...`` line the README shows must parse with the real CLI.
+"""Check published examples against the real SDK without submitting paid work.
 
-Lines are split at the first bare ``--`` the same way ``cli.main`` splits them:
-everything after it belongs to the customer's program.
+Source documentation is intentionally absent from installed-wheel test runs.
 """
-
 from __future__ import annotations
 
+import ast
+import json
 import pathlib
+import re
 import shlex
+from urllib.parse import unquote, urlsplit
 
+import httpx
 import pytest
 
 from nodus import cli
 
-README = pathlib.Path(__file__).parents[1] / "README.md"
+ROOT = pathlib.Path(__file__).parents[1]
+README = ROOT / "README.md"
+
+
+def _documents():
+    if not README.exists():
+        pytest.skip("documentation checks require a source checkout")
+    return [README, *(path for folder in ("docs", "examples", "openapi")
+                       for path in sorted((ROOT / folder).rglob("*.md")))]
+
+
+def _fences(text):
+    """Yield language, body, and preceding test marker from Markdown fences."""
+    pattern = r"(?P<marker><!-- test: [\w-]+ -->\s*)?^```(?P<lang>[^\n]*)\n(?P<body>.*?)^```\s*$"
+    for match in re.finditer(pattern, text, re.MULTILINE | re.DOTALL):
+        yield match["lang"].strip(), match["body"], match["marker"] or ""
 
 
 def _nodus_lines(text: str) -> list[str]:
-    """Command lines starting ``nodus `` inside fenced code blocks."""
-    lines: list[str] = []
-    in_fence = False
-    for raw in text.splitlines():
-        stripped = raw.strip()
-        if stripped.startswith("```"):
-            in_fence = not in_fence
+    lines = []
+    for language, body, _ in _fences(text):
+        if language not in {"bash", "sh", "shell", "console", ""}:
             continue
-        if not in_fence:
-            continue
-        if stripped.startswith("$ "):
-            stripped = stripped[2:].strip()
-        if stripped == "nodus" or stripped.startswith("nodus "):
-            lines.append(stripped)
+        for raw in re.sub(r"\\\n\s*", " ", body).splitlines():
+            command = raw.strip().removeprefix("$ ").strip()
+            if command == "nodus" or command.startswith("nodus "):
+                lines.append(command)
     return lines
 
 
-def test_every_readme_nodus_line_parses():
-    if not README.exists():
-        pytest.skip("no README beside the tests; run from a source checkout")
-    lines = _nodus_lines(README.read_text(encoding="utf-8"))
-    assert lines, "no `nodus ...` lines found in README.md; extractor or README broken"
+def test_shell_continuations_are_one_command():
+    text = '```bash\nnodus run \\\n  --budget 2 \\\n  -- python -c "print(1)"\n```'
+    assert _nodus_lines(text) == ['nodus run  --budget 2  -- python -c "print(1)"']
 
-    failures: list[str] = []
-    for command in lines:
-        argv = shlex.split(command)[1:]
-        if "--" in argv:
-            argv = argv[: argv.index("--")]
-        try:
-            cli.build_parser().parse_args(argv)
-        except SystemExit as exc:
-            # argparse exits 0 for --version/--help and non-zero for a usage
-            # error; only the latter is a lie in the README.
-            if exc.code:
-                failures.append(command)
-    assert not failures, "README shows nodus lines the CLI rejects:\n  " + "\n  ".join(failures)
+
+def test_every_documented_nodus_command_parses():
+    failures = []
+    count = 0
+    for path in _documents():
+        for command in _nodus_lines(path.read_text(encoding="utf-8")):
+            count += 1
+            argv = shlex.split(command, comments=True)[1:]
+            if "--" in argv:
+                argv = argv[:argv.index("--")]
+            try:
+                cli.build_parser().parse_args(argv)
+            except SystemExit as exc:
+                if exc.code:
+                    failures.append(f"{path.relative_to(ROOT)}: {command}")
+    assert count, "no documented nodus commands found"
+    assert not failures, "CLI rejects documented commands:\n" + "\n".join(failures)
+
+
+def test_documented_python_is_valid_syntax():
+    for path in _documents():
+        for language, body, _ in _fences(path.read_text(encoding="utf-8")):
+            if language in {"python", "py"}:
+                # Compile, rather than parse alone, while permitting async snippets
+                # intended for notebooks or an enclosing coroutine.
+                compile(body, str(path), "exec", flags=ast.PyCF_ALLOW_TOP_LEVEL_AWAIT)
+
+
+def test_local_markdown_links_resolve():
+    failures = []
+    for path in _documents():
+        text = path.read_text(encoding="utf-8")
+        text = re.sub(r"^```.*?^```[^\n]*", "", text, flags=re.MULTILINE | re.DOTALL)
+        destinations = re.findall(r"\]\(([^\s)]+)(?:\s+\"[^\"]*\")?\)", text)
+        destinations += re.findall(r"^\[[^\]]+\]:\s*(\S+)", text, re.MULTILINE)
+        for destination in destinations:
+            parsed = urlsplit(destination.strip("<>"))
+            if parsed.scheme or parsed.netloc or not parsed.path:
+                continue
+            target = (path.parent / unquote(parsed.path)).resolve()
+            if not target.exists():
+                failures.append(f"{path.relative_to(ROOT)}: {destination}")
+    assert not failures, "broken relative links:\n" + "\n".join(failures)
+
+
+def test_marked_first_workload_examples(monkeypatch):
+    examples = []
+    for path in _documents():
+        for language, body, marker in _fences(path.read_text(encoding="utf-8")):
+            if language == "python" and "test: first-workload" in marker:
+                examples.append((path, body))
+    assert examples, "mark the self-contained first-workload Python example for execution"
+    monkeypatch.setenv("NODUS_API_KEY", "nk_live_documentation_test")
+    monkeypatch.setenv("NODUS_BASE_URL", "https://nodus.invalid")
+    original_client = httpx.Client
+    calls = []
+
+    def handler(request):
+        calls.append((request.method, request.url.path))
+        assert request.headers["Authorization"] == "Bearer nk_live_documentation_test"
+        if request.method == "POST" and request.url.path == "/v1/workloads":
+            payload = json.loads(request.content)
+            assert payload["source"]["command"], "first example must run a command"
+            assert payload["outcome"]["max_cost_usd"] > 0, "first example needs a budget"
+            return httpx.Response(202, json={"id": "wl_docs", "workload_id": "wl_docs", "status": "accepted", "revision": 1})
+        if request.method == "GET" and request.url.path == "/v1/workloads/wl_docs":
+            return httpx.Response(200, json={"id": "wl_docs", "status": "completed", "revision": 2, "spend_usd": 0.01, "meter": {"total_now_usd": 0.01}})
+        if request.method == "GET" and request.url.path == "/v1/workloads/wl_docs/logs":
+            return httpx.Response(200, text="Hello from Nodus!\n")
+        raise AssertionError(f"Unexpected documented request: {request.method} {request.url}")
+
+    def mocked_client(*args, **kwargs):
+        kwargs["transport"] = httpx.MockTransport(handler)
+        return original_client(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, "Client", mocked_client)
+    for path, body in examples:
+        calls.clear()
+        exec(compile(body, str(path), "exec"), {"__name__": "__main__"})
+        assert ("POST", "/v1/workloads") in calls
+        assert ("GET", "/v1/workloads/wl_docs") in calls

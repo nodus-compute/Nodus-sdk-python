@@ -1,8 +1,8 @@
 """Nodus Python SDK.
 
-Submit workload requirements and outcomes; Nodus matches infrastructure,
+Submit workload requirements and outcomes. Nodus matches infrastructure,
 manages cost to completion, and recovers through reclaim. You describe the work
-and its constraints — never a machine, an instance type, or a supplier.
+and its constraints, never a machine, an instance type, or a supplier.
 
 Sign in once and the client finds its own settings:
 
@@ -31,6 +31,7 @@ the two settings yourself, which is what CI does:
 from __future__ import annotations
 
 import asyncio
+from contextlib import contextmanager
 import math
 import os
 import re
@@ -42,10 +43,14 @@ from datetime import datetime
 from email.utils import parsedate_to_datetime
 from importlib.metadata import PackageNotFoundError, version as _distribution_version
 from typing import Any, AsyncIterator, Iterator
+from pathlib import Path
+
+from ._outputs import download_path, verified_file
 
 import httpx
 
 from ._brief import build_payload, status_filter
+from .requests import Source, Requirements, Policy, ContinuitySpec, StageInput, StageSpec
 from .config import _is_header_safe, read_credentials
 from .errors import (
     APIConnectionError,
@@ -76,6 +81,7 @@ from .types import (
     LedgerEntry,
     ManifestFile,
     Meter,
+    Output,
     Route,
     Settlement,
     StageRun,
@@ -98,6 +104,13 @@ __all__ = [
     "AsyncWorkload",
     "Route",
     "StageRun",
+    "Output",
+    "Source",
+    "Requirements",
+    "Policy",
+    "ContinuitySpec",
+    "StageInput",
+    "StageSpec",
     "Artifact",
     "ManifestFile",
     "Event",
@@ -202,7 +215,7 @@ class _WaitPolicy:
 
     A workload outlives any single request, and keeps billing whatever the
     client believes, so a transient failure widens the interval instead of
-    ending the wait. A permanent one — a revoked key, an unknown id — is raised
+    ending the wait. A permanent one, a revoked key, an unknown id, is raised
     immediately, because waiting on it is a program that hangs instead of
     failing.
     """
@@ -214,7 +227,7 @@ class _WaitPolicy:
         self.last: NodusError | None = None
 
     def failed(self, exc: NodusError) -> float:
-        """Seconds to hold off after a failed poll; re-raises what will never clear."""
+        """Seconds to hold off after a failed poll. Re-raises what will never clear."""
         if not _is_transient(exc):
             raise exc
         self.failures += 1
@@ -253,7 +266,7 @@ def _setup_help(missing: list[str]) -> str:
     and both answer a setup mistake with a network error.
 
     ASCII only. This lands on a terminal, and a Windows console on a legacy
-    code page turns a typographic ellipsis into a replacement character —
+    code page turns a typographic ellipsis into a replacement character,
     mojibake in the one message whose whole job is to be read and copied.
     """
     joined = " and ".join(missing)
@@ -314,7 +327,7 @@ def _check_header_safe(name: str, value: str) -> None:
 def _resolve(api_key: str | None, base_url: str | None) -> tuple[str, str]:
     """Both settings, highest source first, decided one setting at a time.
 
-    Env above the file so a stale login can never outrank what CI injected;
+    Env above the file so a stale login can never outrank what CI injected.
     per setting because a stored key against an env address is the normal way
     to point the same account at staging.
     """
@@ -338,7 +351,7 @@ def _resolve(api_key: str | None, base_url: str | None) -> tuple[str, str]:
 
 
 def _resolve_base_url(base_url: str | None) -> str:
-    """The address alone, for ``nodus login`` — which has no key yet."""
+    """The address alone, for ``nodus login``, which has no key yet."""
     url = (base_url or os.environ.get("NODUS_BASE_URL") or "").strip().rstrip("/")
     if not url:
         url = read_credentials()[1].strip().rstrip("/")
@@ -364,7 +377,7 @@ def _valid_id(workload_id: Any) -> str:
     """One path segment, checked before it can become part of a URL.
 
     httpx resolves dot segments, so an id carrying ``/`` or ``..`` addresses a
-    different endpoint — the webhook secret included. Server-supplied ids are
+    different endpoint, the webhook secret included. Server-supplied ids are
     checked too: a handle refreshes on the id it is holding.
     """
     if isinstance(workload_id, str) and _WORKLOAD_ID.match(workload_id):
@@ -380,7 +393,7 @@ def _valid_idempotency_key(key: str) -> str:
     """A key that can survive being a header.
 
     Non-ASCII cannot be encoded into one and CRLF makes a header the server
-    rejects on every attempt — either failure surfaces from inside the
+    rejects on every attempt, either failure surfaces from inside the
     transport, after the retry budget, naming neither the key nor the call.
     """
     if _is_header_safe(key):
@@ -448,7 +461,7 @@ class _WorkloadState:
 
         An absent key is not a key set to nothing. A list row carries no route
         and no stages, and a body that clobbered them would leave the handle
-        claiming the workload has none — worse for ``status``, where None is
+        claiming the workload has none, worse for ``status``, where None is
         never terminal and a wait polling it can never end.
         """
         from .types import _dt, _int, _num, _obj, _rows  # local import: internal helpers
@@ -480,7 +493,7 @@ class _WorkloadState:
 
         ``meter.settled_usd`` counts only the current billing period and
         ``spend_usd`` lags a settling lease, so what has been charged is the
-        larger of the two; ``meter.accruing_usd`` is open leases' money on top.
+        larger of the two. ``meter.accruing_usd`` is open leases' money on top.
         """
         if self.meter is None:
             return self.spend_usd
@@ -587,9 +600,9 @@ class _Transport:
 class Client(_Transport):
     """Synchronous Nodus client.
 
-    One instance per process is enough — the underlying transport pools
+    One instance per process is enough, the underlying transport pools
     connections, so constructing a client per call throws that away. The client
-    is safe to share across threads; the workload handles it returns are not.
+    is safe to share across threads. The workload handles it returns are not.
     """
 
     def __init__(
@@ -718,26 +731,26 @@ class Client(_Transport):
         expected_runtime_hours: float | None = None,
         budget: float | None = None,
         compute_class: ComputeClass | str | None = None,
-        continuity: ContinuityMode | str | dict[str, Any] | None = None,
+        continuity: ContinuityMode | str | ContinuitySpec | dict[str, Any] | None = None,
         finish_by: datetime | str | None = None,
         data_regions: list[str] | None = None,
-        stages: list[dict[str, Any]] | None = None,
+        stages: list[StageSpec] | list[dict[str, Any]] | None = None,
         framework: str | None = None,
-        policy: dict[str, Any] | None = None,
-        requirements: dict[str, Any] | None = None,
+        policy: Policy | dict[str, Any] | None = None,
+        requirements: Requirements | dict[str, Any] | None = None,
         idempotency_key: str | None = None,
         extra: dict[str, Any] | None = None,
         **unknown: Any,
     ) -> "Workload":
-        """Submit a brief — requirements and outcomes, never a machine.
+        """Submit a brief, requirements and outcomes, never a machine.
 
-        Returns as soon as the workload is accepted; it is not yet placed. Call
+        Returns as soon as the workload is accepted. It is not yet placed. Call
         ``client.wait(wl.id)`` to block until it reaches a terminal state.
 
         ``budget`` is cost to completion in USD, and omitting it leaves the run
         capped only by the account. ``finish_by`` takes a datetime or RFC3339
         text. ``extra`` is merged into the payload for a field the control plane
-        models and this SDK version does not; any other keyword is refused
+        models and this SDK version does not. Any other keyword is refused
         rather than sent, because the server drops what it does not recognise.
 
         ``idempotency_key`` defaults to a fresh value per call, which covers
@@ -746,8 +759,8 @@ class Client(_Transport):
         are running so a resubmission cannot become a second paid workload.
 
         A raised :class:`APITimeoutError` or :class:`APIConnectionError` does
-        not mean nothing was submitted. Retry with the key on ``err.payload`` —
-        the one that was sent — so the retry cannot become a second paid run.
+        not mean nothing was submitted. Retry with the key on ``err.payload``,
+        the one that was sent, so the retry cannot become a second paid run.
         """
         payload = build_payload(
             command=command,
@@ -791,7 +804,7 @@ class Client(_Transport):
     def list(
         self, *, limit: int = 50, offset: int = 0, status: Any = None
     ) -> list["Workload"]:
-        """The first page only — use ``iter_workloads()`` for all of them.
+        """The first page only, use ``iter_workloads()`` for all of them.
 
         Newest first. ``status`` accepts a member, a wire string, a list of
         either, or the presets ``"active"`` and ``"terminal"``.
@@ -870,6 +883,48 @@ class Client(_Transport):
         res = self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/artifacts")
         return [Artifact.from_dict(a) for a in (res or {}).get("artifacts") or []]
 
+    def outputs(self, workload_id: str) -> list[Output]:
+        """List customer outputs from completed stages."""
+        res = self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/outputs")
+        return [Output.from_dict(row) for row in (res or {}).get("outputs") or []]
+
+    def routing(self, workload_id: str) -> list[dict[str, Any]]:
+        """Return placement history ordered by stage ID, then generation."""
+        res = self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/routing")
+        return (res or {}).get("placements") or []
+
+    def download_output(
+        self, workload_id: str, name: str, destination: str | os.PathLike[str],
+        *, stage: str | None = None,
+    ) -> Path:
+        """Stream an output to destination and verify its SHA-256 before replacing it.
+
+        Pass stage when multiple stages publish the same name. Failed transfers
+        leave an existing destination intact. Retry the call to restart.
+        """
+        path = download_path(_valid_id(workload_id), name)
+        params = {"stage": stage} if stage is not None else None
+        try:
+            with self._http.stream("GET", path, params=params, follow_redirects=False,
+                                       headers={"Accept-Encoding": "identity"}) as resp:
+                if resp.status_code != 200:
+                    body = bytearray()
+                    for chunk in resp.iter_bytes(chunk_size=16 * 1024):
+                        body.extend(chunk[:64 * 1024 - len(body)])
+                        if len(body) >= 64 * 1024:
+                            break
+                    error = httpx.Response(resp.status_code, headers=resp.headers,
+                                           content=bytes(body), request=resp.request)
+                    self._raise("GET", path, error)
+                with verified_file(destination, resp.headers) as write:
+                    for chunk in resp.iter_bytes(chunk_size=1024 * 1024):
+                        write(chunk)
+        except httpx.TimeoutException as exc:
+            raise APITimeoutError("Output download timed out; retry to restart.") from exc
+        except httpx.HTTPError as exc:
+            raise APIConnectionError("Output download interrupted; retry to restart.") from exc
+        return Path(destination)
+
     def ledger(self, workload_id: str) -> Ledger:
         return Ledger.from_dict(self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/ledger"))
 
@@ -880,7 +935,7 @@ class Client(_Transport):
 
         Not a live stream: the log is collected as a named output and the
         control plane recomputes its digest before it agrees the run produced
-        it, so this lags the process by a checkpoint. That is the point — what
+        it, so this lags the process by a checkpoint. That is the point, what
         comes back is evidence rather than a tail.
 
         Narrowing by stage and generation matters after a reclaim: a stage that
@@ -909,22 +964,23 @@ class Client(_Transport):
         poll_seconds: float = 2.0,
         timeout_seconds: float | None = None,
     ) -> "Workload":
-        """Poll until the workload is terminal.
+        """Poll until terminal. Ctrl+C requests remote cancellation.
 
-        Transient failures are retried for as long as the wait lasts; only the
-        caller's own ``timeout_seconds`` ends it early. See :class:`_WaitPolicy`.
+        Transient failures are retried while waiting. A timeout ends local
+        observation without cancellation. See :class:`_WaitPolicy`.
         """
-        policy = _WaitPolicy(poll_seconds, timeout_seconds)
-        while True:
-            try:
-                wl = self.get(workload_id)
-            except NodusError as exc:
-                delay = policy.failed(exc)
-            else:
-                if wl.is_terminal:
-                    return wl
-                delay = policy.polled()
-            time.sleep(policy.hold(delay, workload_id))
+        with _cancel_wait_on_interrupt(self, workload_id):
+            policy = _WaitPolicy(poll_seconds, timeout_seconds)
+            while True:
+                try:
+                    wl = self.get(workload_id)
+                except NodusError as exc:
+                    delay = policy.failed(exc)
+                else:
+                    if wl.is_terminal:
+                        return wl
+                    delay = policy.polled()
+                time.sleep(policy.hold(delay, workload_id))
 
     def stream_events(self, workload_id: str, *, poll_seconds: float = 2.0) -> Iterator[Event]:
         """Yield events as they occur, stopping at the terminal event.
@@ -971,13 +1027,37 @@ class Client(_Transport):
         return self._request("GET", "/readyz") or {}
 
 
+@contextmanager
+def _cancel_wait_on_interrupt(client: Client, workload_id: str):
+    try:
+        yield
+    except KeyboardInterrupt as interrupt:
+        failure = None
+        try:
+            client.cancel(workload_id)
+        except (NodusError, KeyboardInterrupt) as exc:
+            failure = exc
+            message = (
+                f"Cancellation not confirmed for {workload_id!r}. "
+                "Call client.cancel(workload_id) against the same deployment."
+            )
+            if hasattr(interrupt, "add_note"):
+                interrupt.add_note(message)
+            try:
+                warnings.warn(message, RuntimeWarning, stacklevel=2)
+            except RuntimeWarning:
+                pass
+        interrupt._nodus_cancellation = (workload_id, failure)
+        raise
+
+
 class Workload(_WorkloadState):
     """A handle on one submitted brief.
 
     Mutable: ``refresh()`` and ``wait()`` update this instance in place and also
     return it, so after either call you can read ``status``, ``route`` and
     ``spend_usd`` without a second round trip. The consequence is that a handle
-    is not safe to share across threads — give each one its own from
+    is not safe to share across threads, give each one its own from
     ``client.get()``.
     """
 
@@ -991,24 +1071,25 @@ class Workload(_WorkloadState):
         return self
 
     def wait(self, *, poll_seconds: float = 2.0, timeout_seconds: float | None = None) -> "Workload":
-        """Poll until terminal.
+        """Poll until terminal. Ctrl+C requests remote cancellation.
 
-        Raises :class:`APITimeoutError` if ``timeout_seconds`` elapses first;
+        Raises :class:`APITimeoutError` if ``timeout_seconds`` elapses first.
         the workload keeps running, because a client-side deadline is not a
         cancellation. Transient poll failures are retried for the life of the
         wait, permanent ones raised at once. See :class:`_WaitPolicy`.
         """
-        policy = _WaitPolicy(poll_seconds, timeout_seconds)
-        while True:
-            try:
-                self.refresh()
-            except NodusError as exc:
-                delay = policy.failed(exc)
-            else:
-                if self.is_terminal:
-                    return self
-                delay = policy.polled()
-            time.sleep(policy.hold(delay, self.id))
+        with _cancel_wait_on_interrupt(self._client, self.id):
+            policy = _WaitPolicy(poll_seconds, timeout_seconds)
+            while True:
+                try:
+                    self.refresh()
+                except NodusError as exc:
+                    delay = policy.failed(exc)
+                else:
+                    if self.is_terminal:
+                        return self
+                    delay = policy.polled()
+                time.sleep(policy.hold(delay, self.id))
 
     def events(self, *, after: int = 0) -> list[Event]:
         return self._client.events(self.id, after=after)
@@ -1021,6 +1102,20 @@ class Workload(_WorkloadState):
 
     def artifacts(self) -> list[Artifact]:
         return self._client.artifacts(self.id)
+
+    def outputs(self) -> list[Output]:
+        """List customer outputs from completed stages."""
+        return self._client.outputs(self.id)
+
+    def routing(self) -> list[dict[str, Any]]:
+        """Read this workload's placement history."""
+        return self._client.routing(self.id)
+
+    def download_output(
+        self, name: str, destination: str | os.PathLike[str], *, stage: str | None = None
+    ) -> Path:
+        """Download a named output and verify it before replacing destination."""
+        return self._client.download_output(self.id, name, destination, stage=stage)
 
     def ledger(self) -> Ledger:
         return self._client.ledger(self.id)
@@ -1158,13 +1253,13 @@ class AsyncClient(_Transport):
         expected_runtime_hours: float | None = None,
         budget: float | None = None,
         compute_class: ComputeClass | str | None = None,
-        continuity: ContinuityMode | str | dict[str, Any] | None = None,
+        continuity: ContinuityMode | str | ContinuitySpec | dict[str, Any] | None = None,
         finish_by: datetime | str | None = None,
         data_regions: list[str] | None = None,
-        stages: list[dict[str, Any]] | None = None,
+        stages: list[StageSpec] | list[dict[str, Any]] | None = None,
         framework: str | None = None,
-        policy: dict[str, Any] | None = None,
-        requirements: dict[str, Any] | None = None,
+        policy: Policy | dict[str, Any] | None = None,
+        requirements: Requirements | dict[str, Any] | None = None,
         idempotency_key: str | None = None,
         extra: dict[str, Any] | None = None,
         **unknown: Any,
@@ -1212,7 +1307,7 @@ class AsyncClient(_Transport):
     async def list(
         self, *, limit: int = 50, offset: int = 0, status: Any = None
     ) -> list["AsyncWorkload"]:
-        """The first page only — use ``iter_workloads()`` for all of them.
+        """The first page only, use ``iter_workloads()`` for all of them.
 
         Newest first. ``status`` accepts a member, a wire string, a list of
         either, or the presets ``"active"`` and ``"terminal"``.
@@ -1292,6 +1387,48 @@ class AsyncClient(_Transport):
     async def artifacts(self, workload_id: str) -> list[Artifact]:
         res = await self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/artifacts")
         return [Artifact.from_dict(a) for a in (res or {}).get("artifacts") or []]
+
+    async def outputs(self, workload_id: str) -> list[Output]:
+        """List customer outputs from completed stages."""
+        res = await self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/outputs")
+        return [Output.from_dict(row) for row in (res or {}).get("outputs") or []]
+
+    async def routing(self, workload_id: str) -> list[dict[str, Any]]:
+        """Return placement history ordered by stage ID, then generation."""
+        res = await self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/routing")
+        return (res or {}).get("placements") or []
+
+    async def download_output(
+        self, workload_id: str, name: str, destination: str | os.PathLike[str],
+        *, stage: str | None = None,
+    ) -> Path:
+        """Stream an output to destination and verify its SHA-256 before replacing it.
+
+        Pass stage when multiple stages publish the same name. Failed transfers
+        leave an existing destination intact. Retry the call to restart.
+        """
+        path = download_path(_valid_id(workload_id), name)
+        params = {"stage": stage} if stage is not None else None
+        try:
+            async with self._http.stream("GET", path, params=params, follow_redirects=False,
+                                       headers={"Accept-Encoding": "identity"}) as resp:
+                if resp.status_code != 200:
+                    body = bytearray()
+                    async for chunk in resp.aiter_bytes(chunk_size=16 * 1024):
+                        body.extend(chunk[:64 * 1024 - len(body)])
+                        if len(body) >= 64 * 1024:
+                            break
+                    error = httpx.Response(resp.status_code, headers=resp.headers,
+                                           content=bytes(body), request=resp.request)
+                    self._raise("GET", path, error)
+                with verified_file(destination, resp.headers) as write:
+                    async for chunk in resp.aiter_bytes(chunk_size=1024 * 1024):
+                        write(chunk)
+        except httpx.TimeoutException as exc:
+            raise APITimeoutError("Output download timed out; retry to restart.") from exc
+        except httpx.HTTPError as exc:
+            raise APIConnectionError("Output download interrupted; retry to restart.") from exc
+        return Path(destination)
 
     async def ledger(self, workload_id: str) -> Ledger:
         return Ledger.from_dict(await self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/ledger"))
@@ -1374,7 +1511,7 @@ class AsyncClient(_Transport):
 
 
 class AsyncWorkload(_WorkloadState):
-    """Async handle. Identical attributes to :class:`Workload`; methods await."""
+    """Async handle. Identical attributes to :class:`Workload`. Methods await."""
 
     def __init__(self, client: AsyncClient):
         super().__init__()
@@ -1412,6 +1549,20 @@ class AsyncWorkload(_WorkloadState):
 
     async def artifacts(self) -> list[Artifact]:
         return await self._client.artifacts(self.id)
+
+    async def outputs(self) -> list[Output]:
+        """List customer outputs from completed stages."""
+        return await self._client.outputs(self.id)
+
+    async def routing(self) -> list[dict[str, Any]]:
+        """Read this workload's placement history."""
+        return await self._client.routing(self.id)
+
+    async def download_output(
+        self, name: str, destination: str | os.PathLike[str], *, stage: str | None = None
+    ) -> Path:
+        """Download a named output and verify it before replacing destination."""
+        return await self._client.download_output(self.id, name, destination, stage=stage)
 
     async def ledger(self) -> Ledger:
         return await self._client.ledger(self.id)

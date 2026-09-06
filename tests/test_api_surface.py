@@ -166,6 +166,9 @@ def test_the_command_answers_a_missing_log_with_a_sentence(monkeypatch, capsys):
         def __exit__(self, *exc):
             return None
 
+        def get(self, workload_id):
+            return object()
+
         def logs(self, workload_id, *, stage=None, generation=None):
             raise nodus.NotFoundError("no log recorded for this workload yet", status_code=404)
 
