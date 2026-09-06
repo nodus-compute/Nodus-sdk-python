@@ -2,7 +2,7 @@
 
 # Nodus Python SDK
 
-**One interface for running AI workloads across compute providers.**
+**One interface for running AI workloads on GPUs.**
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
@@ -11,18 +11,26 @@
 
 </div>
 
-Nodus accepts a workload's code, resource requirements, budget, and recovery policy,
-then manages placement and execution. Use the same Python client for a single run,
-a batch of experiments, or a multi-stage pipeline.
+Provide a container image, a command, and a budget. Nodus finds GPU capacity and
+runs your workload. Use the same Python client for training, fine-tuning, or a
+batch of experiments.
 
 ## 1. Install and sign in
 
 ```bash
-python -m pip install nodus_compute
+git clone https://github.com/nodus-compute/Nodus-sdk-python.git
+cd Nodus-sdk-python
+git switch docs-api-clarity-20260906
+python -m pip install -e .
 nodus login --base-url https://YOUR_NODUS_API_HOST
 ```
 
-Replace the URL with the API address provided for your Nodus deployment. Approve
+These instructions use the features in this checkout. PyPI version 0.1.1 does
+not include device login or output download helpers. The commands select the preview branch for this review.
+Use the release installation instructions once these features are published.
+
+Obtain your account access and API address from your Nodus onboarding contact.
+Replace the placeholder URL with that address. Approve
 the displayed code in your browser. The CLI saves credentials for subsequent
 commands and Python clients. Device login requires a deployment with device
 authorization enabled. API keys also work directly.
@@ -39,13 +47,15 @@ See [authentication](docs/getting-started/authentication.md) for setup and logou
 
 ## 2. Run your first workload
 
-This command is self-contained: it does not depend on a local script being uploaded.
+This GPU smoke test prints the available GPU name. No local script is uploaded.
 It submits paid compute with a $5 workload budget. Available capacity and account
 limits still determine admission.
 
 ```bash
-nodus run --compute-class vm --image python:3.11-slim --budget 5 --continuity restartable --wait \
-  -- python -c 'print("Hello from Nodus")'
+nodus run --compute-class accelerator \
+  --image pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime \
+  --model GPU-smoke-test --budget 5 --wait \
+  -- python -c 'print(__import__("torch").cuda.get_device_name(0))'
 ```
 
 Or use Python (`nodus_compute` is the package name. `nodus` is the import):
@@ -56,11 +66,11 @@ import nodus
 
 with nodus.Client() as client:
     workload = client.run(
-        image="python:3.11-slim",
-        command=["python", "-c", "print('Hello from Nodus')"],
-        compute_class="vm",
+        image="pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime",
+        command=["python", "-c", "import torch\nassert torch.cuda.is_available()\nprint(torch.cuda.get_device_name(0))"],
+        compute_class="accelerator",
+        model="GPU-smoke-test",
         budget=5,
-        continuity="restartable",
     )
     print("Workload:", workload.id)
     done = workload.wait()
@@ -70,7 +80,9 @@ with nodus.Client() as client:
 ```
 
 `run()` returns after acceptance. `wait()` returns for completed, failed, or
-cancelled work. Check `succeeded`. Closing the client does not cancel the workload.
+cancelled work. Check `succeeded`. The Python example requests cancellation on
+Ctrl+C. The CLI does the same while waiting. Resource cleanup happens remotely
+after the cancellation request. Closing a client alone does not cancel work.
 
 ## 3. Inspect and manage the run
 
@@ -99,22 +111,21 @@ explains how to retrieve results.
 | Submit concurrent experiments | [Async sweeps](docs/guides/async-sweeps.md) |
 | Connect stages and declared outputs | [Multi-stage workloads](docs/guides/multi-stage-workloads.md) |
 | Retry safely in automation | [CI and idempotency](docs/guides/ci-and-idempotency.md) |
-| Choose resource, cost, and recovery settings | [All parameters](docs/reference/parameters/index.md) |
+| Look up advanced submission options | [All parameters](docs/reference/parameters/index.md) |
 
 Your script, dependencies, and accessible data must be available inside the image
 or fetched by your program. The SDK does not upload your working directory.
 Container images need `curl`, `wget`, or `python3` for runner bootstrap.
 
-## Reliability essentials
+## Before submitting
 
-- Always set `budget`. Omitting it leaves only the account spend cap.
-- Reuse an `idempotency_key` for retries of the same logical submission.
-- A wait timeout ends polling. Call `cancel()` to request stopping the workload.
-- Select continuity to match your application's recovery support. Choosing
-  `checkpointed` alone does not make arbitrary training code resumable.
+Set a budget, use an image containing your code and dependencies, and keep the
+returned workload ID. Reuse an `idempotency_key` when retrying the same submission.
+Nodus currently supports GPU workloads. CPU-only VM provisioning is not offered.
 
-Read [reliability](docs/concepts/reliability.md), [costs](docs/concepts/costs.md),
-and [errors](docs/operations/errors.md) for the detailed behavior.
+The first example prints a GPU name in its logs. For downloadable files, declare
+stage outputs as shown in [multi-stage workloads](docs/guides/multi-stage-workloads.md).
+See [troubleshooting](docs/operations/errors.md) if submission or execution fails.
 
 ## Development
 

@@ -3,7 +3,7 @@
 | Argument | Type / values | Omitted | CLI | HTTP field |
 |---|---|---|---|---|
 | `model` | Free-text `str` | No model hint | `--model` | `requirements.model` |
-| `compute_class` | `"accelerator"`, `"vm"`, or `ComputeClass` enum | Accelerator on the current API | `--compute-class` | `requirements.compute_class` |
+| `compute_class` | Use `"accelerator"` for supported GPU workloads. `"vm"` remains in the schema for compatibility but is not a supported offering | Accelerator on the current API | `--compute-class` | `requirements.compute_class` |
 | `peak_memory_gb` | Number in GB | No explicit memory hint | `--peak-memory-gb` | `requirements.peak_memory_gb` |
 | `expected_runtime_hours` | Number in hours | No explicit duration estimate | `--hours` | `requirements.expected_runtime_hours` |
 | `requirements` | Dictionary | Empty object | Python only | `requirements` |

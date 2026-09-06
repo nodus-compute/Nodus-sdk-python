@@ -1,4 +1,4 @@
-"""Submit a paid self-contained VM workload after configuring Nodus credentials."""
+"""Submit a paid self-contained GPU workload after configuring Nodus credentials."""
 import argparse
 import nodus
 
@@ -9,9 +9,9 @@ def main():
     args = parser.parse_args()
     with nodus.Client() as client:
         workload = client.run(
-            image="python:3.11-slim",
-            command=["python", "-c", "print('Hello from Nodus')"],
-            compute_class="vm", budget=args.budget, continuity="restartable",
+            image="pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime",
+            command=["python", "-c", "import torch\nassert torch.cuda.is_available()\nprint(torch.cuda.get_device_name(0))"],
+            compute_class="accelerator", model="GPU-smoke-test", budget=args.budget,
         )
         print(workload.id, flush=True)
         done = workload.wait()

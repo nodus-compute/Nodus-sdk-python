@@ -1,7 +1,7 @@
 # Nodus documentation
 
-Start with authentication, submit a self-contained workload, then choose the
-resource and recovery settings your application needs.
+Sign in, run your GPU workload, and retrieve the result. Nodus manages placement
+and execution. These guides cover currently supported GPU workloads.
 
 ## Start here
 
@@ -29,7 +29,8 @@ resource and recovery settings your application needs.
 ## For coding agents
 
 Use this repository's docs for the SDK version checked out. Begin with the
-[parameter index](reference/parameters/index.md) and [client reference](reference/python/client.md).
+[GPU workload guide](guides/gpu-workloads.md), then look up only the fields you
+need in the [parameter index](reference/parameters/index.md).
 The [example scripts](../examples/README.md) are complete programs with explicit
 configuration requirements. Do not invent `env=`, top-level `inputs=`, local
 file upload, GPU SKU selectors, or a production API URL. Set a budget and persist

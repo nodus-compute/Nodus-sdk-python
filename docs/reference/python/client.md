@@ -64,7 +64,7 @@ analysis while producing ordinary dictionaries:
 import nodus
 
 requirements = nodus.Requirements(compute_class="accelerator", peak_memory_gb=24)
-source = nodus.Source(image="python:3.11-slim", command=["python", "-c", "print(1)"])
+source = nodus.Source(image="pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime", command=["python", "-c", "print(1)"])
 stage = nodus.StageSpec(id="example", source=source)
 # Supply requirements= and stages=[stage] to client.run(..., budget=5).
 ```

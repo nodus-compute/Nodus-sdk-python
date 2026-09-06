@@ -23,7 +23,7 @@ subcommands. Login also accepts it after `login`. There is no API-key CLI flag.
 | Flag | Meaning / default |
 |---|---|
 | `--image` | Container image. SDK default `python:3.11-slim` |
-| `--compute-class` | `vm` or `accelerator`. Current API defaults to accelerator |
+| `--compute-class` | Use `accelerator` for GPU workloads. `vm` is accepted for compatibility but is not currently supported |
 | `--model` | Free-text workload hint |
 | `--peak-memory-gb` | Memory requirement hint |
 | `--hours` | Estimated runtime hours |
@@ -39,7 +39,8 @@ subcommands. Login also accepts it after `login`. There is no API-key CLI flag.
 Everything after `--` is the remote process argv. Put all Nodus flags before it:
 
 ```bash
-nodus run --image python:3.11-slim --budget 5 --continuity restartable --wait   -- python -c 'print("CLI example")'
+nodus run --compute-class accelerator --image pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime --budget 5 --wait \
+  -- python -c 'print(__import__("torch").cuda.get_device_name(0))'
 nodus list --status active --limit 10
 nodus get WORKLOAD_ID --json
 nodus events WORKLOAD_ID --follow
@@ -55,6 +56,13 @@ comma-separated list.
 | 0 | Command succeeded |
 | 1 | Failed/cancelled workload, unavailable logs, or route not yet selected |
 | 2 | API/configuration error or invalid CLI usage |
-| 130 | Interrupted locally with Ctrl-C |
+| 130 | Interrupted with Ctrl+C. Active wait/follow commands request remote cancellation |
 
-Local interruption and wait timeouts do not cancel the remote workload.
+Ctrl+C during `run --wait`, `get --wait`, or `events --follow` requests cancellation
+of the observed workload. Cleanup happens remotely after acceptance. If the
+request fails, the CLI says cancellation is unconfirmed and prints a manual
+`nodus cancel ID` command. A second Ctrl+C interrupts that cancellation attempt.
+
+A wait timeout only ends observation. Use `nodus cancel ID` to stop work after a
+timeout. Interactive waits show a spinner and elapsed time. Redirected output
+keeps the workload ID and final summary without animation.

@@ -18,6 +18,12 @@ or its retries can exceed it. Reconnect using the saved workload ID to resume ob
 `workload.wait()` refreshes that handle in place. `client.wait(id)` returns a
 fresh handle. Do not share a mutable workload handle between threads.
 
+Synchronous Python wait methods request cancellation when interrupted with
+Ctrl+C. The CLI does the same during wait/follow commands. Cancellation requests
+can fail if the API is unreachable. Confirm status with the saved workload ID.
+Cancelling an async task alone does not cancel its remote workload. The async
+example handles this explicitly.
+
 ## Retry behavior
 
 Ordinary API requests default to `timeout=30.0` seconds and `max_retries=2`

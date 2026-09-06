@@ -31,6 +31,7 @@ the two settings yourself, which is what CI does:
 from __future__ import annotations
 
 import asyncio
+from contextlib import contextmanager
 import math
 import os
 import re
@@ -963,22 +964,23 @@ class Client(_Transport):
         poll_seconds: float = 2.0,
         timeout_seconds: float | None = None,
     ) -> "Workload":
-        """Poll until the workload is terminal.
+        """Poll until terminal. Ctrl+C requests remote cancellation.
 
-        Transient failures are retried for as long as the wait lasts. Only the
-        caller's own ``timeout_seconds`` ends it early. See :class:`_WaitPolicy`.
+        Transient failures are retried while waiting. A timeout ends local
+        observation without cancellation. See :class:`_WaitPolicy`.
         """
-        policy = _WaitPolicy(poll_seconds, timeout_seconds)
-        while True:
-            try:
-                wl = self.get(workload_id)
-            except NodusError as exc:
-                delay = policy.failed(exc)
-            else:
-                if wl.is_terminal:
-                    return wl
-                delay = policy.polled()
-            time.sleep(policy.hold(delay, workload_id))
+        with _cancel_wait_on_interrupt(self, workload_id):
+            policy = _WaitPolicy(poll_seconds, timeout_seconds)
+            while True:
+                try:
+                    wl = self.get(workload_id)
+                except NodusError as exc:
+                    delay = policy.failed(exc)
+                else:
+                    if wl.is_terminal:
+                        return wl
+                    delay = policy.polled()
+                time.sleep(policy.hold(delay, workload_id))
 
     def stream_events(self, workload_id: str, *, poll_seconds: float = 2.0) -> Iterator[Event]:
         """Yield events as they occur, stopping at the terminal event.
@@ -1025,6 +1027,30 @@ class Client(_Transport):
         return self._request("GET", "/readyz") or {}
 
 
+@contextmanager
+def _cancel_wait_on_interrupt(client: Client, workload_id: str):
+    try:
+        yield
+    except KeyboardInterrupt as interrupt:
+        failure = None
+        try:
+            client.cancel(workload_id)
+        except (NodusError, KeyboardInterrupt) as exc:
+            failure = exc
+            message = (
+                f"Cancellation not confirmed for {workload_id!r}. "
+                "Call client.cancel(workload_id) against the same deployment."
+            )
+            if hasattr(interrupt, "add_note"):
+                interrupt.add_note(message)
+            try:
+                warnings.warn(message, RuntimeWarning, stacklevel=2)
+            except RuntimeWarning:
+                pass
+        interrupt._nodus_cancellation = (workload_id, failure)
+        raise
+
+
 class Workload(_WorkloadState):
     """A handle on one submitted brief.
 
@@ -1045,24 +1071,25 @@ class Workload(_WorkloadState):
         return self
 
     def wait(self, *, poll_seconds: float = 2.0, timeout_seconds: float | None = None) -> "Workload":
-        """Poll until terminal.
+        """Poll until terminal. Ctrl+C requests remote cancellation.
 
         Raises :class:`APITimeoutError` if ``timeout_seconds`` elapses first.
         the workload keeps running, because a client-side deadline is not a
         cancellation. Transient poll failures are retried for the life of the
         wait, permanent ones raised at once. See :class:`_WaitPolicy`.
         """
-        policy = _WaitPolicy(poll_seconds, timeout_seconds)
-        while True:
-            try:
-                self.refresh()
-            except NodusError as exc:
-                delay = policy.failed(exc)
-            else:
-                if self.is_terminal:
-                    return self
-                delay = policy.polled()
-            time.sleep(policy.hold(delay, self.id))
+        with _cancel_wait_on_interrupt(self._client, self.id):
+            policy = _WaitPolicy(poll_seconds, timeout_seconds)
+            while True:
+                try:
+                    self.refresh()
+                except NodusError as exc:
+                    delay = policy.failed(exc)
+                else:
+                    if self.is_terminal:
+                        return self
+                    delay = policy.polled()
+                time.sleep(policy.hold(delay, self.id))
 
     def events(self, *, after: int = 0) -> list[Event]:
         return self._client.events(self.id, after=after)

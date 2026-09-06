@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Focus customer onboarding and examples on GPU workloads and preview installation.
+- Cancel the current workload on Ctrl+C during synchronous waits and attached CLI
+  observation. Show terminal activity and distinguish absent logs from missing work.
+
 - Login-first README, canonical task guides and parameter references, plus
   executable documentation checks. Existing wiki paths link to the new guides.
 - Sync and async `outputs()`, `download_output()`, and `routing()` methods.

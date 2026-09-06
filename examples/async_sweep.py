@@ -10,13 +10,17 @@ async def run(args):
         async def experiment(index):
             async with semaphore:
                 workload = await client.run(
-                    image="python:3.11-slim", compute_class="vm",
-                    command=["python", "-c", f"print(sum(i*i for i in range({index + 10})))"],
-                    budget=args.budget_per_run, continuity="restartable",
+                    image="pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime", compute_class="accelerator",
+                    command=["python", "-c", f"import torch\nx=torch.arange({index + 10}, device='cuda')\nprint((x*x).sum().item())"],
+                    budget=args.budget_per_run,
                     idempotency_key=f"sweep-{args.run_id}-{index}",
                 )
                 print(index, workload.id, flush=True)
-                done = await workload.wait(poll_seconds=5)
+                try:
+                    done = await workload.wait(poll_seconds=5)
+                except asyncio.CancelledError:
+                    await workload.cancel()
+                    raise
                 return done.succeeded
         results = await asyncio.gather(*(experiment(i) for i in range(3)))
         return 0 if all(results) else 1

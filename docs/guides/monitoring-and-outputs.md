@@ -13,15 +13,32 @@ with nodus.Client() as client:
 For ongoing progress, use `stream_events()` instead. Events describe lifecycle
 changes. They are not a stream of your process's stdout.
 
+## Terminal progress
+
+`nodus run --wait` prints the workload ID immediately. In an interactive terminal,
+it then shows a spinner and elapsed time while waiting. The spinner indicates
+activity, not a completion percentage. Redirected output has no animation.
+Use `nodus get ID` for status or `nodus events ID --follow` for lifecycle events.
+Logs are retrieved separately with `nodus logs ID`.
+
+Ctrl+C during a CLI wait or event follow requests cancellation and resource
+cleanup. The CLI reports if that request cannot be confirmed. Check the saved
+workload ID afterward if the network was unavailable. A wait timeout ends local
+observation without cancellation.
+
+`running` means the runner is alive and may still be preparing your image.
+`completed` means all required stages and their final result commits succeeded.
+Billing settlement can finish afterward. Always check `succeeded` before using
+results. Stages run serially.
+
 ## Logs and artifacts
 
 `workload.logs(stage=None, generation=None)` reads committed stdout/stderr.
 It can raise `NotFoundError` before a commit includes logs. Use a stage ID or
 generation to select a particular stage/attempt after recovery.
 
-`workload.artifacts()` lists checkpoint manifests. Each artifact has stage,
-generation, sequence, and `final`, plus checkpoint `files` and named `outputs`.
-These describe stored objects. An artifact itself is not a downloadable file.
+Use `outputs()` for result files. The advanced `artifacts()` method lists stored
+manifest metadata rather than downloadable file contents.
 
 ## Download declared outputs
 

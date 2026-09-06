@@ -17,4 +17,5 @@ client scheduling limit, not a server-side aggregate budget.
 
 Reuse the same `--run-id` only to retry the identical experiment. A new experiment
 needs a new ID. Changing payloads under old keys causes an idempotency conflict.
-Stopping the local process does not cancel submitted work.
+Ctrl+C while waiting requests cancellation for each submitted workload with a
+known ID. A failed cancellation still requires `nodus cancel WORKLOAD_ID`.

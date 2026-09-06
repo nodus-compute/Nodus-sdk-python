@@ -8,10 +8,15 @@ layers of parsing.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import json
 import os
 import re
+import shlex
 import sys
+import threading
+import time
+import uuid
 import warnings
 import webbrowser
 from typing import Any
@@ -63,25 +68,98 @@ def _split_command(argv: list[str]) -> tuple[list[str], list[str]]:
     return argv, []
 
 
+@contextmanager
+def _wait_activity(workload_id: str):
+    if not sys.stderr.isatty():
+        yield
+        return
+    stopped = threading.Event()
+    started = time.monotonic()
+    label = _safe_line(workload_id)
+
+    def render():
+        frame = 0
+        while True:
+            elapsed = int(time.monotonic() - started)
+            marker = "|/-\\"[frame % 4]
+            print(f"\r{marker} Waiting for {label}  {elapsed}s elapsed", end="", file=sys.stderr, flush=True)
+            if stopped.wait(0.2):
+                return
+            frame += 1
+
+    worker = threading.Thread(target=render, name="nodus-wait", daemon=True)
+    worker.start()
+    try:
+        yield
+    finally:
+        stopped.set()
+        worker.join()
+        print(file=sys.stderr)
+
+
+@contextmanager
+def _cancel_on_interrupt(client: Client, workload_id: str):
+    try:
+        yield
+    except KeyboardInterrupt as interrupt:
+        display_id = _safe_line(workload_id)
+        print(f"\nRequesting cancellation for {display_id}...", file=sys.stderr)
+        try:
+            prior = getattr(interrupt, "_nodus_cancellation", None)
+            if prior is not None and prior[0] == workload_id:
+                if prior[1] is not None:
+                    raise prior[1]
+            else:
+                client.cancel(workload_id)
+        except (NodusError, KeyboardInterrupt) as exc:
+            reason = "Interrupted again" if isinstance(exc, KeyboardInterrupt) else _safe_line(exc)
+            print(
+                f"Cancellation not confirmed for {display_id}: {reason}. "
+                f"Run nodus cancel {display_id} against the same API deployment.",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"Cancellation requested for {display_id}. "
+                "Nodus is stopping the workload and releasing its resources.",
+                file=sys.stderr,
+            )
+        raise
+
+
 def _cmd_run(args: argparse.Namespace, command: list[str]) -> int:
     with Client(base_url=args.base_url) as client:
-        wl = client.run(
-            model=args.model,
-            compute_class=args.compute_class,
-            image=args.image,
-            command=command or None,
-            peak_memory_gb=args.peak_memory_gb,
-            expected_runtime_hours=args.hours,
-            budget=args.budget,
-            finish_by=args.finish_by,
-            continuity=args.continuity,
-            data_regions=args.data_region or None,
-            idempotency_key=args.idempotency_key,
-        )
-        print(_safe_line(wl.id))
+        submission_key = args.idempotency_key or str(uuid.uuid4())
+        try:
+            wl = client.run(
+                model=args.model,
+                compute_class=args.compute_class,
+                image=args.image,
+                command=command or None,
+                peak_memory_gb=args.peak_memory_gb,
+                expected_runtime_hours=args.hours,
+                budget=args.budget,
+                finish_by=args.finish_by,
+                continuity=args.continuity,
+                data_regions=args.data_region or None,
+                idempotency_key=submission_key,
+            )
+        except KeyboardInterrupt:
+            print(
+                "Submission outcome unknown. A workload may still be running. "
+                "Retry the same command with "
+                f"--idempotency-key {_safe_line(shlex.quote(submission_key))} "
+                "to retrieve or submit the same workload, then run nodus cancel <workload-id>.",
+                file=sys.stderr,
+            )
+            raise
         if not args.wait:
+            print(_safe_line(wl.id), flush=True)
             return 0
-        wl.wait(poll_seconds=args.poll, timeout_seconds=args.timeout)
+        with _cancel_on_interrupt(client, wl.id):
+            print(_safe_line(wl.id), flush=True)
+            with _wait_activity(wl.id):
+                wl.wait(poll_seconds=args.poll, timeout_seconds=args.timeout)
         print(_fmt_workload(wl))
         # Non-zero on a failed or cancelled workload so this composes in CI.
         return 0 if wl.succeeded else 1
@@ -96,9 +174,12 @@ def _cmd_list(args: argparse.Namespace) -> int:
 
 def _cmd_get(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
-        wl = client.get(args.workload_id)
         if args.wait:
-            wl.wait(poll_seconds=args.poll, timeout_seconds=args.timeout)
+            with _cancel_on_interrupt(client, args.workload_id), _wait_activity(args.workload_id):
+                wl = client.get(args.workload_id)
+                wl.wait(poll_seconds=args.poll, timeout_seconds=args.timeout)
+        else:
+            wl = client.get(args.workload_id)
         if args.json:
             # ensure_ascii (the default) escapes every control character, so
             # raw wire text cannot reach the terminal through a dump.
@@ -111,8 +192,9 @@ def _cmd_get(args: argparse.Namespace) -> int:
 def _cmd_events(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
         if args.follow:
-            for ev in client.stream_events(args.workload_id, poll_seconds=args.poll):
-                print(f"{ev.seq:>5}  {_safe_line(ev.type)}")
+            with _cancel_on_interrupt(client, args.workload_id):
+                for ev in client.stream_events(args.workload_id, poll_seconds=args.poll):
+                    print(f"{ev.seq:>5}  {_safe_line(ev.type)}")
         else:
             for ev in client.events(args.workload_id):
                 print(f"{ev.seq:>5}  {_safe_line(ev.type)}")
@@ -161,7 +243,7 @@ def _cmd_ledger(args: argparse.Namespace) -> int:
 
 _NO_LOG_YET = (
     "no log recorded yet: the log is a committed artifact, so it appears"
-    " once a checkpoint carrying it has been verified"
+    " once Nodus has collected and verified it"
 )
 
 
@@ -170,8 +252,8 @@ def _cmd_logs(args: argparse.Namespace) -> int:
         try:
             out = client.logs(args.workload_id, stage=args.stage, generation=args.generation)
         except NotFoundError:
-            # The server 404s until a manifest carries a log. That is the normal
-            # answer for a workload that has not checkpointed yet, not a fault.
+            # A missing workload also returns 404 on the log route.
+            client.get(args.workload_id)
             print(_NO_LOG_YET)
             return 1
     if not out:
@@ -372,7 +454,7 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--model", default=None, help="what the work is, e.g. '7B fine-tune'")
     r.add_argument("--image", default=None)
     r.add_argument("--compute-class", choices=("vm", "accelerator"), default=None,
-                   help="Choose CPU/VM or accelerator capacity. Omission leaves placement to Nodus")
+                   help="Use accelerator for supported GPU workloads. Omission uses the server default")
     r.add_argument("--peak-memory-gb", type=float, default=None)
     r.add_argument("--hours", type=float, default=None, help="expected runtime")
     r.add_argument("--budget", type=float, default=None, help="max cost to completion, USD")
@@ -384,7 +466,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     r.add_argument("--data-region", action="append", default=None)
     r.add_argument("--idempotency-key", default=None)
-    r.add_argument("--wait", action="store_true")
+    r.add_argument("--wait", action="store_true", help="wait for completion. Ctrl+C cancels the workload")
     r.add_argument("--timeout", type=float, default=None, help="seconds to wait")
     r.add_argument("--poll", type=float, default=2.0)
 
@@ -397,14 +479,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     g = sub.add_parser("get", help="show one workload")
     g.add_argument("workload_id")
-    g.add_argument("--wait", action="store_true")
+    g.add_argument("--wait", action="store_true", help="wait for completion. Ctrl+C cancels the workload")
     g.add_argument("--timeout", type=float, default=None)
     g.add_argument("--poll", type=float, default=2.0)
     g.add_argument("--json", action="store_true")
 
     e = sub.add_parser("events", help="lifecycle events")
     e.add_argument("workload_id")
-    e.add_argument("--follow", action="store_true")
+    e.add_argument("--follow", action="store_true", help="follow events. Ctrl+C cancels the workload")
     e.add_argument("--poll", type=float, default=2.0)
 
     a = sub.add_parser("artifacts", help="verified manifests")

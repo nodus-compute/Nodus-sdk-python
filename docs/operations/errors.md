@@ -27,11 +27,11 @@ See [idempotency](../guides/ci-and-idempotency.md) and
 
 - **Script not found:** put it in the container image and use an absolute path.
 - **No bootstrap tool:** include `curl`, `wget`, or `python3` in the image.
-- **No log yet:** inspect lifecycle events and retry after a committed checkpoint.
+- **No log yet:** inspect lifecycle events and retry when logs become available.
 - **Login changed nothing:** environment variables override saved credentials.
 - **Wait returned but work failed:** inspect `succeeded`, events, and logs.
-- **Process exited but charges continue:** remote workloads survive the client.
-  Request cancellation explicitly.
+- **Cancellation unconfirmed:** run `nodus cancel WORKLOAD_ID` and inspect status.
+  A lost connection or force-killed process cannot confirm remote cleanup.
 - **Download failed:** ensure the destination parent exists, choose a declared
   output name/stage, and retry. Integrity failures leave existing files intact.
 - **Missing output methods:** use the SDK release containing these additions or

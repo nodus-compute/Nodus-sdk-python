@@ -10,13 +10,14 @@ def main():
     args = parser.parse_args()
     with nodus.Client() as client:
         workload = client.run(
-            image="python:3.11-slim", compute_class="vm",
-            command=["python", "-c", "assert sum(range(10)) == 45\nprint('passed')"],
-            budget=args.budget, continuity="restartable",
+            image="pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime", compute_class="accelerator",
+            command=["python", "-c", "import torch\nassert torch.arange(10, device='cuda').sum().item() == 45\nprint('passed')"],
+            budget=args.budget,
             idempotency_key=f"ci-{args.submission_id}",
         )
         print(workload.id, flush=True)
-        return 0 if workload.wait(poll_seconds=5).succeeded else 1
+        done = workload.wait(poll_seconds=5)
+        return 0 if done.succeeded else 1
 
 
 if __name__ == "__main__":

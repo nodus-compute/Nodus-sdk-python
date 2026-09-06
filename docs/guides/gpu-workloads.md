@@ -13,10 +13,10 @@ with nodus.Client() as client:
         peak_memory_gb=24,
         expected_runtime_hours=0.1,
         budget=5,
-        continuity="restartable",
     )
     print(workload.id)
-    if not workload.wait().succeeded:
+    done = workload.wait()
+    if not done.succeeded:
         raise RuntimeError("GPU smoke test did not complete successfully")
 ```
 
@@ -27,7 +27,10 @@ For training, [build an image](containers-and-scripts.md) containing your code,
 framework dependencies, and data-access logic. Then run its actual command:
 
 ```bash
-nodus run --image YOUR_REGISTRY/trainer:v1 --model 'LoRA fine-tune'   --peak-memory-gb 24 --hours 2 --budget 25 --continuity restartable --wait   -- python /app/train.py --epochs 3
+nodus run --compute-class accelerator \
+  --image YOUR_REGISTRY/trainer:v1 --model LoRA-fine-tune \
+  --peak-memory-gb 24 --hours 2 --budget 25 --wait \
+  -- python /app/train.py --epochs 3
 ```
 
 This is a template: `/app/train.py` and `--epochs` belong to your application.
@@ -35,7 +38,7 @@ This is a template: `/app/train.py` and `--epochs` belong to your application.
 and framework flags must not be inferred from a memory hint. Validate your
 multi-GPU launch with your deployment before scaling it.
 
-A restartable run may redo work after interruption. For long jobs, integrate the
-runner's supported checkpoint/restore contract and select `checkpointed` only
-after testing restore. Declare final model files as stage outputs when you need
-SDK downloads. See [multi-stage workloads](multi-stage-workloads.md).
+Declare final model files as stage outputs when you need SDK downloads. See
+[multi-stage workloads](multi-stage-workloads.md). Nodus handles placement and
+execution. Advanced application integrations are documented separately in the
+[parameter reference](../reference/parameters/index.md).

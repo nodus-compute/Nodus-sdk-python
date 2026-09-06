@@ -304,7 +304,7 @@
             "description": "id"
           }
         ],
-        "description": "Returns cancel_requested. Poll workload status for the terminal result. Calling after completion is safe and does not change the terminal result."
+        "description": "Returns cancel_requested. Cancellation stops the workload and schedules resource cleanup. A cancelled status does not confirm that instance termination has finished. Calling after completion is safe and does not change the terminal result."
       }
     },
     "/v1/workloads/{id}/artifacts": {
@@ -468,7 +468,7 @@
             "description": "id"
           }
         ],
-        "description": "Oldest first. Nodus catalog identifiers and resource facts only."
+        "description": "Ordered by stage ID and then generation. Nodus catalog identifiers and resource facts only."
       }
     },
     "/v1/workloads/{id}/outputs": {
@@ -909,7 +909,7 @@
               "vm",
               "accelerator"
             ],
-            "description": "Empty/omitted defaults to accelerator. vm requests general CPU infrastructure."
+            "description": "Empty or omitted defaults to accelerator. Customer workloads currently use GPU infrastructure. The vm value remains accepted for compatibility and does not establish an available customer offering."
           },
           "dataset_bytes": {
             "type": "integer"

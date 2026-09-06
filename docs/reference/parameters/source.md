@@ -12,7 +12,7 @@ controls execution. It is unsuitable for a first workload.
 
 ```python
 workload = client.run(
-    image="python:3.11-slim",
+    image="pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime",
     command=["python", "-c", "print('ready')"],
     budget=5,
     continuity="restartable",

@@ -6,11 +6,13 @@ not uploaded by `client.run()`. Package your code and dependencies first.
 For example, put this `hello.py` beside a `Dockerfile`:
 
 ```python
-print("Hello from my application")
+import torch
+
+print(torch.cuda.get_device_name(0))
 ```
 
 ```dockerfile
-FROM python:3.11-slim
+FROM pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime
 WORKDIR /app
 COPY hello.py /app/hello.py
 ```
@@ -21,7 +23,8 @@ name with your actual registry namespace:
 ```bash
 docker build -t YOUR_REGISTRY/hello:v1 .
 docker push YOUR_REGISTRY/hello:v1
-nodus run --image YOUR_REGISTRY/hello:v1 --budget 5 --continuity restartable --wait   -- python /app/hello.py
+nodus run --compute-class accelerator --image YOUR_REGISTRY/hello:v1 \
+  --budget 5 --wait -- python /app/hello.py
 ```
 
 Use absolute program paths so runner working-directory conventions do not affect
