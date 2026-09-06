@@ -25,12 +25,12 @@ nodus login --base-url https://YOUR_NODUS_API_HOST
 Replace the URL with the API address provided for your Nodus deployment. Approve
 the displayed code in your browser. The CLI saves credentials for subsequent
 commands and Python clients. Device login requires a deployment with device
-authorization enabled; API keys also work directly.
+authorization enabled. API keys also work directly.
 
 | Where you run | Authentication |
 |---|---|
 | Laptop | `nodus login --base-url https://YOUR_NODUS_API_HOST` |
-| Headless server | Add `--no-browser`; open the displayed URL on another device |
+| Headless server | Add `--no-browser`. Open the displayed URL on another device |
 | CI / production | Set both `NODUS_API_KEY` and `NODUS_BASE_URL` using your secret manager |
 | Explicit configuration | `nodus.Client(api_key=key, base_url=url)` |
 
@@ -40,7 +40,7 @@ See [authentication](docs/getting-started/authentication.md) for setup and logou
 ## 2. Run your first workload
 
 This command is self-contained: it does not depend on a local script being uploaded.
-It submits paid compute with a $5 workload budget; available capacity and account
+It submits paid compute with a $5 workload budget. Available capacity and account
 limits still determine admission.
 
 ```bash
@@ -48,7 +48,7 @@ nodus run --compute-class vm --image python:3.11-slim --budget 5 --continuity re
   -- python -c 'print("Hello from Nodus")'
 ```
 
-Or use Python (`nodus_compute` is the package name; `nodus` is the import):
+Or use Python (`nodus_compute` is the package name. `nodus` is the import):
 
 <!-- test: first-workload -->
 ```python
@@ -70,7 +70,7 @@ with nodus.Client() as client:
 ```
 
 `run()` returns after acceptance. `wait()` returns for completed, failed, or
-cancelled work; check `succeeded`. Closing the client does not cancel the workload.
+cancelled work. Check `succeeded`. Closing the client does not cancel the workload.
 
 ## 3. Inspect and manage the run
 
@@ -107,9 +107,9 @@ Container images need `curl`, `wget`, or `python3` for runner bootstrap.
 
 ## Reliability essentials
 
-- Always set `budget`; omitting it leaves only the account spend cap.
+- Always set `budget`. Omitting it leaves only the account spend cap.
 - Reuse an `idempotency_key` for retries of the same logical submission.
-- A wait timeout ends polling; call `cancel()` to request stopping the workload.
+- A wait timeout ends polling. Call `cancel()` to request stopping the workload.
 - Select continuity to match your application's recovery support. Choosing
   `checkpointed` alone does not make arbitrary training code resumable.
 

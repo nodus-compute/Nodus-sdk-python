@@ -8,7 +8,7 @@ import nodus
 with nodus.Client() as client:
     workload = client.run(
         image="pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime",
-        command=["python", "-c", "import torch; assert torch.cuda.is_available(); print(torch.cuda.get_device_name(0))"],
+        command=["python", "-c", "import torch\nassert torch.cuda.is_available()\nprint(torch.cuda.get_device_name(0))"],
         compute_class="accelerator",
         peak_memory_gb=24,
         expected_runtime_hours=0.1,
@@ -38,4 +38,4 @@ multi-GPU launch with your deployment before scaling it.
 A restartable run may redo work after interruption. For long jobs, integrate the
 runner's supported checkpoint/restore contract and select `checkpointed` only
 after testing restore. Declare final model files as stage outputs when you need
-SDK downloads; see [multi-stage workloads](multi-stage-workloads.md).
+SDK downloads. See [multi-stage workloads](multi-stage-workloads.md).

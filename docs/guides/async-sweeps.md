@@ -1,6 +1,6 @@
 # Concurrent experiments
 
-`AsyncClient` has the same operations as `Client`. Await ordinary methods; use
+`AsyncClient` has the same operations as `Client`. Await ordinary methods. Use
 `async for` with iterator/event-stream methods. Bound concurrent submission and
 polling to avoid an unbounded number of API calls.
 
@@ -16,5 +16,5 @@ up to three workload budgets, subject to account limits. The semaphore is a
 client scheduling limit, not a server-side aggregate budget.
 
 Reuse the same `--run-id` only to retry the identical experiment. A new experiment
-needs a new ID; changing payloads under old keys causes an idempotency conflict.
+needs a new ID. Changing payloads under old keys causes an idempotency conflict.
 Stopping the local process does not cancel submitted work.

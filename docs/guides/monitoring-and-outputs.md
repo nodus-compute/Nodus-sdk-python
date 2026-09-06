@@ -11,7 +11,7 @@ with nodus.Client() as client:
 ```
 
 For ongoing progress, use `stream_events()` instead. Events describe lifecycle
-changes; they are not a stream of your process's stdout.
+changes. They are not a stream of your process's stdout.
 
 ## Logs and artifacts
 
@@ -21,7 +21,7 @@ generation to select a particular stage/attempt after recovery.
 
 `workload.artifacts()` lists checkpoint manifests. Each artifact has stage,
 generation, sequence, and `final`, plus checkpoint `files` and named `outputs`.
-These describe stored objects; an artifact itself is not a downloadable file.
+These describe stored objects. An artifact itself is not a downloadable file.
 
 ## Download declared outputs
 
@@ -46,7 +46,7 @@ flow. Specify `stage` when different stages reuse an output name. The destinatio
 parent directory must exist. Files are streamed to a temporary file, verified
 against server-provided SHA-256 (and length when provided), and atomically
 replace the destination only on success. A failed download preserves an existing
-destination. Transfers are not automatically retried; rerun the download to
+destination. Transfers are not automatically retried. Rerun the download to
 restart. Archives are downloaded as bytes, not automatically extracted.
 
 ## Routing and costs

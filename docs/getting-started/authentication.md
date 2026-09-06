@@ -15,7 +15,7 @@ nodus login --base-url https://YOUR_NODUS_API_HOST
 
 Use the API base URL issued for your deployment, without `/v1`. There is no
 built-in hosted endpoint. Approve the displayed code at the displayed verification
-URL; credentials are stored in `~/.nodus/config.toml`. Device authorization must
+URL. Credentials are stored in `~/.nodus/config.toml`. Device authorization must
 be enabled on that deployment. If it is unavailable, use the API-key method below.
 
 ## Headless login
@@ -61,7 +61,7 @@ This lists workloads without submitting compute. It requires a valid account key
 | API URL | `Client(base_url=...)` / CLI `--base-url` | `NODUS_BASE_URL` | Saved config |
 
 Each setting resolves independently. Environment variables can override a new
-login, including with a different deployment; keep the key and URL paired.
+login, including with a different deployment. Keep the key and URL paired.
 Missing configuration raises `ConfigurationError` before network access.
 For ordinary CLI commands put global flags first:
 `nodus --base-url https://YOUR_NODUS_API_HOST list`.

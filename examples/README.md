@@ -1,10 +1,10 @@
 # Runnable examples
 
 Authenticate first using the [setup guide](../docs/getting-started/authentication.md).
-Run commands from this repository root. These examples submit paid workloads;
-budgets are illustrative and do not guarantee admission or available capacity.
+Run commands from this repository root. These examples submit paid workloads.
+Budgets are illustrative and do not guarantee admission or available capacity.
 All programs use only standard Python plus the Nodus SDK. Submission requires a
-running Nodus deployment; no local workload simulator is included.
+running Nodus deployment. No local workload simulator is included.
 
 | Example | Command | Purpose |
 |---|---|---|

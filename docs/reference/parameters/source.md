@@ -19,15 +19,15 @@ workload = client.run(
 )
 ```
 
-A string command uses `shlex.split`; it does not invoke a shell. Prefer an argv
+A string command uses `shlex.split`. It does not invoke a shell. Prefer an argv
 list. Pipes, redirects, variable expansion, and `&&` need an explicit shell, such
 as `command=["sh", "-c", "python preprocess.py && python train.py"]`.
 
 Images must contain a bootstrap fetch tool (`curl`, `wget`, or `python3`), plus
 your program and dependencies. Local files are not uploaded. `framework` is
-passed through to the control plane; it does not install a framework or replace
+passed through to the control plane. It does not install a framework or replace
 the need to prepare runnable code. The current compiler supports `train_eval`: it runs the same command in
-prepare, train, and eval stages; code must branch on `NODUS_STAGE_ID` and honor
+prepare, train, and eval stages. Code must branch on `NODUS_STAGE_ID` and honor
 the declared handoffs. Prefer explicit stages when each command differs. Do not
 combine `framework` with `stages`, because framework expansion takes precedence.
 

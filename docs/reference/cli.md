@@ -2,39 +2,39 @@
 
 After [authentication](../getting-started/authentication.md), `nodus --help` and
 `nodus COMMAND --help` show available options. Global `--base-url` precedes ordinary
-subcommands; login also accepts it after `login`. There is no API-key CLI flag.
+subcommands. Login also accepts it after `login`. There is no API-key CLI flag.
 
 | Command | Options / behavior |
 |---|---|
-| `login` | `--base-url`, `--no-browser`; store device credentials |
+| `login` | `--base-url`, `--no-browser`. Store device credentials |
 | `logout` | Remove locally saved key |
-| `run` | Submit; prints workload ID |
+| `run` | Submit. Prints workload ID |
 | `list` | `--limit` (50), `--status` (one status, `active`, or `terminal`) |
 | `get ID` | `--json`, `--wait`, `--poll` (2), `--timeout` (unbounded) |
-| `events ID` | `--follow`, `--poll` (2); prints sequence and type |
+| `events ID` | `--follow`, `--poll` (2). Prints sequence and type |
 | `logs ID` | `--stage`, `--generation`, `--tail` (0, all lines) |
 | `artifacts ID` | Manifest and object summaries |
 | `explain ID` | Selected route and cost estimate |
-| `ledger ID` | `--json`; billing entries and settlement |
+| `ledger ID` | `--json`. Billing entries and settlement |
 | `cancel ID` | Idempotent cancellation request |
 
 ## Submission flags
 
 | Flag | Meaning / default |
 |---|---|
-| `--image` | Container image; SDK default `python:3.11-slim` |
-| `--compute-class` | `vm` or `accelerator`; current API defaults to accelerator |
+| `--image` | Container image. SDK default `python:3.11-slim` |
+| `--compute-class` | `vm` or `accelerator`. Current API defaults to accelerator |
 | `--model` | Free-text workload hint |
 | `--peak-memory-gb` | Memory requirement hint |
 | `--hours` | Estimated runtime hours |
-| `--budget` | Workload USD ceiling; unset is uncapped at workload level |
+| `--budget` | Workload USD ceiling. Unset is uncapped at workload level |
 | `--finish-by` | RFC3339 completion deadline |
 | `--continuity` | `checkpointed` (default), `restartable`, `ephemeral` |
-| `--data-region` | Allowed region; repeat for several |
+| `--data-region` | Allowed region. Repeat for several |
 | `--idempotency-key` | Stable key for a logical submission |
 | `--wait` | Wait after submission |
-| `--timeout` | Bound waiting only, in seconds; default unbounded |
-| `--poll` | Poll interval in seconds; default 2 |
+| `--timeout` | Bound waiting only, in seconds. Default unbounded |
+| `--poll` | Poll interval in seconds. Default 2 |
 
 Everything after `--` is the remote process argv. Put all Nodus flags before it:
 

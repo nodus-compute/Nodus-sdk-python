@@ -9,14 +9,14 @@
 | `requirements` | Dictionary | Empty object | Python only | `requirements` |
 
 Provide realistic positive memory and runtime estimates. Runtime informs routing
-and pricing; it is not a stop timer. `model` describes the workload; it does not
+and pricing. It is not a stop timer. `model` describes the workload. It does not
 download weights. The memory hint alone is not a request for a specific GPU SKU
 or topology. Inspect the selected route after placement.
 
 ```python
 workload = client.run(
     image="pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime",
-    command=["python", "-c", "import torch; print(torch.cuda.is_available())"],
+    command=["python", "-c", "import torch\nprint(torch.cuda.is_available())"],
     compute_class="accelerator",
     peak_memory_gb=24,
     expected_runtime_hours=0.1,

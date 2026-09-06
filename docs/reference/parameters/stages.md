@@ -1,20 +1,20 @@
 # Stage parameters
 
 `stages` is a list of dictionaries or `nodus.StageSpec` values. A nonempty list
-replaces the top-level source. Use Python for staged submission; the CLI has no
+replaces the top-level source. Use Python for staged submission. The CLI has no
 stage-file option. Do not combine `framework` with explicit stages: a recognized
 framework takes precedence in the current compiler.
 
 | Stage field | Type | Omission / purpose |
 |---|---|---|
-| `id` | Unique string, 1–64 characters | Required; letters, digits, `_`, `-`, `.`; cannot start with `.` or `-` |
-| `source` | `{image: str, command: list[str]}` | Give explicit executable argv and image; missing image defaults to Python image server-side |
-| `depends_on` | List of stage IDs | Empty; dependency edges must be acyclic |
+| `id` | Unique string, 1–64 characters | Required. Letters, digits, `_`, `-`, `.`. Cannot start with `.` or `-` |
+| `source` | `{image: str, command: list[str]}` | Give explicit executable argv and image. Missing image defaults to Python image server-side |
+| `depends_on` | List of stage IDs | Empty. Dependency edges must be acyclic |
 | `inputs` | List of input references below | Empty |
-| `outputs` | Mapping from logical name to relative output path | Empty; files must actually be produced |
+| `outputs` | Mapping from logical name to relative output path | Empty. Files must actually be produced |
 | `requirements` | Requirements dictionary | Zero/empty fields inherit workload-level values |
 | `continuity` | `{mode: str, resume_on_interruption: bool}` | Missing/empty mode inherits the whole workload continuity object |
-| `total_units` | Integer progress-unit count | Zero; describes units for compatible restartable work |
+| `total_units` | Integer progress-unit count | Zero. Describes units for compatible restartable work |
 
 A stage-specific nonempty `continuity.mode` does not receive the SDK top-level
 resume default: provide `resume_on_interruption` explicitly. Setting only that
@@ -23,13 +23,13 @@ flag without a mode does not override the inherited object.
 | Input field | Meaning |
 |---|---|
 | `name` | Local logical input name |
-| `from_stage` | Upstream stage ID; also include it in `depends_on` |
+| `from_stage` | Upstream stage ID. Also include it in `depends_on` |
 | `from_output` | Declared output name on the upstream stage |
 
 Always declare producer outputs and complete input references so a typo can be
 caught before execution. Output paths are relative to the runner's working
-directory. Runtime integrations expose resolved inputs through `NODUS_INPUT_<name>`;
-the value is a local file path, not the original storage URI.
+directory. Runtime integrations expose resolved inputs through `NODUS_INPUT_<name>`.
+The value is a local file path, not the original storage URI.
 
 Stage requirements support the same six fields as workload requirements:
 `model`, `compute_class`, `dataset_bytes`, `expected_runtime_hours`,

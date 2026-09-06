@@ -1,7 +1,7 @@
 # Submission parameters
 
 `Client.run()` and `AsyncClient.run()` share this keyword-only interface. A brief
-is translated to the nested HTTP request; the table covers every explicit
+is translated to the nested HTTP request. The table covers every explicit
 submission argument. Omitted flat values are generally absent from the wire,
 except the default image and continuity policy.
 

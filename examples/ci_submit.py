@@ -11,7 +11,7 @@ def main():
     with nodus.Client() as client:
         workload = client.run(
             image="python:3.11-slim", compute_class="vm",
-            command=["python", "-c", "assert sum(range(10)) == 45; print('passed')"],
+            command=["python", "-c", "assert sum(range(10)) == 45\nprint('passed')"],
             budget=args.budget, continuity="restartable",
             idempotency_key=f"ci-{args.submission_id}",
         )

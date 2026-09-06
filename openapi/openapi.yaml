@@ -3,7 +3,7 @@
   "info": {
     "title": "Nodus Workloads API",
     "version": "1.0.0",
-    "description": "Provider-neutral infrastructure execution for AI workloads. This contract describes customer API-key workload and webhook operations. Console sign-in, operator, runner and supplier protocols are outside its scope. Obtain a key using nodus login or the console; use the deployment API origin as the base URL. No paid workload is executed by viewing this contract."
+    "description": "Provider-neutral infrastructure execution for AI workloads. This contract describes customer API-key workload and webhook operations. Console sign-in, operator, runner and supplier protocols are outside its scope. Obtain a key using nodus login or the console. Use the deployment API origin as the base URL. No paid workload is executed by viewing this contract."
   },
   "servers": [
     {
@@ -52,7 +52,7 @@
             }
           },
           "default": {
-            "description": "Error. The JSON error and message fields are stable; additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
             "content": {
               "application/json": {
                 "schema": {
@@ -70,7 +70,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Required stable key per logical submission; replay the same payload with the same key. Different payload returns 409."
+            "description": "Required stable key per logical submission. Replay the same payload with the same key. Different payload returns 409."
           }
         ],
         "requestBody": {
@@ -83,7 +83,7 @@
             }
           }
         },
-        "description": "202 means accepted, not running. 402 budget_exceeded is the account monthly cap; 409 is an idempotency conflict; 503 spend_check_unavailable may be retried using the same key."
+        "description": "202 means accepted, not running. 402 budget_exceeded is the account monthly cap. 409 is an idempotency conflict. 503 spend_check_unavailable may be retried using the same key."
       },
       "get": {
         "operationId": "listWorkloads",
@@ -114,7 +114,7 @@
             }
           },
           "default": {
-            "description": "Error. The JSON error and message fields are stable; additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
             "content": {
               "application/json": {
                 "schema": {
@@ -132,7 +132,7 @@
             "schema": {
               "type": "integer"
             },
-            "description": "Page size; 1\u2013100; omitted, nonpositive, or over 100 defaults to 50."
+            "description": "Page size. 1\u2013100. Omitted, nonpositive, or over 100 defaults to 50."
           },
           {
             "name": "offset",
@@ -141,7 +141,7 @@
             "schema": {
               "type": "integer"
             },
-            "description": "Offset returned by the previous page; omitted starts at zero."
+            "description": "Offset returned by the previous page. Omitted starts at zero."
           },
           {
             "name": "status",
@@ -150,7 +150,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Comma-separated statuses; active and terminal expand to lifecycle groups. Unknown tokens are ignored."
+            "description": "Comma-separated statuses. Active and terminal expand to lifecycle groups. Unknown tokens are ignored."
           }
         ]
       }
@@ -174,7 +174,7 @@
             }
           },
           "default": {
-            "description": "Error. The JSON error and message fields are stable; additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
             "content": {
               "application/json": {
                 "schema": {
@@ -227,7 +227,7 @@
             }
           },
           "default": {
-            "description": "Error. The JSON error and message fields are stable; additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
             "content": {
               "application/json": {
                 "schema": {
@@ -254,7 +254,7 @@
             "schema": {
               "type": "integer"
             },
-            "description": "Exclusive numeric event ID cursor; at most 100 events per response."
+            "description": "Exclusive numeric event ID cursor. At most 100 events per response."
           }
         ]
       }
@@ -283,7 +283,7 @@
             }
           },
           "default": {
-            "description": "Error. The JSON error and message fields are stable; additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
             "content": {
               "application/json": {
                 "schema": {
@@ -337,7 +337,7 @@
             }
           },
           "default": {
-            "description": "Error. The JSON error and message fields are stable; additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
             "content": {
               "application/json": {
                 "schema": {
@@ -393,7 +393,7 @@
             }
           },
           "default": {
-            "description": "Error. The JSON error and message fields are stable; additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
             "content": {
               "application/json": {
                 "schema": {
@@ -414,7 +414,7 @@
             "description": "id"
           }
         ],
-        "description": "Settlement balance_usd is the accounting balance, not the total charge. Derive charges from customer_charge ledger entry credits; meter.total_now_usd includes current accrual."
+        "description": "Settlement balance_usd is the accounting balance, not the total charge. Derive charges from customer_charge ledger entry credits. Meter.total_now_usd includes current accrual."
       }
     },
     "/v1/workloads/{id}/routing": {
@@ -447,7 +447,7 @@
             }
           },
           "default": {
-            "description": "Error. The JSON error and message fields are stable; additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
             "content": {
               "application/json": {
                 "schema": {
@@ -468,7 +468,7 @@
             "description": "id"
           }
         ],
-        "description": "Oldest first; Nodus catalog identifiers and resource facts only."
+        "description": "Oldest first. Nodus catalog identifiers and resource facts only."
       }
     },
     "/v1/workloads/{id}/outputs": {
@@ -501,7 +501,7 @@
             }
           },
           "default": {
-            "description": "Error. The JSON error and message fields are stable; additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
             "content": {
               "application/json": {
                 "schema": {
@@ -553,7 +553,7 @@
             }
           },
           "default": {
-            "description": "Error. The JSON error and message fields are stable; additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
             "content": {
               "application/json": {
                 "schema": {
@@ -589,10 +589,10 @@
             "schema": {
               "type": "string"
             },
-            "description": "Required to disambiguate duplicate output names across stages; otherwise 409 ambiguous_output."
+            "description": "Required to disambiguate duplicate output names across stages. Otherwise 409 ambiguous_output."
           }
         ],
-        "description": "404 when absent; 410 when a legacy local-only artifact cannot be retrieved. Verify X-Nodus-SHA256 when present."
+        "description": "404 when absent. 410 when a legacy local-only artifact cannot be retrieved. Verify X-Nodus-SHA256 when present."
       }
     },
     "/v1/workloads/{id}/logs": {
@@ -622,7 +622,7 @@
             }
           },
           "default": {
-            "description": "Error. The JSON error and message fields are stable; additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
             "content": {
               "application/json": {
                 "schema": {
@@ -658,7 +658,7 @@
             "schema": {
               "type": "integer"
             },
-            "description": "Positive generation; omit for latest matching committed log."
+            "description": "Positive generation. Omit for latest matching committed log."
           }
         ],
         "description": "Not a live stream. 404 until a log is committed. X-Nodus-Stage-Id and X-Nodus-Generation identify the returned attempt."
@@ -691,7 +691,7 @@
             }
           },
           "default": {
-            "description": "Error. The JSON error and message fields are stable; additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
             "content": {
               "application/json": {
                 "schema": {
@@ -732,7 +732,7 @@
             }
           },
           "default": {
-            "description": "Error. The JSON error and message fields are stable; additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
             "content": {
               "application/json": {
                 "schema": {
@@ -764,7 +764,7 @@
             }
           }
         },
-        "description": "One webhook per account. Use public HTTPS. Omitted secret generates one; save the PUT response securely."
+        "description": "One webhook per account. Use public HTTPS. Omitted secret generates one. Save the PUT response securely."
       },
       "delete": {
         "operationId": "deleteWebhook",
@@ -789,7 +789,7 @@
             }
           },
           "default": {
-            "description": "Error. The JSON error and message fields are stable; additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
             "content": {
               "application/json": {
                 "schema": {
@@ -825,7 +825,7 @@
             "items": {
               "$ref": "#/components/schemas/WorkloadInput"
             },
-            "description": "Accepted legacy URI metadata; does not upload or automatically materialize local data. Fetch data in your command, or use explicit stage output dependencies."
+            "description": "Accepted legacy URI metadata. Does not upload or automatically materialize local data. Fetch data in your command, or use explicit stage output dependencies."
           },
           "requirements": {
             "$ref": "#/components/schemas/Requirements"
@@ -859,7 +859,7 @@
         },
         "x-go-source": "internal/models/models.go",
         "x-go-type": "WorkloadPayload",
-        "description": "Customer workload request. Supply source.image/source.command, explicit stages, or the train_eval framework with source.command. Unknown JSON fields are currently ignored for compatibility: use documented names. The SDK validates its top-level arguments. Numeric fields retain existing server behavior; no stronger validation is implied here."
+        "description": "Customer workload request. Supply source.image/source.command, explicit stages, or the train_eval framework with source.command. Unknown JSON fields are currently ignored for compatibility: use documented names. The SDK validates its top-level arguments. Numeric fields retain existing server behavior. No stronger validation is implied here."
       },
       "WorkloadSource": {
         "type": "object",
@@ -867,7 +867,7 @@
           "image": {
             "type": "string",
             "default": "python:3.11-slim",
-            "description": "Container image. Include your code and dependencies; local files are not uploaded automatically."
+            "description": "Container image. Include your code and dependencies. Local files are not uploaded automatically."
           },
           "command": {
             "type": [
@@ -877,7 +877,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Explicit argv is recommended. Use sh -c explicitly for shell syntax. An omitted command is accepted for compatibility; do not rely on image ENTRYPOINT execution across deployments."
+            "description": "Explicit argv is recommended. Use sh -c explicitly for shell syntax. An omitted command is accepted for compatibility. Do not rely on image ENTRYPOINT execution across deployments."
           }
         },
         "x-go-source": "internal/models/models.go",
@@ -916,11 +916,11 @@
           },
           "expected_runtime_hours": {
             "type": "number",
-            "description": "Estimated runtime in hours, used for placement and account admission. Omitted/nonpositive values use the profiler estimate; account admission estimates omitted runtime at one hour. Not a timeout."
+            "description": "Estimated runtime in hours, used for placement and account admission. Omitted/nonpositive values use the profiler estimate. Account admission estimates omitted runtime at one hour. Not a timeout."
           },
           "peak_memory_gb": {
             "type": "number",
-            "description": "Peak memory fit hint in GB. Placement derives infrastructure; this is not an instance SKU."
+            "description": "Peak memory fit hint in GB. Placement derives infrastructure. This is not an instance SKU."
           },
           "notes": {
             "type": "string"
@@ -977,7 +977,7 @@
           "resume_on_interruption": {
             "type": "boolean",
             "default": true,
-            "description": "Omission defaults to true. Explicit false disables resumption; per-stage mode omission inherits workload continuity."
+            "description": "Omission defaults to true. Explicit false disables resumption. Per-stage mode omission inherits workload continuity."
           }
         },
         "x-go-source": "internal/models/models.go",
@@ -1006,7 +1006,7 @@
           },
           "requirements": {
             "$ref": "#/components/schemas/Requirements",
-            "description": "Nonzero/nonempty stage fields override workload requirements; omitted/zero fields inherit individually."
+            "description": "Nonzero/nonempty stage fields override workload requirements. Omitted/zero fields inherit individually."
           },
           "depends_on": {
             "type": [
@@ -1028,7 +1028,7 @@
             "additionalProperties": {
               "type": "string"
             },
-            "description": "Named output paths relative to the stage working directory. Declare files produced by your command; downstream from_output must match a declared name."
+            "description": "Named output paths relative to the stage working directory. Declare files produced by your command. Downstream from_output must match a declared name."
           }
         },
         "x-go-source": "internal/models/models.go",
@@ -1789,7 +1789,7 @@
           },
           "manifest": {
             "type": "object",
-            "description": "Checkpoint manifest metadata; use outputs/download for produced files."
+            "description": "Checkpoint manifest metadata. Use outputs/download for produced files."
           },
           "created_at": {
             "type": "string",

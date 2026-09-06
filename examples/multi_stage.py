@@ -14,7 +14,7 @@ def main():
             id="prepare",
             source=nodus.Source(
                 image="python:3.11-slim",
-                command=["python", "-c", "from pathlib import Path; Path('numbers.json').write_text('[1, 2, 3]')"],
+                command=["python", "-c", "from pathlib import Path\nPath('numbers.json').write_text('[1, 2, 3]')"],
             ),
             outputs={"numbers": "numbers.json"},
         ),
@@ -23,7 +23,7 @@ def main():
             inputs=[nodus.StageInput(name="numbers", from_stage="prepare", from_output="numbers")],
             source=nodus.Source(
                 image="python:3.11-slim",
-                command=["python", "-c", "import json, os; from pathlib import Path; values=json.loads(Path(os.environ['NODUS_INPUT_numbers']).read_text()); Path('result.json').write_text(json.dumps({'sum': sum(values)}))"],
+                command=["python", "-c", "import json, os\nfrom pathlib import Path\nvalues=json.loads(Path(os.environ['NODUS_INPUT_numbers']).read_text())\nPath('result.json').write_text(json.dumps({'sum': sum(values)}))"],
             ),
             outputs={"result": "result.json"},
         ),

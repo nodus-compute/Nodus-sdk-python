@@ -26,10 +26,10 @@ nodus run --image YOUR_REGISTRY/hello:v1 --budget 5 --continuity restartable --w
 
 Use absolute program paths so runner working-directory conventions do not affect
 code lookup. Pin image versions or digests for repeatable submissions. The SDK
-has no registry-credential argument; verify private-image access with your
+has no registry-credential argument. Verify private-image access with your
 deployment before submitting.
 
 For dependencies, install them in the image during build. For input datasets,
 your program must fetch accessible data or consume declared upstream stage
-inputs. Do not put credentials in a container layer or command line; this SDK
+inputs. Do not put credentials in a container layer or command line. This SDK
 currently has no general environment/secret injection API.

@@ -16,7 +16,7 @@ python scripts/sync_openapi.py ../nodus --check
 
 Submit coordinated server and SDK pull requests for a contract change. Run the
 server contract validator and the SDK tests before merging. Keep this copy and the
-server source in sync; do not edit generated API reference pages independently.
+server source in sync. Do not edit generated API reference pages independently.
 
 This contract describes current behavior. An OpenAPI schema is not evidence that
 the deployed server enforces every constraint. Compatibility limitations belong

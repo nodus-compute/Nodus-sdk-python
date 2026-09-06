@@ -25,7 +25,6 @@ resource and recovery settings your application needs.
 - [Lifecycle and reliability](concepts/reliability.md)
 - [Budgets, live cost, and settlement](concepts/costs.md)
 - [Errors and troubleshooting](operations/errors.md)
-- [Documentation maintenance and publishing](operations/documentation.md)
 
 ## For coding agents
 
@@ -34,9 +33,9 @@ Use this repository's docs for the SDK version checked out. Begin with the
 The [example scripts](../examples/README.md) are complete programs with explicit
 configuration requirements. Do not invent `env=`, top-level `inputs=`, local
 file upload, GPU SKU selectors, or a production API URL. Set a budget and persist
-the workload ID and logical submission's idempotency key. Check terminal success;
-a successful API response means acceptance, not completed computation.
+the workload ID and logical submission's idempotency key. Check terminal success.
+A successful API response means acceptance, not completed computation.
 
 The source of Python payload construction is [`nodus/_brief.py`](../nodus/_brief.py).
-The [release-matched OpenAPI document](../openapi/openapi.yaml) defines HTTP schemas; SDK aliases
+The [release-matched OpenAPI document](../openapi/openapi.yaml) defines HTTP schemas. SDK aliases
 and precedence are documented here. Legacy `wiki/` pages link to these pages.
