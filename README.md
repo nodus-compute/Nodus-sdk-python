@@ -20,14 +20,13 @@ batch of experiments.
 ```bash
 git clone https://github.com/nodus-compute/Nodus-sdk-python.git
 cd Nodus-sdk-python
-git switch docs-api-clarity-20260906
 python -m pip install -e .
 nodus login --base-url https://YOUR_NODUS_API_HOST
 ```
 
-These instructions use the features in this checkout. PyPI version 0.1.1 does
-not include device login or output download helpers. The commands select the preview branch for this review.
-Use the release installation instructions once these features are published.
+This checkout contains version 0.1.2. Until it appears on PyPI, install from
+source as shown above. After publication, install with
+`python -m pip install --upgrade "nodus_compute>=0.1.2"`.
 
 Obtain your account access and API address from your Nodus onboarding contact.
 Replace the placeholder URL with that address. Approve

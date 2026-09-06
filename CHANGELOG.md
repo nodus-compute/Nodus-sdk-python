@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.1.2
 
-- Focus customer onboarding and examples on GPU workloads and preview installation.
+- Focus customer onboarding and examples on GPU workloads and clear installation steps.
 - Cancel the current workload on Ctrl+C during synchronous waits and attached CLI
   observation. Show terminal activity and distinguish absent logs from missing work.
 
@@ -17,7 +17,7 @@
 - Public OpenAPI contract copy and a cross-repository synchronization command.
 
 - `nodus login`: approve a short code in the browser once and the SDK writes
-  `~/.nodus/config.toml` itself, no key to copy and no address to look up.
+  `~/.nodus/config.toml` itself, no key to copy. Supply your deployment API address with `--base-url`.
   `--no-browser` prints the address instead of opening it. `nodus logout`
   removes the stored key, names the `key_id` to revoke, and says that revoking
   it is a separate act in the console. **Verified against a local test double.
