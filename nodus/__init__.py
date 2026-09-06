@@ -888,7 +888,7 @@ class Client(_Transport):
         return [Output.from_dict(row) for row in (res or {}).get("outputs") or []]
 
     def routing(self, workload_id: str) -> list[dict[str, Any]]:
-        """Return placement history, oldest first, as server-provided mappings."""
+        """Return placement history ordered by stage ID, then generation."""
         res = self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/routing")
         return (res or {}).get("placements") or []
 
@@ -1367,7 +1367,7 @@ class AsyncClient(_Transport):
         return [Output.from_dict(row) for row in (res or {}).get("outputs") or []]
 
     async def routing(self, workload_id: str) -> list[dict[str, Any]]:
-        """Return placement history, oldest first, as server-provided mappings."""
+        """Return placement history ordered by stage ID, then generation."""
         res = await self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/routing")
         return (res or {}).get("placements") or []
 
