@@ -1,6 +1,7 @@
 """Reject semicolons and em dashes in maintained documentation and examples."""
 from __future__ import annotations
 
+import ast
 import html
 from html.parser import HTMLParser
 import json
@@ -32,9 +33,13 @@ class VisibleText(HTMLParser):
 
 def document_paths(root):
     paths = set(root.glob('*.md'))
+    paths.update((root / '.claude').rglob('*.md'))
+    if (root / 'sdk/AGENTS.md').exists():
+        paths.add(root / 'sdk/AGENTS.md')
     for folder in ('docs', 'wiki', 'examples', 'openapi', 'design'):
         paths.update((root / folder).rglob('*.md'))
     paths.update((root / 'examples').rglob('*.py'))
+    paths.update((root / 'nodus').rglob('*.py'))
     for path in ('openapi/openapi.yaml', 'design/openapi.yaml'):
         if (root / path).exists():
             paths.add(root / path)
@@ -56,7 +61,21 @@ def strings(value):
 
 def violations(path):
     text = path.read_text(encoding='utf-8')
-    if path.suffix == '.yaml':
+    if path.suffix == '.py' and 'examples' not in path.parts:
+        tree = ast.parse(text)
+        excerpts = []
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                doc = ast.get_docstring(node, clean=False)
+                if doc is not None:
+                    excerpts.append(doc)
+            elif isinstance(node, ast.Call):
+                for keyword in node.keywords:
+                    if keyword.arg == 'help' and isinstance(keyword.value, ast.Constant):
+                        if isinstance(keyword.value.value, str):
+                            excerpts.append(keyword.value.value)
+        text = html.unescape('\n'.join(excerpts))
+    elif path.suffix == '.yaml':
         # The public OpenAPI snapshot uses JSON syntax, including escaped Unicode.
         text = '\n'.join(strings(json.loads(text)))
     elif path.suffix == '.njk':

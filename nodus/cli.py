@@ -372,7 +372,7 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--model", default=None, help="what the work is, e.g. '7B fine-tune'")
     r.add_argument("--image", default=None)
     r.add_argument("--compute-class", choices=("vm", "accelerator"), default=None,
-                   help="Choose CPU/VM or accelerator capacity; omission leaves placement to Nodus")
+                   help="Choose CPU/VM or accelerator capacity. Omission leaves placement to Nodus")
     r.add_argument("--peak-memory-gb", type=float, default=None)
     r.add_argument("--hours", type=float, default=None, help="expected runtime")
     r.add_argument("--budget", type=float, default=None, help="max cost to completion, USD")

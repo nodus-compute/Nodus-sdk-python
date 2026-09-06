@@ -29,7 +29,7 @@ class Requirements(TypedDict, total=False):
     """Workload fit signals, without selecting a supplier or instance SKU.
 
     Memory is in GB, dataset size in bytes, and runtime in hours. All fields
-    are optional; omitted compute class defaults to accelerator on the API.
+    are optional. Omitted compute class defaults to accelerator on the API.
     """
 
     model: str
@@ -41,7 +41,7 @@ class Requirements(TypedDict, total=False):
 
 
 class Policy(TypedDict, total=False):
-    """Placement constraints; region identifiers depend on available capacity."""
+    """Placement constraints. Region identifiers depend on available capacity."""
 
     data_regions: list[str]
 
@@ -50,7 +50,7 @@ class ContinuitySpec(TypedDict, total=False):
     """Interruption behavior for a workload or stage.
 
     The top-level SDK default is checkpointed with resumption enabled.
-    Omitted stage continuity inherits from the workload; stage values are
+    Omitted stage continuity inherits from the workload. Stage values are
     passed through for the server to resolve.
     """
 
@@ -61,7 +61,7 @@ class ContinuitySpec(TypedDict, total=False):
 class StageInput(TypedDict):
     """Named input supplied by an upstream stage's declared output.
 
-    ``from_stage`` is the upstream stage ID; ``from_output`` is a key in that
+    ``from_stage`` is the upstream stage ID. ``from_output`` is a key in that
     stage's ``outputs`` mapping. ``name`` identifies the downstream input.
     """
 
@@ -75,7 +75,7 @@ class _StageRequired(TypedDict):
 
 
 class StageSpec(_StageRequired, total=False):
-    """One stage in a workload DAG; ``id`` must be unique within the graph.
+    """One stage in a workload DAG. ``id`` must be unique within the graph.
 
     ``depends_on`` lists upstream stage IDs. ``outputs`` maps output names
     to paths relative to the stage's working directory. ``total_units``

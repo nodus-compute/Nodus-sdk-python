@@ -42,6 +42,17 @@ class DocumentationStyleTests(unittest.TestCase):
             path.write_text('<p>A &mdash' + chr(59) + ' B</p>', encoding='utf-8')
             self.assertTrue(style.violations(path))
 
+    def test_checks_python_documentation_without_changing_runtime_strings(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'client.py'
+            punctuation = chr(59)
+            path.write_text('value = "wire' + punctuation + 'value"', encoding='utf-8')
+            self.assertFalse(style.violations(path))
+            path.write_text('def run():\n    """First' + punctuation + ' second"""\n    pass\n', encoding='utf-8')
+            self.assertTrue(style.violations(path))
+            path.write_text('parser.add_argument("--flag", help="First' + punctuation + ' second")', encoding='utf-8')
+            self.assertTrue(style.violations(path))
+
     def test_discovers_new_nested_guides(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

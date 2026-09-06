@@ -3,7 +3,7 @@
 The submission schema is nested (source / requirements / outcome / continuity /
 stages) because those are different concerns with different lifetimes. Callers
 should not have to assemble that by hand, so ``run()`` takes flat keyword
-arguments and this module does the translation in one place — shared by the
+arguments and this module does the translation in one place, shared by the
 sync client, the async client, and the CLI so all three send the same bytes.
 """
 
@@ -26,7 +26,7 @@ def _caller_stacklevel() -> int:
     """How far up the stack the code that wrote the brief is.
 
     Counted, not hardcoded: ``run()`` and ``build_payload()`` sit at different
-    depths, and the default filter shows one warning per location — a warning
+    depths, and the default filter shows one warning per location, a warning
     blamed on SDK source silences every submission after the first.
     """
     frame = inspect.currentframe()
@@ -61,7 +61,7 @@ def _warn_if_it_cannot_bootstrap(image: str) -> None:
 
     Only measured images are named. What an arbitrary tag contains is knowable
     from a registry, not from here, so an unrecognised image is left alone
-    rather than guessed at — and this warns rather than refuses, because the
+    rather than guessed at, and this warns rather than refuses, because the
     tag may be a local rebuild that added one.
     """
     tools = IMAGE_FETCH_TOOLS.get(image)
@@ -271,7 +271,7 @@ def build_payload(
 def _merge_extra(payload: dict[str, Any], extra: dict[str, Any] | None) -> None:
     """Add fields this SDK version does not model. Never replace one it does.
 
-    A key that collides with the built brief would overwrite it — ``outcome``
+    A key that collides with the built brief would overwrite it, ``outcome``
     included, which is where the cost ceiling lives.
     """
     if not extra:

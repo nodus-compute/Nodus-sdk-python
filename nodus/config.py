@@ -1,4 +1,4 @@
-"""``~/.nodus/config.toml`` — the file ``nodus login`` writes and the client reads.
+"""``~/.nodus/config.toml``, the file ``nodus login`` writes and the client reads.
 
 One section, five keys, all text::
 
@@ -10,12 +10,12 @@ One section, five keys, all text::
     expires_at = "2026-11-30T00:00:00Z"
 
 Building a client reads ``api_key`` and ``base_url`` and nothing else. The rest
-names the key, so ``nodus logout`` can say which one is left to revoke;
+names the key, so ``nodus logout`` can say which one is left to revoke.
 ``expires_at`` is kept as text and never parsed here, because no two runtimes
 agree on what a timestamp may contain.
 
 Every key already in the file survives a rewrite, in any section. **Comments
-and layout do not** — the file is rewritten from what was parsed, so a comment
+and layout do not**, the file is rewritten from what was parsed, so a comment
 someone added is gone after the next login. A value this module cannot read,
 or cannot write back unchanged, is refused by name rather than dropped or
 treated as absent.
@@ -279,10 +279,10 @@ def _quote(value: str, where: str, path: str | os.PathLike[str]) -> str:
     A raw C0 control or DEL makes a file neither this parser nor ``tomllib``
     reads back. The C1 range (0x80–0x9f) is legal TOML, but a control
     character is never a legitimate part of a credential, an address, or a
-    name — and a stored one resurfaces on a terminal that honours 8-bit
+    name, and a stored one resurfaces on a terminal that honours 8-bit
     escapes. Non-ASCII text, a tenant's own name say, is fine. This refusal
     can meet a foreign value the rewrite is only carrying through, so it
-    hard-stops login and logout — the message must leave the reader able to
+    hard-stops login and logout, the message must leave the reader able to
     fix it, not just tell them which key offended.
     """
     for char in value:
@@ -304,7 +304,7 @@ def _dump(data: dict[str, Any], path: Path, prefix: tuple[str, ...] = ()) -> str
 
     Refuses what it cannot write instead of dropping it: a rewrite that loses
     somebody's setting, or that emits a line the next read rejects, is worse
-    than one that stops and says which key. Comments are not carried through —
+    than one that stops and says which key. Comments are not carried through,
     the module docstring says so.
     """
     scalars = [(k, v) for k, v in data.items() if not isinstance(v, dict)]
@@ -339,7 +339,7 @@ def _redirects(path: Path) -> bool:
     """Whether this entry sends writes somewhere other than where it sits.
 
     ``is_symlink`` is False for an NTFS junction, and ``mklink /J`` builds one
-    with no privilege at all — so on Windows the reparse-point attribute is
+    with no privilege at all, so on Windows the reparse-point attribute is
     what has to be asked, not the symlink question.
     """
     if path.is_symlink():
@@ -403,7 +403,7 @@ def _writable_profile(data: dict[str, Any], path: Path) -> dict[str, Any]:
 
     Two shapes get past everything upstream. ``default = "hello"`` is a valid
     entry that re-serialises cleanly, and ``[default.api_key]`` is a table
-    sitting where a string goes — assigning over it would delete somebody's
+    sitting where a string goes, assigning over it would delete somebody's
     section without a word, against this module's own promise that every key
     survives or is refused by name. Both have to be found before a key exists.
     """
@@ -436,7 +436,7 @@ def ensure_writable() -> None:
     that fails afterwards leaves a live credential nobody has a copy of.
     Everything the directory and the existing file can refuse is refused here
     instead, while there is still nothing to lose. What only the new value can
-    carry — a control character in the key itself — is still caught at the
+    carry, a control character in the key itself, is still caught at the
     write, which is why the caller shows the key when that write fails.
     """
     path = config_path()

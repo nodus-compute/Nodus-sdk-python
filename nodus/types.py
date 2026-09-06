@@ -1,7 +1,7 @@
 """Enums and result objects for the Nodus API.
 
 Nothing here names a supplier. The customer surface reports a Nodus catalog
-route and the capability class behind it; who ran the work, and on whose
+route and the capability class behind it. Who ran the work, and on whose
 hardware, is a Nodus decision and is not part of this contract.
 """
 
@@ -111,7 +111,7 @@ def _num(value: Any, default: float = 0.0) -> float:
     """A float from a field nothing here controls.
 
     A raw ``float()`` on wire data can raise mid-poll with an error no failure
-    policy catches; NaN and infinity pass numeric checks yet compare false
+    policy catches. NaN and infinity pass numeric checks yet compare false
     against every budget, so non-finite is refused along with unparseable.
     """
     if value is None or isinstance(value, bool):
@@ -305,13 +305,13 @@ class Artifact:
     """One committed manifest: a checkpoint, or a stage's final outputs.
 
     This is the row shape ``GET /v1/workloads/{id}/artifacts`` actually returns.
-    The endpoint lists *manifests*, not files — a manifest names many objects,
+    The endpoint lists *manifests*, not files, a manifest names many objects,
     which is why the digest and the bytes live on :class:`ManifestFile` under
     :attr:`files` and :attr:`outputs` rather than on the artifact itself.
 
     There is deliberately no ``verified`` flag. A manifest is written only after
     the control plane recomputes the SHA-256 of every object it names, so a row
-    appearing here means those digests matched at commit time; but the response
+    appearing here means those digests matched at commit time. But the response
     carries no per-row verification state, and an SDK that reported one would be
     asserting a check it never saw. Compare :attr:`ManifestFile.sha256` against
     bytes you have fetched if you need verification you performed yourself.
@@ -455,7 +455,7 @@ class Ledger:
     def charged_usd(self) -> float:
         """What the customer was charged for this workload.
 
-        The sum of the customer_charge credits — the same arithmetic the
+        The sum of the customer_charge credits, the same arithmetic the
         control plane projects ``spend_usd`` from, so the two reconcile.
         """
         return sum(e.credit_usd for e in self.entries if e.entry_type == CUSTOMER_CHARGE)
@@ -475,9 +475,9 @@ class Meter:
     """What a workload costs at one instant: what is settled plus what is accruing.
 
     A charge is booked when a lease closes, so ``settled_usd`` does not move
-    while the work runs; ``total_now_usd`` is what answers "what is this
-    costing me right now". ``as_of`` is part of that number — a live figure
-    without the instant it was true cannot be read — and
+    while the work runs. ``total_now_usd`` is what answers "what is this
+    costing me right now". ``as_of`` is part of that number, a live figure
+    without the instant it was true cannot be read, and
     ``accruing_rate_usd_hour`` is what ticks it forward between polls.
     """
 

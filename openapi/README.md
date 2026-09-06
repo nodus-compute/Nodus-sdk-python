@@ -1,23 +1,10 @@
 # Public API contract
 
 [openapi.yaml](openapi.yaml) describes the customer workload and webhook HTTP API.
-The Python SDK reference is in [the client reference](../docs/reference/python/client.md).
+Use it with OpenAPI tools to inspect HTTP operations and request/response schemas.
+For Python methods and SDK-specific behavior, see the
+[client reference](../docs/reference/python/client.md).
 
-The authoritative contract lives at `design/openapi.yaml` in the Nodus server
-repository. This byte-identical public copy lets users, agents, and documentation
-renderers consume it without access to server implementation code.
-
-Update the server contract first, then run from this repository:
-
-```bash
-python scripts/sync_openapi.py ../nodus
-python scripts/sync_openapi.py ../nodus --check
-```
-
-Submit coordinated server and SDK pull requests for a contract change. Run the
-server contract validator and the SDK tests before merging. Keep this copy and the
-server source in sync. Do not edit generated API reference pages independently.
-
-This contract describes current behavior. An OpenAPI schema is not evidence that
-the deployed server enforces every constraint. Compatibility limitations belong
-in the schema descriptions and guides until the implementation changes.
+Use the contract from the same SDK checkout or release as your application.
+The deployed API may differ. Schema descriptions document compatibility
+limitations and do not imply that every constraint is enforced by the server.

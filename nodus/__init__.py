@@ -1,8 +1,8 @@
 """Nodus Python SDK.
 
-Submit workload requirements and outcomes; Nodus matches infrastructure,
+Submit workload requirements and outcomes. Nodus matches infrastructure,
 manages cost to completion, and recovers through reclaim. You describe the work
-and its constraints — never a machine, an instance type, or a supplier.
+and its constraints, never a machine, an instance type, or a supplier.
 
 Sign in once and the client finds its own settings:
 
@@ -214,7 +214,7 @@ class _WaitPolicy:
 
     A workload outlives any single request, and keeps billing whatever the
     client believes, so a transient failure widens the interval instead of
-    ending the wait. A permanent one — a revoked key, an unknown id — is raised
+    ending the wait. A permanent one, a revoked key, an unknown id, is raised
     immediately, because waiting on it is a program that hangs instead of
     failing.
     """
@@ -226,7 +226,7 @@ class _WaitPolicy:
         self.last: NodusError | None = None
 
     def failed(self, exc: NodusError) -> float:
-        """Seconds to hold off after a failed poll; re-raises what will never clear."""
+        """Seconds to hold off after a failed poll. Re-raises what will never clear."""
         if not _is_transient(exc):
             raise exc
         self.failures += 1
@@ -265,7 +265,7 @@ def _setup_help(missing: list[str]) -> str:
     and both answer a setup mistake with a network error.
 
     ASCII only. This lands on a terminal, and a Windows console on a legacy
-    code page turns a typographic ellipsis into a replacement character —
+    code page turns a typographic ellipsis into a replacement character,
     mojibake in the one message whose whole job is to be read and copied.
     """
     joined = " and ".join(missing)
@@ -326,7 +326,7 @@ def _check_header_safe(name: str, value: str) -> None:
 def _resolve(api_key: str | None, base_url: str | None) -> tuple[str, str]:
     """Both settings, highest source first, decided one setting at a time.
 
-    Env above the file so a stale login can never outrank what CI injected;
+    Env above the file so a stale login can never outrank what CI injected.
     per setting because a stored key against an env address is the normal way
     to point the same account at staging.
     """
@@ -350,7 +350,7 @@ def _resolve(api_key: str | None, base_url: str | None) -> tuple[str, str]:
 
 
 def _resolve_base_url(base_url: str | None) -> str:
-    """The address alone, for ``nodus login`` — which has no key yet."""
+    """The address alone, for ``nodus login``, which has no key yet."""
     url = (base_url or os.environ.get("NODUS_BASE_URL") or "").strip().rstrip("/")
     if not url:
         url = read_credentials()[1].strip().rstrip("/")
@@ -376,7 +376,7 @@ def _valid_id(workload_id: Any) -> str:
     """One path segment, checked before it can become part of a URL.
 
     httpx resolves dot segments, so an id carrying ``/`` or ``..`` addresses a
-    different endpoint — the webhook secret included. Server-supplied ids are
+    different endpoint, the webhook secret included. Server-supplied ids are
     checked too: a handle refreshes on the id it is holding.
     """
     if isinstance(workload_id, str) and _WORKLOAD_ID.match(workload_id):
@@ -392,7 +392,7 @@ def _valid_idempotency_key(key: str) -> str:
     """A key that can survive being a header.
 
     Non-ASCII cannot be encoded into one and CRLF makes a header the server
-    rejects on every attempt — either failure surfaces from inside the
+    rejects on every attempt, either failure surfaces from inside the
     transport, after the retry budget, naming neither the key nor the call.
     """
     if _is_header_safe(key):
@@ -460,7 +460,7 @@ class _WorkloadState:
 
         An absent key is not a key set to nothing. A list row carries no route
         and no stages, and a body that clobbered them would leave the handle
-        claiming the workload has none — worse for ``status``, where None is
+        claiming the workload has none, worse for ``status``, where None is
         never terminal and a wait polling it can never end.
         """
         from .types import _dt, _int, _num, _obj, _rows  # local import: internal helpers
@@ -492,7 +492,7 @@ class _WorkloadState:
 
         ``meter.settled_usd`` counts only the current billing period and
         ``spend_usd`` lags a settling lease, so what has been charged is the
-        larger of the two; ``meter.accruing_usd`` is open leases' money on top.
+        larger of the two. ``meter.accruing_usd`` is open leases' money on top.
         """
         if self.meter is None:
             return self.spend_usd
@@ -599,9 +599,9 @@ class _Transport:
 class Client(_Transport):
     """Synchronous Nodus client.
 
-    One instance per process is enough — the underlying transport pools
+    One instance per process is enough, the underlying transport pools
     connections, so constructing a client per call throws that away. The client
-    is safe to share across threads; the workload handles it returns are not.
+    is safe to share across threads. The workload handles it returns are not.
     """
 
     def __init__(
@@ -741,15 +741,15 @@ class Client(_Transport):
         extra: dict[str, Any] | None = None,
         **unknown: Any,
     ) -> "Workload":
-        """Submit a brief — requirements and outcomes, never a machine.
+        """Submit a brief, requirements and outcomes, never a machine.
 
-        Returns as soon as the workload is accepted; it is not yet placed. Call
+        Returns as soon as the workload is accepted. It is not yet placed. Call
         ``client.wait(wl.id)`` to block until it reaches a terminal state.
 
         ``budget`` is cost to completion in USD, and omitting it leaves the run
         capped only by the account. ``finish_by`` takes a datetime or RFC3339
         text. ``extra`` is merged into the payload for a field the control plane
-        models and this SDK version does not; any other keyword is refused
+        models and this SDK version does not. Any other keyword is refused
         rather than sent, because the server drops what it does not recognise.
 
         ``idempotency_key`` defaults to a fresh value per call, which covers
@@ -758,8 +758,8 @@ class Client(_Transport):
         are running so a resubmission cannot become a second paid workload.
 
         A raised :class:`APITimeoutError` or :class:`APIConnectionError` does
-        not mean nothing was submitted. Retry with the key on ``err.payload`` —
-        the one that was sent — so the retry cannot become a second paid run.
+        not mean nothing was submitted. Retry with the key on ``err.payload``,
+        the one that was sent, so the retry cannot become a second paid run.
         """
         payload = build_payload(
             command=command,
@@ -803,7 +803,7 @@ class Client(_Transport):
     def list(
         self, *, limit: int = 50, offset: int = 0, status: Any = None
     ) -> list["Workload"]:
-        """The first page only — use ``iter_workloads()`` for all of them.
+        """The first page only, use ``iter_workloads()`` for all of them.
 
         Newest first. ``status`` accepts a member, a wire string, a list of
         either, or the presets ``"active"`` and ``"terminal"``.
@@ -899,7 +899,7 @@ class Client(_Transport):
         """Stream an output to destination and verify its SHA-256 before replacing it.
 
         Pass stage when multiple stages publish the same name. Failed transfers
-        leave an existing destination intact; retry the call to restart.
+        leave an existing destination intact. Retry the call to restart.
         """
         path = download_path(_valid_id(workload_id), name)
         params = {"stage": stage} if stage is not None else None
@@ -934,7 +934,7 @@ class Client(_Transport):
 
         Not a live stream: the log is collected as a named output and the
         control plane recomputes its digest before it agrees the run produced
-        it, so this lags the process by a checkpoint. That is the point — what
+        it, so this lags the process by a checkpoint. That is the point, what
         comes back is evidence rather than a tail.
 
         Narrowing by stage and generation matters after a reclaim: a stage that
@@ -965,7 +965,7 @@ class Client(_Transport):
     ) -> "Workload":
         """Poll until the workload is terminal.
 
-        Transient failures are retried for as long as the wait lasts; only the
+        Transient failures are retried for as long as the wait lasts. Only the
         caller's own ``timeout_seconds`` ends it early. See :class:`_WaitPolicy`.
         """
         policy = _WaitPolicy(poll_seconds, timeout_seconds)
@@ -1031,7 +1031,7 @@ class Workload(_WorkloadState):
     Mutable: ``refresh()`` and ``wait()`` update this instance in place and also
     return it, so after either call you can read ``status``, ``route`` and
     ``spend_usd`` without a second round trip. The consequence is that a handle
-    is not safe to share across threads — give each one its own from
+    is not safe to share across threads, give each one its own from
     ``client.get()``.
     """
 
@@ -1047,7 +1047,7 @@ class Workload(_WorkloadState):
     def wait(self, *, poll_seconds: float = 2.0, timeout_seconds: float | None = None) -> "Workload":
         """Poll until terminal.
 
-        Raises :class:`APITimeoutError` if ``timeout_seconds`` elapses first;
+        Raises :class:`APITimeoutError` if ``timeout_seconds`` elapses first.
         the workload keeps running, because a client-side deadline is not a
         cancellation. Transient poll failures are retried for the life of the
         wait, permanent ones raised at once. See :class:`_WaitPolicy`.
@@ -1280,7 +1280,7 @@ class AsyncClient(_Transport):
     async def list(
         self, *, limit: int = 50, offset: int = 0, status: Any = None
     ) -> list["AsyncWorkload"]:
-        """The first page only — use ``iter_workloads()`` for all of them.
+        """The first page only, use ``iter_workloads()`` for all of them.
 
         Newest first. ``status`` accepts a member, a wire string, a list of
         either, or the presets ``"active"`` and ``"terminal"``.
@@ -1378,7 +1378,7 @@ class AsyncClient(_Transport):
         """Stream an output to destination and verify its SHA-256 before replacing it.
 
         Pass stage when multiple stages publish the same name. Failed transfers
-        leave an existing destination intact; retry the call to restart.
+        leave an existing destination intact. Retry the call to restart.
         """
         path = download_path(_valid_id(workload_id), name)
         params = {"stage": stage} if stage is not None else None
@@ -1484,7 +1484,7 @@ class AsyncClient(_Transport):
 
 
 class AsyncWorkload(_WorkloadState):
-    """Async handle. Identical attributes to :class:`Workload`; methods await."""
+    """Async handle. Identical attributes to :class:`Workload`. Methods await."""
 
     def __init__(self, client: AsyncClient):
         super().__init__()
