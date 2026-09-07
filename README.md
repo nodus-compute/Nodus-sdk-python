@@ -84,30 +84,18 @@ produce downloadable files. See [monitoring and outputs](docs/guides/monitoring-
 for progress and downloads, or the [CLI reference](docs/reference/cli.md) if you
 prefer terminal commands.
 
-## Run your own workloads
+## Run your own code
 
-| Goal | Guide |
-|---|---|
-| Package and run a Python script | [Containers and scripts](docs/guides/containers-and-scripts.md) |
-| Run a GPU training or fine-tuning command | [GPU workloads](docs/guides/gpu-workloads.md) |
-| Submit concurrent experiments | [Async sweeps](docs/guides/async-sweeps.md) |
-| Connect stages and declared outputs | [Multi-stage workloads](docs/guides/multi-stage-workloads.md) |
-| Retry safely in automation | [CI and idempotency](docs/guides/ci-and-idempotency.md) |
-| Look up advanced submission options | [All parameters](docs/reference/parameters/index.md) |
+Package your script and dependencies in a container image, then pass its image
+and command to `client.run()`. The SDK does not upload your local files.
 
-Your script, dependencies, and accessible data must be available inside the image
-or fetched by your program. The SDK does not upload your working directory.
-Container images need `curl`, `wget`, or `python3` for runner bootstrap.
+- [Run a Python script](docs/guides/containers-and-scripts.md)
+- [Train or fine-tune a model](docs/guides/gpu-workloads.md)
+- [Read logs and download results](docs/guides/monitoring-and-outputs.md)
 
-## Before submitting
-
-Set a budget, use an image containing your code and dependencies, and keep the
-returned workload ID. Reuse an `idempotency_key` when retrying the same submission.
-Nodus currently supports GPU workloads. CPU-only VM provisioning is not offered.
-
-The first example prints a GPU name in its logs. For downloadable files, declare
-stage outputs as shown in [multi-stage workloads](docs/guides/multi-stage-workloads.md).
-See [troubleshooting](docs/operations/errors.md) if submission or execution fails.
+For individual options, use the [Python reference](docs/reference/python/client.md)
+and [parameter reference](docs/reference/parameters/index.md).
+See [troubleshooting](docs/operations/errors.md) if a run fails.
 
 ## Contributing
 
