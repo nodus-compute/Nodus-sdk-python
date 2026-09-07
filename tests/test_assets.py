@@ -160,3 +160,10 @@ def test_missing_upload_limit_fails_closed(asynchronous, tmp_path):
         return httpx.Response(200, json={"assets": []})
     with pytest.raises(nodus.APIError, match="limit"):
         exercise(handler, asynchronous, lambda assets: assets.upload(file))
+def test_asset_in_use_is_not_an_idempotency_error():
+    from nodus.errors import error_from_response
+    error = error_from_response("DELETE", "/v1/assets/asset_data", 409,
+                                {"error": "asset_in_use", "message": "asset is used by an active workload"})
+    assert isinstance(error, nodus.APIError)
+    assert not isinstance(error, nodus.IdempotencyConflictError)
+    assert error.status_code == 409

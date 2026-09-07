@@ -54,6 +54,7 @@ from .config import _is_header_safe, read_credentials
 from .errors import (
     APIConnectionError,
     APIError,
+    AssetInUseError,
     APITimeoutError,
     AuthenticationError,
     BudgetExceededError,
@@ -136,6 +137,7 @@ __all__ = [
     "SpendCheckUnavailableError",
     "SignatureError",
     "APIError",
+    "AssetInUseError",
     "APIConnectionError",
     "APITimeoutError",
     "__version__",
