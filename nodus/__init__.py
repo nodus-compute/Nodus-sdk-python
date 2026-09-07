@@ -279,7 +279,13 @@ def _setup_help(missing: list[str]) -> str:
 
 # Hosted API shared with the Nodus console. Explicit, environment and saved
 # endpoints still take precedence for private deployments and local development.
-DEFAULT_BASE_URL = "https://nodus-api-74it.onrender.com"
+DEFAULT_BASE_URL = "https://d1a0b732w6344o.cloudfront.net"
+
+
+def _current_hosted_url(url: str) -> str:
+    if url == "https://nodus-api-74it.onrender.com":
+        return DEFAULT_BASE_URL
+    return url
 
 
 def _check_scheme(url: str, stacklevel: int) -> None:
@@ -321,7 +327,7 @@ def _resolve(api_key: str | None, base_url: str | None) -> tuple[str, str]:
         stored_key, stored_url = read_credentials()
         key = key or stored_key.strip()
         url = url or stored_url.strip().rstrip("/")
-    url = url or DEFAULT_BASE_URL
+    url = _current_hosted_url(url or DEFAULT_BASE_URL)
     missing = [
         name
         for name, value in (("NODUS_BASE_URL", url), ("NODUS_API_KEY", key))
@@ -342,6 +348,7 @@ def _resolve_base_url(base_url: str | None) -> str:
         url = read_credentials()[1].strip().rstrip("/")
     if not url:
         url = DEFAULT_BASE_URL
+    url = _current_hosted_url(url)
     _check_header_safe("NODUS_BASE_URL", url)
     _check_scheme(url, stacklevel=3)
     return url
