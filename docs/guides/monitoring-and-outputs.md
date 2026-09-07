@@ -27,14 +27,14 @@ For workloads that declare output files, use these calls inside the client
 context after the workload completes:
 
 ```python
-for output in done.outputs():
-    print(output.name, output.bytes)
-
-done.download_output("result", "result.json")
+for path in done.download():
+    print(path)
 ```
 
-Replace `result` with your declared output name. See
-[output declarations](../reference/parameters/stages.md) when your program writes
+Files go into `outputs/WORKLOAD_ID/STAGE/NAME` by default, using the declared output name. Pass a directory to
+`done.download("results")` to choose another location. For one file, use
+`done.download_output("result", "result.json")` with your declared output name. See
+[output declarations](../reference/parameters/source.md#input-and-output-files) when your program writes
 files you want to download.
 
 ## Progress and cancellation
@@ -46,3 +46,15 @@ These events describe execution progress, not your program's stdout.
 Ctrl+C while waiting requests cancellation and remote resource cleanup.
 To cancel explicitly, call `client.cancel(workload.id)`. A wait timeout ends
 local observation without cancelling the run.
+
+## From the terminal
+
+```bash
+nodus wait WORKLOAD_ID
+nodus logs WORKLOAD_ID
+nodus download WORKLOAD_ID
+```
+
+Check a workload without waiting with `nodus status WORKLOAD_ID`. Stop it with
+`nodus cancel WORKLOAD_ID`. Downloads include declared output files, not the
+entire container filesystem.

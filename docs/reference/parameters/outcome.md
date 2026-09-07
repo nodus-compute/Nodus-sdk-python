@@ -1,9 +1,9 @@
 # Budget and deadline
 
-| Argument | Type | Omitted | CLI | HTTP field |
+| Argument | Type | Omitted | Workload file | HTTP field |
 |---|---|---|---|---|
-| `budget` | Positive finite number in USD | No per-workload ceiling. Warning emitted | `--budget` | `outcome.max_cost_usd` |
-| `finish_by` | RFC3339 string or `datetime` | No completion deadline | `--finish-by` | `outcome.complete_by` |
+| `budget` | Positive finite number in USD | No per-workload ceiling. Warning emitted | `budget` | `outcome.max_cost_usd` |
+| `finish_by` | RFC3339 string or `datetime` | No completion deadline | `finish_by` | `outcome.complete_by` |
 
 Budget constrains cost to completion and admission. It is not a prepaid credit
 or reserved capacity. The account spend cap also applies. Warnings about omitted

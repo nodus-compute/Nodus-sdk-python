@@ -11,7 +11,7 @@ def main():
         workload = client.run(
             image="pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime",
             command=["python", "-c", "import torch\nassert torch.cuda.is_available()\nprint(torch.cuda.get_device_name(0))"],
-            compute_class="accelerator", model="GPU-smoke-test", budget=args.budget,
+            budget=args.budget,
         )
         print(workload.id, flush=True)
         done = workload.wait()

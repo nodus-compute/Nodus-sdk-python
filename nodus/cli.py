@@ -1,8 +1,6 @@
 """The ``nodus`` command.
 
-Reads the same environment as the SDK. Everything after ``--`` is the command
-executed inside the workload, so shell quoting does not have to survive two
-layers of parsing.
+Run a workload file and inspect its progress with short, explicit commands.
 """
 
 from __future__ import annotations
@@ -10,9 +8,10 @@ from __future__ import annotations
 import argparse
 from contextlib import contextmanager
 import json
+import math
 import os
+from pathlib import Path
 import re
-import shlex
 import sys
 import threading
 import time
@@ -24,7 +23,8 @@ from typing import Any
 from . import Client, __version__, _is_header_safe, _redact, _resolve_base_url, config, login
 from ._brief import STATUS_FILTERS
 from .errors import NodusError, NotFoundError
-from .types import ContinuityMode, _num
+from .types import _num
+from ._workload_file import load_workload_file, write_workload_file
 
 # Nearly everything printed here was written somewhere else, and a terminal
 # acts on whatever escapes it is handed. The rule between the two cleaners:
@@ -40,6 +40,17 @@ _CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
 
 # The same, sparing nothing: an id, a status, a SKU, a code, an address.
 _CONTROL_LINE = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+
+
+def _positive_seconds(value: str) -> float:
+    """Reject invalid observation settings before creating a workload."""
+    try:
+        seconds = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("expected a finite positive number of seconds") from exc
+    if not math.isfinite(seconds) or seconds <= 0:
+        raise argparse.ArgumentTypeError("expected a finite positive number of seconds")
+    return seconds
 
 
 def _safe(text: Any) -> str:
@@ -58,14 +69,6 @@ def _fmt_workload(wl: Any) -> str:
     route = _safe_line(wl.route.sku) if wl.route else "-"
     status = _safe_line(getattr(wl.status, "value", wl.status))
     return f"{_safe_line(wl.id)}  {status:<13} {route:<28} ${wl.cost_now_usd:.2f}"
-
-
-def _split_command(argv: list[str]) -> tuple[list[str], list[str]]:
-    """Split on the first bare ``--``."""
-    if "--" in argv:
-        i = argv.index("--")
-        return argv[:i], argv[i + 1 :]
-    return argv, []
 
 
 @contextmanager
@@ -127,54 +130,76 @@ def _cancel_on_interrupt(client: Client, workload_id: str):
         raise
 
 
-def _cmd_run(args: argparse.Namespace, command: list[str]) -> int:
+def _cmd_init(args: argparse.Namespace) -> int:
+    path = write_workload_file(args.file)
+    print(f"Created {_safe_line(path)}. Edit it, then run nodus run.")
+    return 0
+
+
+def _cmd_run(args: argparse.Namespace) -> int:
+    settings = load_workload_file(args.file)
+    submission_key = settings.get("idempotency_key") or str(uuid.uuid4())
+    settings["idempotency_key"] = submission_key
     with Client(base_url=args.base_url) as client:
-        submission_key = args.idempotency_key or str(uuid.uuid4())
         try:
-            wl = client.run(
-                model=args.model,
-                compute_class=args.compute_class,
-                image=args.image,
-                command=command or None,
-                peak_memory_gb=args.peak_memory_gb,
-                expected_runtime_hours=args.hours,
-                budget=args.budget,
-                finish_by=args.finish_by,
-                continuity=args.continuity,
-                data_regions=args.data_region or None,
-                idempotency_key=submission_key,
-            )
+            wl = client.run(**settings)
         except KeyboardInterrupt:
             print(
                 "Submission outcome unknown. A workload may still be running. "
-                "Retry the same command with "
-                f"--idempotency-key {_safe_line(shlex.quote(submission_key))} "
-                "to retrieve or submit the same workload, then run nodus cancel <workload-id>.",
+                "Before retrying, set the following top-level value in the same workload file: "
+                f"idempotency_key = {json.dumps(submission_key)}. "
+                "Retry with nodus submit, then cancel the returned workload if needed.",
                 file=sys.stderr,
             )
             raise
-        if not args.wait:
-            print(_safe_line(wl.id), flush=True)
+        print(_safe_line(wl.id), flush=True)
+        if args.cmd == "submit":
             return 0
-        with _cancel_on_interrupt(client, wl.id):
-            print(_safe_line(wl.id), flush=True)
-            with _wait_activity(wl.id):
-                wl.wait(poll_seconds=args.poll, timeout_seconds=args.timeout)
+        with _cancel_on_interrupt(client, wl.id), _wait_activity(wl.id):
+            wl.wait(poll_seconds=args.poll, timeout_seconds=args.timeout)
         print(_fmt_workload(wl))
-        # Non-zero on a failed or cancelled workload so this composes in CI.
         return 0 if wl.succeeded else 1
+
+
+def _cmd_upload(args: argparse.Namespace) -> int:
+    path = Path(args.file)
+    if not path.is_file():
+        raise ValueError("Upload a file or archive that exists on this computer.")
+    with Client(base_url=args.base_url) as client:
+        asset = client.assets.upload(path)
+    print(_safe_line(asset.id))
+    return 0
+
+
+def _cmd_assets(args: argparse.Namespace) -> int:
+    with Client(base_url=args.base_url) as client:
+        for asset in client.assets.list():
+            print(f"{_safe_line(asset.id)}  {_safe_line(asset.state)}  {_safe_line(asset.name)}")
+    return 0
+
+
+def _cmd_download(args: argparse.Namespace) -> int:
+    with Client(base_url=args.base_url) as client:
+        paths = client.get(args.workload_id).download()
+    if not paths:
+        print("No outputs available yet.")
+        return 1
+    for path in paths:
+        print(_safe_line(path))
+    return 0
 
 
 def _cmd_list(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
-        for wl in client.list(limit=args.limit, status=args.status):
+        filters = {"scope": args.status} if args.status in ("mine", "team") else {"status": args.status}
+        for wl in client.list(limit=args.limit, **filters):
             print(_fmt_workload(wl))
     return 0
 
 
-def _cmd_get(args: argparse.Namespace) -> int:
+def _cmd_status(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
-        if args.wait:
+        if args.cmd == "wait":
             with _cancel_on_interrupt(client, args.workload_id), _wait_activity(args.workload_id):
                 wl = client.get(args.workload_id)
                 wl.wait(poll_seconds=args.poll, timeout_seconds=args.timeout)
@@ -434,11 +459,35 @@ def _cmd_logout(args: argparse.Namespace) -> int:
     return 0
 
 
+class _CommandHelpFormatter(argparse.RawDescriptionHelpFormatter):
+    def _format_action(self, action):
+        if isinstance(action, argparse._SubParsersAction):
+            descriptions = {choice.dest: choice.help for choice in action._choices_actions}
+            groups = (
+                ("Setup", ("login", "logout", "init")),
+                ("Run", ("run", "submit")),
+                ("Monitor", ("list", "status", "wait", "logs", "cancel")),
+                ("Results", ("download",)),
+                ("Advanced", ("upload", "assets", "events", "artifacts", "ledger", "explain")),
+            )
+            return "\n".join(
+                f"  {title}:\n" + "".join(
+                    f"    {name:<10} {descriptions[name]}\n" for name in names
+                ) for title, names in groups
+            )
+        return super()._format_action(action)
+
+
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="nodus", description="Submit and observe Nodus workloads.")
+    p = argparse.ArgumentParser(
+        prog="nodus", description="Run GPU workloads from a workload file.",
+        formatter_class=_CommandHelpFormatter,
+        epilog="""Start with nodus init, edit nodus.toml, then nodus run.
+Use nodus COMMAND --help for command options.""",
+    )
     p.add_argument("--version", action="version", version=f"nodus {__version__}")
     p.add_argument("--base-url", default=None, help="override NODUS_BASE_URL")
-    sub = p.add_subparsers(dest="cmd", required=True)
+    sub = p.add_subparsers(dest="cmd", required=True, metavar="COMMAND", title="commands")
 
     # SUPPRESS, not None: a subparser default is copied over the namespace the
     # top-level parser already filled, so `nodus --base-url X login` would lose
@@ -451,44 +500,45 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("logout", help="delete the stored API key")
 
-    r = sub.add_parser("run", help="submit a brief")
-    r.add_argument("--model", default=None, help="what the work is, e.g. '7B fine-tune'")
-    r.add_argument("--image", default=None)
-    r.add_argument("--compute-class", choices=("vm", "accelerator"), default=None,
-                   help="Use accelerator for supported GPU workloads. Omission uses the server default")
-    r.add_argument("--peak-memory-gb", type=float, default=None)
-    r.add_argument("--hours", type=float, default=None, help="expected runtime")
-    r.add_argument("--budget", type=float, default=None, help="max cost to completion, USD")
-    r.add_argument("--finish-by", default=None, help="RFC3339 deadline")
-    r.add_argument(
-        "--continuity",
-        default=None,
-        choices=[m.value for m in ContinuityMode],
-    )
-    r.add_argument("--data-region", action="append", default=None)
-    r.add_argument("--idempotency-key", default=None)
-    r.add_argument("--wait", action="store_true", help="wait for completion. Ctrl+C cancels the workload")
-    r.add_argument("--timeout", type=float, default=None, help="seconds to wait")
-    r.add_argument("--poll", type=float, default=2.0)
+    i = sub.add_parser("init", help="create a starter workload file")
+    i.add_argument("file", nargs="?", default="nodus.toml")
+
+    for name, help_text in (
+        ("run", "submit a workload file and wait for completion"),
+        ("submit", "submit a workload file and return its ID"),
+    ):
+        r = sub.add_parser(name, help=help_text)
+        r.add_argument("file", nargs="?", default="nodus.toml")
+        if name == "run":
+            r.add_argument("--timeout", type=_positive_seconds, default=None, help="observation timeout in seconds")
+            r.add_argument("--poll", type=_positive_seconds, default=2.0)
 
     l = sub.add_parser("list", help="list workloads")
+    l.add_argument("status", nargs="?", default=None, choices=(*STATUS_FILTERS, "mine", "team"))
     l.add_argument("--limit", type=int, default=50)
-    # Spelled out rather than free text: the control plane ignores a token it
-    # does not know, so a typo here would list every workload on the account.
-    l.add_argument("--status", default=None, choices=STATUS_FILTERS,
-                   help="active, terminal, or a concrete status")
 
-    g = sub.add_parser("get", help="show one workload")
-    g.add_argument("workload_id")
-    g.add_argument("--wait", action="store_true", help="wait for completion. Ctrl+C cancels the workload")
-    g.add_argument("--timeout", type=float, default=None)
-    g.add_argument("--poll", type=float, default=2.0)
-    g.add_argument("--json", action="store_true")
+    for name, help_text in (
+        ("status", "show workload status and cost"),
+        ("wait", "wait for completion. Ctrl+C cancels the workload"),
+    ):
+        g = sub.add_parser(name, help=help_text)
+        g.add_argument("workload_id")
+        g.add_argument("--json", action="store_true")
+        if name == "wait":
+            g.add_argument("--timeout", type=_positive_seconds, default=None)
+            g.add_argument("--poll", type=_positive_seconds, default=2.0)
+
+    d = sub.add_parser("download", help="download workload outputs")
+    d.add_argument("workload_id")
+
+    u = sub.add_parser("upload", help="upload a data file or archive")
+    u.add_argument("file")
+    sub.add_parser("assets", help="list uploaded and imported data")
 
     e = sub.add_parser("events", help="lifecycle events")
     e.add_argument("workload_id")
     e.add_argument("--follow", action="store_true", help="follow events. Ctrl+C cancels the workload")
-    e.add_argument("--poll", type=float, default=2.0)
+    e.add_argument("--poll", type=_positive_seconds, default=2.0)
 
     a = sub.add_parser("artifacts", help="verified manifests")
     a.add_argument("workload_id")
@@ -513,15 +563,20 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    argv, command = _split_command(argv)
     args = build_parser().parse_args(argv)
 
     handlers = {
         "login": lambda: _cmd_login(args),
         "logout": lambda: _cmd_logout(args),
-        "run": lambda: _cmd_run(args, command),
+        "init": lambda: _cmd_init(args),
+        "run": lambda: _cmd_run(args),
+        "submit": lambda: _cmd_run(args),
+        "download": lambda: _cmd_download(args),
+        "upload": lambda: _cmd_upload(args),
+        "assets": lambda: _cmd_assets(args),
         "list": lambda: _cmd_list(args),
-        "get": lambda: _cmd_get(args),
+        "status": lambda: _cmd_status(args),
+        "wait": lambda: _cmd_status(args),
         "events": lambda: _cmd_events(args),
         "artifacts": lambda: _cmd_artifacts(args),
         "cancel": lambda: _cmd_cancel(args),
@@ -531,7 +586,7 @@ def main(argv: list[str] | None = None) -> int:
     }
     try:
         return handlers[args.cmd]()
-    except NodusError as exc:
+    except (NodusError, ValueError, TypeError, OSError) as exc:
         print(f"error: {_safe(exc)}", file=sys.stderr)
         return 2
     except KeyboardInterrupt:

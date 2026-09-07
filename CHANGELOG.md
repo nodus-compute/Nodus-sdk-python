@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.0
+
+- Simplify the CLI around workload files and short commands. Replace `get` with
+  `status`, use `wait` to observe, and separate blocking `run` from `submit`.
+- Add `init`, `download`, `upload`, and `assets`. Remove inline submission flags.
+- Share validated TOML configuration between the CLI and sync or async Python.
+- Add code and dataset uploads, GitHub and Hugging Face dataset imports, and URL imports.
+- Add source assets, named inputs, and simple output declarations to Python submissions.
+- Download all declared outputs with integrity checks and safe stage directories.
+- Add personal and team workload listing with member attribution.
+- Organize documentation from first workload to data, results, and advanced pipelines.
+
+
 ## 0.1.3
 
 - Print workload statuses as readable values such as `completed`.

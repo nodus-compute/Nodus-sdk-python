@@ -168,3 +168,37 @@ def test_stage_query_cannot_inject_headers_or_query(asynchronous, tmp_path):
     exercise(handler, asynchronous, lambda c: c.download_output('wl_test', 'model', dest, stage=stage))
     assert dest.read_bytes() == DATA
     assert set(tmp_path.iterdir()) - existing == {dest}
+
+
+@pytest.mark.parametrize('asynchronous', [False, True])
+def test_download_all_uses_stage_names_and_verified_endpoint(asynchronous, tmp_path):
+    def handler(req):
+        if req.url.path.endswith('/outputs'):
+            return httpx.Response(200, json={'outputs': [dict(ROW, download='https://attacker.invalid/steal')]})
+        assert req.url.host == 'nodus.invalid'
+        assert req.url.params['stage'] == 'train'
+        return httpx.Response(200, content=DATA, headers={'X-Nodus-SHA256': DIGEST})
+    def action(c):
+        w = nodus.AsyncWorkload(c) if asynchronous else nodus.Workload(c)
+        w.id = 'wl_test'
+        return w.download(tmp_path)
+    result = exercise(handler, asynchronous, action)
+    assert result == [tmp_path / 'train' / 'model']
+    assert result[0].read_bytes() == DATA
+
+
+@pytest.mark.parametrize('asynchronous', [False, True])
+@pytest.mark.parametrize('row', [dict(ROW, name='../escape'), dict(ROW, stage_id='../escape'),
+                                 dict(ROW, name='CON'), dict(ROW, name='model.'), dict(ROW, name='x:y')])
+def test_download_all_rejects_unsafe_server_paths(asynchronous, row, tmp_path):
+    def handler(req):
+        assert req.url.path.endswith('/outputs')
+        return httpx.Response(200, json={'outputs': [row]})
+    def action(c):
+        w = nodus.AsyncWorkload(c) if asynchronous else nodus.Workload(c)
+        w.id = 'wl_test'
+        return w.download(tmp_path)
+    existing = set(tmp_path.iterdir())
+    with pytest.raises(nodus.NodusError):
+        exercise(handler, asynchronous, action)
+    assert set(tmp_path.iterdir()) == existing

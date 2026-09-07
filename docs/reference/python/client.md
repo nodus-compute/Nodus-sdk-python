@@ -8,6 +8,8 @@ Prefer a `with` block. Otherwise call `close()`.
 | Method | Result / behavior |
 |---|---|
 | `run(**brief)` | Accepted `Workload`. [all parameters](../parameters/index.md) |
+| `run_file(path="nodus.toml")` | Accepted `Workload` from a [workload file](../../getting-started/workload-files.md) |
+| `assets` | [Upload, import, list, and delete code or dataset assets](../../guides/assets.md) |
 | `get(id)` | Refreshed `Workload` |
 | `list(limit=50, offset=0, status=None)` | One page of workloads |
 | `list_page(limit=50, offset=0, status=None)` | `(workloads, next_offset)` |
@@ -37,6 +39,11 @@ download, routing, and ledger methods without repeating the ID. Reads and waits
 on the handle mutate it in place. Useful attributes are `id`, `status`,
 `succeeded`, `is_terminal`, `route`, `stages`, `meter`, `cost_now_usd`, and `raw`.
 Unknown server enum values remain strings for forward compatibility.
+
+`workload.download(destination=None)` downloads all declared customer outputs
+and returns a list of local `Path` objects. The default directory is
+`outputs/WORKLOAD_ID`, with each file at `STAGE/NAME`. `await workload.download()` is the asynchronous equivalent.
+Use `download_output(name, destination, stage=...)` for one specific file.
 
 ## Models
 
@@ -72,3 +79,11 @@ stage = nodus.StageSpec(id="example", source=source)
 
 They do not add runtime validation or defaults. Existing plain dictionaries remain
 supported. Stage source commands are argv lists, not shell strings.
+
+## Personal and team history
+
+Use `client.list(scope="mine")` for your submissions or `scope="team"` for the
+team. Scope also works with `list_page()` and `iter_workloads()` and combines
+with status filters. Personal history requires a member-associated credential.
+Listed workloads expose `owner_user_id`, which can be absent for shared keys or
+older submissions. Scope filters history and does not change team access.

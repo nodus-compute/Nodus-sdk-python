@@ -6,9 +6,11 @@ import nodus
 from nodus import cli
 
 
-@pytest.mark.parametrize("argv", [["run", "--wait"], ["get", "wl_test", "--wait"], ["events", "wl_test", "--follow"]])
+@pytest.mark.parametrize("argv", [["run"], ["wait", "wl_test"], ["events", "wl_test", "--follow"]])
 @pytest.mark.parametrize("cancel_result", [202, 403, "interrupt"])
-def test_interrupt_requests_remote_cancel(argv, cancel_result, monkeypatch, capsys):
+def test_interrupt_requests_remote_cancel(argv, cancel_result, monkeypatch, capsys, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "nodus.toml").write_text('image = "training:v1"\ncommand = ["python", "train.py"]\nbudget = 5\n')
     requests = []
     reads = 0
     def handler(req):
@@ -21,7 +23,7 @@ def test_interrupt_requests_remote_cancel(argv, cancel_result, monkeypatch, caps
         if req.method == 'POST':
             return httpx.Response(202, json={"id": "wl_test", "status": "accepted"})
         reads += 1
-        if argv[0] == 'get' and reads == 1:
+        if argv[0] == 'wait' and reads == 1:
             return httpx.Response(200, json={"id": "wl_test", "status": "running"})
         raise KeyboardInterrupt()
     client = nodus.Client(api_key='nk_test', base_url='https://nodus.invalid', max_retries=0)
@@ -97,8 +99,14 @@ def test_sdk_wait_interrupt_cancels(handle):
 
 
 @pytest.mark.parametrize("key", [None, "custom'$(unsafe)`key`"] )
-def test_submit_interrupt_exposes_recovery_key_without_replaying(key, monkeypatch, capsys):
-    import shlex
+def test_submit_interrupt_exposes_recovery_key_without_replaying(key, monkeypatch, capsys, tmp_path):
+    import json
+    import re
+    monkeypatch.chdir(tmp_path)
+    content = 'image = "training:v1"\ncommand = ["python", "train.py"]\nbudget = 5\n'
+    if key is not None:
+        content += "idempotency_key = " + json.dumps(key) + "\n"
+    (tmp_path / "nodus.toml").write_text(content)
     requests = []
     def handler(req):
         requests.append(req)
@@ -106,16 +114,15 @@ def test_submit_interrupt_exposes_recovery_key_without_replaying(key, monkeypatc
     client = nodus.Client(api_key='nk_test', base_url='https://nodus.invalid')
     client._http = httpx.Client(base_url='https://nodus.invalid', transport=httpx.MockTransport(handler))
     monkeypatch.setattr(cli, 'Client', lambda **kwargs: client)
-    argv = ['run', '--budget', '1', '--wait']
-    if key is not None:
-        argv += ['--idempotency-key', key]
+    argv = ['run']
     assert cli.main(argv) == 130
     assert len(requests) == 1
     stderr = capsys.readouterr().err
     assert 'Submission outcome unknown' in stderr
-    displayed = stderr.split('--idempotency-key ', 1)[1].split(' to retrieve', 1)[0]
-    assert shlex.split(displayed) == [requests[0].headers['Idempotency-Key']]
-    assert 'same command' in stderr
+    displayed = stderr.split('idempotency_key = ', 1)[1]
+    decoded, _ = json.JSONDecoder().raw_decode(displayed)
+    assert decoded == requests[0].headers['Idempotency-Key']
+    assert 'same workload file' in stderr
 
 
 def test_cancel_failure_warning_filter_preserves_interrupt():

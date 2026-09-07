@@ -321,12 +321,12 @@ def _row_printing_client(value: str):
 # purpose: the only value it prints is args.workload_id, the operator's own
 # argument -- asserting it here would compare the test's literal to itself.
 ROW_COMMANDS = [
-    ["run"],
+    ["submit"],
     ["list"],
-    ["get", "wl_abc"],
+    ["status", "wl_abc"],
     # The --json dumps lean on json.dumps's own ensure_ascii escaping; these
     # two parameters are what pins that argument in place.
-    ["get", "wl_abc", "--json"],
+    ["status", "wl_abc", "--json"],
     ["events", "wl_abc"],
     ["events", "wl_abc", "--follow"],
     ["artifacts", "wl_abc"],
@@ -337,12 +337,14 @@ ROW_COMMANDS = [
 
 
 @pytest.mark.parametrize("argv", ROW_COMMANDS, ids=lambda a: " ".join(a))
-def test_a_server_value_cannot_add_a_row_to_any_listing(argv, monkeypatch, capsys):
+def test_a_server_value_cannot_add_a_row_to_any_listing(argv, monkeypatch, capsys, tmp_path):
     """One line per row, whatever the server called things.
 
     Counted against the same command on a clean value: a newline that survives
     anywhere shows up as a row the control plane never sent.
     """
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "nodus.toml").write_text('image = "training:v1"\ncommand = ["python", "train.py"]\nbudget = 5\n')
     monkeypatch.setattr(cli, "Client", _row_printing_client("wl_ok"))
     cli.main(list(argv))
     clean = len(capsys.readouterr().out.splitlines())
@@ -396,7 +398,7 @@ def test_text_from_the_server_cannot_repaint_the_terminal(monkeypatch, capsys):
             return f"step-1\n{HOSTILE}\nstep-2"
 
     monkeypatch.setattr(cli, "Client", _Fake)
-    for argv in (["get", "wl_abc"], ["events", "wl_abc"], ["logs", "wl_abc"],
+    for argv in (["status", "wl_abc"], ["events", "wl_abc"], ["logs", "wl_abc"],
                  ["explain", "wl_abc"]):
         cli.main(argv)
         out = capsys.readouterr().out
@@ -418,7 +420,7 @@ def test_an_error_message_from_the_server_is_cleaned_too(monkeypatch, capsys):
             raise nodus.NotFoundError(f"no such workload {HOSTILE}", status_code=404)
 
     monkeypatch.setattr(cli, "Client", _Fake)
-    assert cli.main(["get", "wl_abc"]) == 2
+    assert cli.main(["status", "wl_abc"]) == 2
     assert not _has_control_characters(capsys.readouterr().err)
 
 

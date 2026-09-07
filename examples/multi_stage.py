@@ -30,7 +30,7 @@ def main():
     ]
     with nodus.Client() as client:
         workload = client.run(
-            stages=stages, compute_class="accelerator",
+            stages=stages,
             budget=args.budget, idempotency_key=f"pipeline-{args.submission_id}",
         )
         print(workload.id, flush=True)

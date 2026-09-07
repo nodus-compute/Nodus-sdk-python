@@ -15,8 +15,8 @@ then build and check the package. Commit those changes before tagging.
 python -m pytest -q
 python -m build
 python -m twine check dist/*
-git tag v0.1.3
-git push origin v0.1.3
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
 Use the actual release version in the tag. The workflow verifies it matches
@@ -26,7 +26,7 @@ Creating and pushing the tag starts publishing automatically. The manual
 Run workflow button only retries an existing tag. Entering a new version there
 does not create its tag.
 
-If checkout reports `couldn't find remote ref refs/tags/v0.1.3`, create and push
+If checkout reports `couldn't find remote ref refs/tags/v0.2.0`, create and push
 the tag from the tested release commit using the commands above. Do not move an
 existing release tag.
 
