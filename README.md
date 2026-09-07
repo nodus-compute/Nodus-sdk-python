@@ -18,15 +18,11 @@ batch of experiments.
 ## 1. Install and sign in
 
 ```bash
-git clone https://github.com/nodus-compute/Nodus-sdk-python.git
-cd Nodus-sdk-python
-python -m pip install -e .
+python -m pip install --upgrade "nodus_compute>=0.1.2"
 nodus login --base-url https://YOUR_NODUS_API_HOST
 ```
 
-This checkout contains version 0.1.2. Until it appears on PyPI, install from
-source as shown above. After publication, install with
-`python -m pip install --upgrade "nodus_compute>=0.1.2"`.
+Requires Python 3.10 or newer and Nodus SDK 0.1.2 or newer.
 
 Obtain your account access and API address from your Nodus onboarding contact.
 Replace the placeholder URL with that address. Approve
@@ -126,11 +122,6 @@ The first example prints a GPU name in its logs. For downloadable files, declare
 stage outputs as shown in [multi-stage workloads](docs/guides/multi-stage-workloads.md).
 See [troubleshooting](docs/operations/errors.md) if submission or execution fails.
 
-## Development
-
-```bash
-python -m pip install -e '.[dev]'
-python -m pytest
-```
+## Contributing
 
 See [RELEASING.md](RELEASING.md) for release steps. Licensed under [Apache-2.0](LICENSE).

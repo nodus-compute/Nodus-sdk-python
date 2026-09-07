@@ -1,17 +1,11 @@
 # Installation and authentication
 
-Requires Python 3.10 or newer. This guide requires SDK version 0.1.2 or newer.
-PyPI 0.1.1 lacks device login and output download helpers. Install this checkout:
+Requires Python 3.10 or newer and Nodus SDK 0.1.2 or newer.
 
 ```bash
-git clone https://github.com/nodus-compute/Nodus-sdk-python.git
-cd Nodus-sdk-python
-python -m pip install -e .
+python -m pip install --upgrade "nodus_compute>=0.1.2"
 nodus --version
 ```
-
-After version 0.1.2 appears on PyPI, you can instead install with
-`python -m pip install --upgrade "nodus_compute>=0.1.2"`.
 
 Ask your Nodus onboarding contact for account access and your deployment API
 base URL. For API-key authentication, obtain a key through the same onboarding
