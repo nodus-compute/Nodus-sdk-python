@@ -3,7 +3,7 @@
   "info": {
     "title": "Nodus Workloads API",
     "version": "1.0.0",
-    "description": "Provider-neutral infrastructure execution for AI workloads. This contract describes customer API-key workload and webhook operations. Console sign-in, operator, runner and supplier protocols are outside its scope. Obtain a key using nodus login or the console. Use the deployment API origin as the base URL. No paid workload is executed by viewing this contract."
+    "description": "Provider-neutral infrastructure execution for AI workloads. Sign in with nodus login for a personal CLI session, or use an admin-created team API key for automation. Personal sessions follow current team membership. Console sign-in, operator, runner and supplier protocols are outside this contract. No paid workload is executed by viewing this contract."
   },
   "servers": [
     {
@@ -14,6 +14,9 @@
   "security": [
     {
       "ApiKey": []
+    },
+    {
+      "CliSession": []
     }
   ],
   "tags": [
@@ -781,7 +784,15 @@
             }
           }
         },
-        "description": "One webhook per account. Use public HTTPS. Omitted secret generates one. Save the PUT response securely."
+        "description": "One webhook per account. Use public HTTPS. Omitted secret generates one. Save the PUT response securely. Requires a current team administrator signed in with a personal CLI or browser session. Team API keys and member sessions cannot change this setting.",
+        "security": [
+          {
+            "CliSession": []
+          },
+          {
+            "ConsoleSession": []
+          }
+        ]
       },
       "delete": {
         "operationId": "deleteWebhook",
@@ -815,7 +826,16 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "CliSession": []
+          },
+          {
+            "ConsoleSession": []
+          }
+        ],
+        "description": " Requires a current team administrator signed in with a personal CLI or browser session. Team API keys and member sessions cannot change this setting."
       }
     },
     "/v1/assets": {
@@ -1162,6 +1182,36 @@
           }
         }
       }
+    },
+    "/v1/session/logout": {
+      "post": {
+        "operationId": "logoutCliSession",
+        "summary": "Revoke this personal CLI session",
+        "description": "Revokes only the authenticated personal CLI session. Team API keys and browser sessions cannot use this endpoint.",
+        "tags": [
+          "Account"
+        ],
+        "security": [
+          {
+            "CliSession": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Personal session revoked."
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1170,6 +1220,16 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "Nodus API key"
+      },
+      "CliSession": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "Personal Nodus CLI session"
+      },
+      "ConsoleSession": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "Nodus browser session"
       }
     },
     "schemas": {

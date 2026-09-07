@@ -7,7 +7,7 @@ from nodus.errors import APIConnectionError
 
 
 def test_valid_saved_login_does_not_start_browser(nodus_config, monkeypatch, capsys):
-    config.save_credentials('nk_live_saved', 'https://api.example')
+    config.save_session('nk_live_saved', 'https://api.example', session_id='cs_saved')
     seen = []
     def identity(http, key):
         seen.append(key)
@@ -23,7 +23,7 @@ def test_valid_saved_login_does_not_start_browser(nodus_config, monkeypatch, cap
 
 
 def test_network_error_keeps_saved_credentials(nodus_config, monkeypatch):
-    config.save_credentials('nk_live_saved', 'https://api.example')
+    config.save_session('nk_live_saved', 'https://api.example', session_id='cs_saved')
     before = nodus_config.read_bytes()
     def offline(*_):
         raise APIConnectionError('Cannot reach Nodus. Try again.')
@@ -45,7 +45,7 @@ def test_identity_http_and_unauthorized():
 
 
 def test_identity_fields_survive_save_and_clear(nodus_config):
-    config.save_credentials('nk_saved', 'https://api.example', email='v@example.com', name='Viswa')
+    config.save_session('nk_saved', 'https://api.example', email='v@example.com', name='Viswa', session_id='cs_saved')
     assert config.read_metadata()['email'] == 'v@example.com'
     config.clear_api_key()
     assert config.read_metadata() == {}
@@ -54,7 +54,7 @@ def test_identity_fields_survive_save_and_clear(nodus_config):
 @pytest.mark.parametrize("force", [False, True])
 def test_expired_or_forced_login_starts_new_flow(nodus_config, monkeypatch, force):
     from nodus.errors import AuthenticationError
-    config.save_credentials("nk_saved", "https://api.example")
+    config.save_session("nk_saved", "https://api.example", session_id="cs_saved")
     seen = []
     def identity(*_):
         if force:
@@ -64,6 +64,7 @@ def test_expired_or_forced_login_starts_new_flow(nodus_config, monkeypatch, forc
         seen.append(True)
         raise APIConnectionError("stopped before minting a key")
     monkeypatch.setattr(login, "fetch_identity", identity)
+    monkeypatch.setattr(login, "revoke_session", lambda *_: None)
     monkeypatch.setattr(login, "start_device_authorization", start)
     assert cli.main(["login"] + (["--force"] if force else [])) == 2
     assert seen == [True]
@@ -71,7 +72,7 @@ def test_expired_or_forced_login_starts_new_flow(nodus_config, monkeypatch, forc
 
 
 def test_override_url_never_receives_saved_key(nodus_config, monkeypatch):
-    config.save_credentials("nk_saved", "https://api.example")
+    config.save_session("nk_saved", "https://api.example", session_id="cs_saved")
     monkeypatch.setattr(login, "fetch_identity", lambda *_: pytest.fail("sent key to another server"))
     def start(*_):
         raise APIConnectionError("stop")
@@ -81,7 +82,7 @@ def test_override_url_never_receives_saved_key(nodus_config, monkeypatch):
 
 @pytest.mark.parametrize('status', [403, 429, 502])
 def test_server_refusal_preserves_saved_login(nodus_config, monkeypatch, status):
-    config.save_credentials('nk_saved', 'https://api.example')
+    config.save_session('nk_saved', 'https://api.example', session_id='cs_saved')
     before = nodus_config.read_bytes()
     requests = []
     def handle(request):
@@ -95,7 +96,7 @@ def test_server_refusal_preserves_saved_login(nodus_config, monkeypatch, status)
 
 
 def test_expired_key_completes_browser_refresh(nodus_config, monkeypatch, capsys):
-    config.save_credentials('nk_old', 'https://api.example')
+    config.save_session('nk_old', 'https://api.example', session_id='cs_saved')
     paths = []
     def handle(request):
         paths.append(request.url.path)
@@ -110,11 +111,11 @@ def test_expired_key_completes_browser_refresh(nodus_config, monkeypatch, capsys
                 'expires_in': 600, 'interval': 1,
             })
         return httpx.Response(200, json={
-            'api_key': 'nk_new', 'email': 'v@example.com', 'name': 'Viswa',
+            'access_token': 'nc_new', 'session_id': 'cs_new', 'email': 'v@example.com', 'name': 'Viswa',
         })
     monkeypatch.setattr(login, 'open_http', lambda url: httpx.Client(
         base_url=url, transport=httpx.MockTransport(handle)))
     assert cli.main(['login', '--no-browser']) == 0
     assert paths == ['/v1/identity', login.START_PATH, login.TOKEN_PATH]
-    assert config.read_credentials() == ('nk_new', 'https://api.example')
+    assert config.read_credentials() == ('nc_new', 'https://api.example')
     assert 'Welcome, v@example.com!' in capsys.readouterr().out

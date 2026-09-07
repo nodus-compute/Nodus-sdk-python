@@ -88,8 +88,8 @@ class _DeviceHandler(BaseHTTPRequestHandler):
 
 
 APPROVED = {
-    "api_key": "nk_live_5f2a91c3d4e5",
-    "key_id": "key_a1b2c3d4e5f6",
+    "access_token": "nc_personal_5f2a91c3d4e5",
+    "session_id": "cs_a1b2c3d4e5f6",
     "base_url": "https://api.nodus.example",
     "tenant": "acme",
     "expires_at": "2026-11-30T00:00:00Z",
@@ -109,8 +109,9 @@ def _started(**over: Any) -> dict[str, Any]:
 
 
 @pytest.fixture
-def console():
+def console(monkeypatch):
     """A console serving the device endpoints, scripted per test."""
+    monkeypatch.setattr(login, "revoke_session", lambda *_: None)
     script = _Script(start=(201, _started()), token=[(200, APPROVED)])
     server = ThreadingHTTPServer(("127.0.0.1", 0), _DeviceHandler)
     server.script = script  # type: ignore[attr-defined]
@@ -591,7 +592,7 @@ def test_a_table_where_a_credential_goes_is_refused_not_overwritten(nodus_config
     assert 'note = "mine"' in nodus_config.read_text(encoding="utf-8")
 
 
-def test_a_write_that_fails_anyway_shows_the_key_once_rather_than_losing_it(
+def test_a_failed_save_revokes_new_session_without_printing_its_token(
     console, nodus_config, monkeypatch, capsys
 ):
     """The backstop for whatever the pre-flight could not see coming.
@@ -608,8 +609,8 @@ def test_a_write_that_fails_anyway_shows_the_key_once_rather_than_losing_it(
     monkeypatch.setattr(config.os, "replace", boom)
     assert _login(console) == 2
     err = capsys.readouterr().err
-    assert err.count(APPROVED["api_key"]) == 1
-    assert "revoke it in the console" in err
+    assert APPROVED["access_token"] not in err
+    assert "new session was revoked" in err
 
 
 @pytest.mark.parametrize(
@@ -632,12 +633,12 @@ def test_a_key_the_client_could_never_send_is_refused_not_stored(
     Tenant is withheld so "Signed in as" would have to fall back to the
     redacted key, which is the print a C1 escape would otherwise reach.
     """
-    console.token = [(200, dict(APPROVED, api_key=bad_key, tenant=""))]
+    console.token = [(200, dict(APPROVED, access_token=bad_key, tenant=""))]
     assert _login(console) == 2
     printed = _both_streams(capsys)
     assert not any(ch < " " and ch != "\n" for ch in printed)
     assert not any("\x7f" <= ch <= "\x9f" for ch in printed)
-    assert "console sent an API key" in printed
+    assert "invalid sign-in token" in printed
     assert "Signed in" not in printed
     assert not nodus_config.exists(), "an unsendable key must not be stored"
 
@@ -651,7 +652,7 @@ def test_the_refusal_still_identifies_the_key_when_the_console_names_none(
     ]
     assert _login(console) == 2
     err = capsys.readouterr().err
-    assert "most recent" in err
+    assert "access_token" in err
     assert not nodus_config.exists()
 
 
@@ -665,17 +666,17 @@ def test_login_writes_a_config_the_client_then_resolves_from(console, nodus_conf
     assert str(nodus_config) in printed
     assert "Welcome!" in printed
     assert "Signed in as acme" not in printed
-    assert APPROVED["api_key"] not in printed, "the key itself must not be printed"
+    assert APPROVED["access_token"] not in printed, "the key itself must not be printed"
 
     with nodus.Client() as c:
         assert c.base_url == APPROVED["base_url"]
-        assert c.api_key == nodus._redact(APPROVED["api_key"])
+        assert c.api_key == nodus._redact(APPROVED["access_token"])
 
 
 def test_login_stores_what_names_the_key_for_revocation(console, nodus_config):
     assert _login(console) == 0
     assert config.read_metadata() == {
-        "key_id": APPROVED["key_id"],
+        "session_id": APPROVED["session_id"],
         "tenant": APPROVED["tenant"],
         "expires_at": APPROVED["expires_at"],
     }
@@ -715,7 +716,7 @@ def test_a_slow_down_waits_at_least_as_long_as_retry_after_asks(console):
         creds = login.poll_for_credentials(
             http, device, console.base_url, sleep=slept.append
         )
-    assert creds.api_key == APPROVED["api_key"]
+    assert creds.access_token == APPROVED["access_token"]
     assert slept and slept[0] == 30.0
 
 
@@ -1010,9 +1011,8 @@ def test_logout_names_the_key_it_removed_and_is_honest_about_the_server(
 
     assert cli.main(["logout"]) == 0
     out = capsys.readouterr().out
-    assert APPROVED["key_id"] in out, "the only handle the console revokes by"
-    assert str(nodus_config) in out
-    assert "revoke" in out.lower()
+    assert "Signed out" in out
+    assert "revoked" in out
     assert "api_key" not in nodus_config.read_text(encoding="utf-8")
 
 

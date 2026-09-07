@@ -25,8 +25,8 @@ Prefer a `with` block. Otherwise call `close()`.
 | `download_output(id, name, destination, stage=None)` | Verified local `Path` |
 | `routing(id)` | Placement-history dictionaries ordered by stage ID and generation |
 | `ledger(id)` | `Ledger` |
-| `set_webhook(url, secret=None)` | Webhook configuration response dictionary |
-| `get_webhook()` / `delete_webhook()` | Read configuration / remove it |
+| `set_webhook(url, secret=None)` | Webhook configuration. Requires a personal admin session |
+| `get_webhook()` / `delete_webhook()` | Read configuration / remove it. Removal requires a personal admin session |
 | `healthz()` / `readyz()` | Deployment health/readiness dictionaries |
 
 Options after resource IDs are keyword-only. Status filters accept enum values,

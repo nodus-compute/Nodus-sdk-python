@@ -396,7 +396,12 @@ def _env_outranks(*names: str) -> list[str]:
 
 def _cmd_login(args: argparse.Namespace) -> int:
     base_url = _resolve_base_url(args.base_url)
-    saved_key, saved_url = config.read_credentials()
+    saved_key, saved_url = config.read_session()
+    previous_session_id = config.read_metadata().get("session_id", "")
+    legacy_key = config.read_credentials()[0] if not saved_key else ""
+    if legacy_key:
+        print("Your saved API key needs a new personal sign-in. It will not be revoked automatically.")
+        print("Manage old API keys in the console. A failed sign-in keeps your existing profile.")
     if saved_key and saved_url.rstrip("/") == base_url and not args.force:
         with login.open_http(base_url) as http:
             try:
@@ -404,6 +409,7 @@ def _cmd_login(args: argparse.Namespace) -> int:
             except NodusError as exc:
                 if exc.status_code != 401:
                     raise
+                saved_key = ""
                 print("Your saved sign-in is no longer valid. Let's sign you in again.")
             else:
                 who = identity.get("email") or identity.get("name")
@@ -428,65 +434,39 @@ def _cmd_login(args: argparse.Namespace) -> int:
         with _wait_activity("browser sign-in"):
             creds = login.poll_for_credentials(http, device, base_url)
 
-    # The same predicate that gates sending a key gates keeping one: a stored
-    # key the client cannot put in a header fails every later command, and by
-    # then it has only ever been shown redacted. config.save_credentials
-    # refuses such a key too; this refusal is the one that can say whose
-    # fault it is.
-    if not _is_header_safe(creds.api_key):
-        which = (
-            f"key {_safe_line(creds.key_id)}"
-            if creds.key_id
-            # No id to revoke by; how it was just minted is the next handle.
-            else "the key -- the console lists it as the most recent for this device"
-        )
-        print(
-            "The console sent an API key this client cannot use: a key must "
-            "be printable ASCII with no spaces to travel in a request "
-            f"header. Nothing was stored. Revoke {which} in the console and "
-            "sign in again.",
-            file=sys.stderr,
-        )
+    if not _is_header_safe(creds.access_token):
+        print("The console returned an invalid sign-in token. Nothing was stored. Sign in again.", file=sys.stderr)
         return 2
-
-    # A caveat about the file belongs in the sentence a person is reading, not
-    # in a UserWarning with a source line under it.
-    with warnings.catch_warnings(record=True) as caveats:
-        warnings.simplefilter("always")
+    try:
+        path = config.save_session(
+            creds.access_token, creds.base_url, session_id=creds.session_id,
+            tenant=creds.tenant, expires_at=creds.expires_at, email=creds.email, name=creds.name,
+        )
+    except BaseException as exc:
+        print(f"Could not save your sign-in: {_safe_line(exc)}.", file=sys.stderr)
         try:
-            path = config.save_credentials(
-                creds.api_key,
-                creds.base_url,
-                key_id=creds.key_id,
-                tenant=creds.tenant,
-                expires_at=creds.expires_at,
-                email=creds.email,
-                name=creds.name,
-            )
-        except BaseException as exc:
-            # The key exists on the server whether or not this write worked,
-            # and the write can fail for reasons that are not the key's --
-            # a full disk, permissions, a foreign entry the dump refuses.
-            # Showing it once is the only way it is not lost while still
-            # live; repr stays copy-pasteable and cannot act on a terminal.
-            print(
-                f"Could not write {config.config_path()}: {_safe_line(exc)}. "
-                f"Your key, shown in quotes that are not part of it: "
-                f"{creds.api_key!r} - it will not be shown again. "
-                "Store it, or revoke it in the console.",
-                file=sys.stderr,
-            )
-            if isinstance(exc, Exception):
-                return 2
-            raise
+            with login.open_http(creds.base_url) as http:
+                login.revoke_session(http, creds.access_token)
+            print("The new session was revoked. Your previous profile is unchanged.", file=sys.stderr)
+        except NodusError:
+            print(f"Could not revoke session {_safe_line(creds.session_id)}. Contact Nodus support with this session ID.", file=sys.stderr)
+        if isinstance(exc, Exception):
+            return 2
+        raise
+
+    if saved_key and saved_key != creds.access_token:
+        try:
+            with login.open_http(saved_url) as http:
+                login.revoke_session(http, saved_key)
+        except NodusError:
+            print("Signed in, but your previous session could not be revoked. "
+                  f"Contact Nodus support with session ID {_safe_line(previous_session_id) or 'unavailable'}.", file=sys.stderr)
 
     # Use a human identity when supplied. Tenant IDs are infrastructure details.
     who = creds.email or creds.name
     print(accent(f"Welcome, {_safe_line(who)}! You're signed in." if who else "Welcome! You're signed in.", "green"))
     print(f"Sign-in saved to {path}")
     print("Keep this file private. Next: nodus init")
-    for caveat in caveats:
-        print(f"Note: {_safe_line(caveat.message)}", file=sys.stderr)
     for name in _env_outranks("NODUS_API_KEY", "NODUS_BASE_URL"):
         print(
             f"Note: {name} is set in this environment and outranks the file, "
@@ -498,9 +478,19 @@ def _cmd_login(args: argparse.Namespace) -> int:
 
 def _cmd_logout(args: argparse.Namespace) -> int:
     path = config.config_path()
+    token, session_url = config.read_session()
+    if token:
+        try:
+            with login.open_http(session_url) as http:
+                login.revoke_session(http, token)
+        except NodusError:
+            print("Could not revoke your session. Your saved sign-in remains. Check your connection and retry nodus logout.", file=sys.stderr)
+            return 2
     removed = config.clear_api_key()
     if removed is None:
         print(f"No stored key to remove: {path}")
+    elif token:
+        print("Signed out. Your session was revoked and removed from this device.")
     else:
         named = f" {_safe_line(removed['key_id'])}" if removed.get("key_id") else ""
         print(f"Removed the stored key{named} from {path}")
@@ -549,14 +539,14 @@ Use nodus COMMAND --help for command options.""",
     # SUPPRESS, not None: a subparser default is copied over the namespace the
     # top-level parser already filled, so `nodus --base-url X login` would lose
     # its address to the subcommand that also offers the flag.
-    i = sub.add_parser("login", help="sign in and store an API key")
+    i = sub.add_parser("login", help="sign in to your personal account")
     i.add_argument("--base-url", default=argparse.SUPPRESS,
                    help="which deployment to sign in to")
     i.add_argument("--force", action="store_true", help="sign in again or switch accounts")
     i.add_argument("--no-browser", action="store_true",
                    help="print the address instead of opening it")
 
-    sub.add_parser("logout", help="delete the stored API key")
+    sub.add_parser("logout", help="revoke your personal sign-in")
 
     i = sub.add_parser("init", help="create a starter workload file")
     i.add_argument("file", nargs="?", default="nodus.toml")

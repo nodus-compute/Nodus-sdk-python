@@ -7,8 +7,8 @@ Replace `ID` with a workload ID. These commands describe SDK 0.3.0.
 
 | Command | What it does |
 |---|---|
-| `nodus login` | Open browser sign-in and save credentials |
-| `nodus logout` | Remove the locally saved key |
+| `nodus login` | Reuse your login or sign in through the browser |
+| `nodus logout` | Revoke your personal session and remove the saved login |
 | `nodus init` | Create a starter `nodus.toml` without submitting work |
 
 For headless machines and automation, see [authentication](../getting-started/authentication.md).
