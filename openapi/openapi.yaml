@@ -1467,6 +1467,10 @@
           },
           "meter": {
             "$ref": "#/components/schemas/Meter"
+          },
+          "name": {
+            "type": "string",
+            "description": "Saved display name for the workload."
           }
         },
         "x-go-source": "internal/store/pilot.go",
