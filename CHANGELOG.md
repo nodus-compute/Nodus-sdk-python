@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1
+
+- Update the default hosted API endpoint.
+- Move saved settings and explicit URLs for the retired hosted endpoint to the
+  current endpoint. Custom deployment URLs keep their existing behavior.
+
 ## 0.2.0
 
 - Simplify the CLI around workload files and short commands. Replace `get` with
