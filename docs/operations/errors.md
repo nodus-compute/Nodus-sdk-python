@@ -6,7 +6,7 @@ issue. Python argument mistakes (`TypeError` / `ValueError`) are separate.
 
 | Error | Action |
 |---|---|
-| `ConfigurationError` | Set the missing URL/key or fix configuration |
+| `ConfigurationError` | Run `nodus login` or fix the reported configuration problem |
 | `AuthenticationError` | Check deployment/key pairing, expiry, or revocation |
 | `SignatureError` | Check signing secret and clock for signed requests |
 | `ValidationError` | Correct the rejected request field |

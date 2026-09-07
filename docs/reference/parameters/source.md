@@ -10,12 +10,13 @@ Use an explicit image and command. Omitting the command is accepted by this SDK,
 but is not a portable way to invoke an image entrypoint: deployment bootstrap
 controls execution. It is unsuitable for a first workload.
 
+Inside a `with nodus.Client() as client:` block:
+
 ```python
 workload = client.run(
     image="pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime",
     command=["python", "-c", "print('ready')"],
     budget=5,
-    continuity="restartable",
 )
 ```
 

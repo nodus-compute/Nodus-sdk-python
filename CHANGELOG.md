@@ -2,6 +2,9 @@
 
 ## 0.1.3
 
+- Print workload statuses as readable values such as `completed`.
+- Execute documentation examples and terminal commands in package CI.
+
 - Connect to hosted Nodus with `nodus login` without an API URL.
 - Show terminal activity while browser approval is pending.
 - Keep custom endpoint overrides and saved configuration precedence.
