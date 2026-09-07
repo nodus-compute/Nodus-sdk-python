@@ -67,6 +67,7 @@ jobs:
           python -m venv "$RUNNER_TEMP/wheel-venv"
           "$RUNNER_TEMP/wheel-venv/bin/pip" install dist/*.whl pytest
           mkdir "$RUNNER_TEMP/wheel-run"
-          cp -r tests "$RUNNER_TEMP/wheel-run/tests"
+          # Include documentation fixtures without copying the importable SDK.
+          cp -r tests docs examples openapi README.md LICENSE RELEASING.md pyproject.toml "$RUNNER_TEMP/wheel-run/"
           cd "$RUNNER_TEMP/wheel-run"
           "$RUNNER_TEMP/wheel-venv/bin/python" -m pytest -q tests
