@@ -1167,6 +1167,11 @@
             "items": {
               "$ref": "#/components/schemas/StagePayload"
             }
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "Optional display name for the run, saved across sessions. Control characters are not allowed."
           }
         },
         "x-go-source": "internal/models/models.go",
@@ -1798,6 +1803,11 @@
               "null"
             ],
             "description": "Member who submitted the workload. Null for historical or unattributed submissions. Attribution is assigned by the server."
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "Optional display name for the run, saved across sessions. Control characters are not allowed."
           }
         },
         "x-go-source": "internal/store/pilot.go",
