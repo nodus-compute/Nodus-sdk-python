@@ -186,3 +186,11 @@ def test_login_saved_credentials_and_logout_in_separate_processes(docs_api, tmp_
                             cwd=tmp_path, capture_output=True, text=True, timeout=20)
     assert result.returncode == 2
     assert "nodus login" in result.stderr
+
+
+def test_status_prints_the_public_value_without_changing_json():
+    status = nodus.WorkloadStatus.COMPLETED
+    assert f"Status: {status}" == "Status: completed"
+    assert status == "completed"
+    assert json.dumps({"status": status}) == '{"status": "completed"}'
+    assert nodus.WorkloadStatus.coerce("future_status") == "future_status"

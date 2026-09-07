@@ -87,6 +87,9 @@ class InterruptTolerance(_WireEnum):
 class WorkloadStatus(_WireEnum):
     """Lifecycle, in order."""
 
+    def __str__(self) -> str:
+        return self.value
+
     ACCEPTED = "accepted"
     PLANNING = "planning"
     RESERVING = "reserving"
