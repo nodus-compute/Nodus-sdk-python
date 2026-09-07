@@ -36,7 +36,6 @@ class Requirements(TypedDict, total=False):
     model: str
     compute_class: Literal["vm", "accelerator"] | ComputeClass
     dataset_bytes: int
-    expected_runtime_hours: float
     peak_memory_gb: float
     notes: str
 

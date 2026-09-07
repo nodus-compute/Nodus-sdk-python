@@ -3,7 +3,7 @@
   "info": {
     "title": "Nodus Workloads API",
     "version": "1.0.0",
-    "description": "Provider-neutral infrastructure execution for AI workloads. This contract describes customer API-key workload and webhook operations. Console sign-in, operator, runner and supplier protocols are outside its scope. Obtain a key using nodus login or the console. Use the deployment API origin as the base URL. No paid workload is executed by viewing this contract."
+    "description": "Provider-neutral infrastructure execution for AI workloads. Sign in with nodus login for a personal CLI session, or use an admin-created team API key for automation. Personal sessions follow current team membership. Console sign-in, operator, runner and supplier protocols are outside this contract. No paid workload is executed by viewing this contract."
   },
   "servers": [
     {
@@ -14,6 +14,9 @@
   "security": [
     {
       "ApiKey": []
+    },
+    {
+      "CliSession": []
     }
   ],
   "tags": [
@@ -781,7 +784,15 @@
             }
           }
         },
-        "description": "One webhook per account. Use public HTTPS. Omitted secret generates one. Save the PUT response securely."
+        "description": "One webhook per account. Use public HTTPS. Omitted secret generates one. Save the PUT response securely. Requires a current team administrator signed in with a personal CLI or browser session. Team API keys and member sessions cannot change this setting.",
+        "security": [
+          {
+            "CliSession": []
+          },
+          {
+            "ConsoleSession": []
+          }
+        ]
       },
       "delete": {
         "operationId": "deleteWebhook",
@@ -815,7 +826,16 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "CliSession": []
+          },
+          {
+            "ConsoleSession": []
+          }
+        ],
+        "description": " Requires a current team administrator signed in with a personal CLI or browser session. Team API keys and member sessions cannot change this setting."
       }
     },
     "/v1/assets": {
@@ -1111,6 +1131,87 @@
           }
         }
       }
+    },
+    "/v1/identity": {
+      "get": {
+        "operationId": "getIdentity",
+        "summary": "Read the saved credential identity",
+        "description": "Returns the owning user email when this credential belongs to a current team member. Service keys return empty email and name fields. No workload is submitted.",
+        "tags": [
+          "Account"
+        ],
+        "responses": {
+          "200": {
+            "description": "Authenticated identity. This response is not cached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "email",
+                    "name",
+                    "tenant"
+                  ],
+                  "properties": {
+                    "email": {
+                      "type": "string",
+                      "description": "Owner email, or empty for a service key."
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "Display name when available, otherwise empty."
+                    },
+                    "tenant": {
+                      "type": "string",
+                      "description": "Authenticated account identifier."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/session/logout": {
+      "post": {
+        "operationId": "logoutCliSession",
+        "summary": "Revoke this personal CLI session",
+        "description": "Revokes only the authenticated personal CLI session. Team API keys and browser sessions cannot use this endpoint.",
+        "tags": [
+          "Account"
+        ],
+        "security": [
+          {
+            "CliSession": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Personal session revoked."
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1119,6 +1220,16 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "Nodus API key"
+      },
+      "CliSession": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "Personal Nodus CLI session"
+      },
+      "ConsoleSession": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "Nodus browser session"
       }
     },
     "schemas": {
@@ -1246,10 +1357,6 @@
           "dataset_bytes": {
             "type": "integer"
           },
-          "expected_runtime_hours": {
-            "type": "number",
-            "description": "Estimated runtime in hours, used for placement and account admission. Omitted/nonpositive values use the profiler estimate. Account admission estimates omitted runtime at one hour. Not a timeout."
-          },
           "peak_memory_gb": {
             "type": "number",
             "description": "Peak memory fit hint in GB. Placement derives infrastructure. This is not an instance SKU."
@@ -1259,7 +1366,11 @@
           }
         },
         "x-go-source": "internal/models/models.go",
-        "x-go-type": "Requirements"
+        "x-go-type": "Requirements",
+        "additionalProperties": false,
+        "x-go-internal-properties": [
+          "expected_runtime_hours"
+        ]
       },
       "Outcome": {
         "type": "object",
@@ -1446,6 +1557,13 @@
           },
           "meter": {
             "$ref": "#/components/schemas/Meter"
+          },
+          "owner_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The submitting team member, or null when no member owns this workload."
           }
         },
         "x-go-source": "internal/models/models.go",
@@ -1517,6 +1635,17 @@
             "items": {
               "$ref": "#/components/schemas/CustomerRejectedOffer"
             }
+          },
+          "cost_basis": {
+            "type": "string",
+            "enum": [
+              "initial_reservation"
+            ],
+            "description": "Present when runtime is unknown. The amount reserves an initial execution window and does not predict completion cost."
+          },
+          "initial_reservation_usd": {
+            "type": "number",
+            "description": "Initial execution reservation in USD. Actual charges and configured spending limits govern the running workload."
           }
         },
         "x-go-source": "internal/models/models.go",
@@ -1582,6 +1711,13 @@
           },
           "total_usd": {
             "type": "number"
+          },
+          "basis": {
+            "type": "string",
+            "enum": [
+              "initial_reservation"
+            ],
+            "description": "Identifies a bounded initial execution window instead of a completion estimate."
           }
         },
         "x-go-source": "internal/models/models.go",

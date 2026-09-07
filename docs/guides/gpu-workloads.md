@@ -15,7 +15,6 @@ with nodus.Client() as client:
             "print(torch.cuda.get_device_name(0))",
         ],
         peak_memory_gb=24,
-        expected_runtime_hours=0.1,
         budget=5,
     )
     print(workload.id)
@@ -39,7 +38,6 @@ with nodus.Client() as client:
         command=["python", "/app/train.py", "--epochs", "3"],
         model="LoRA-fine-tune",
         peak_memory_gb=24,
-        expected_runtime_hours=2,
         budget=25,
     )
     print(workload.id)

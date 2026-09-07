@@ -50,7 +50,7 @@ def docs_api(monkeypatch):
         def do_GET(self):
             path = urlsplit(self.path).path
             calls.append(("GET", path))
-            if self.headers.get("Authorization") != "Bearer nk_docs":
+            if self.headers.get("Authorization") not in ("Bearer nk_docs", "Bearer nc_docs"):
                 return self.reply({"error": "unauthorized"}, 401)
             if path == "/v1/assets":
                 return self.reply({"assets": [], "max_import_bytes": 1048576})
@@ -88,7 +88,7 @@ def docs_api(monkeypatch):
             else:
                 raw = self.rfile.read(int(self.headers.get("Content-Length", 0)))
             if path in ("/v1/assets/upload", "/v1/assets/import"):
-                if self.headers.get("Authorization") != "Bearer nk_docs":
+                if self.headers.get("Authorization") not in ("Bearer nk_docs", "Bearer nc_docs"):
                     return self.reply({"error": "unauthorized"}, 401)
                 return self.reply({"id": "asset_docs", "state": "ready", "name": "fixture", "kind": "file"}, 201)
             payload = json.loads(raw or b"{}")
@@ -97,9 +97,11 @@ def docs_api(monkeypatch):
                 return self.reply({"device_code": "device-test", "user_code": "ABCD-EFGH",
                     "verification_url": "https://console.nodus-compute.ai/device?code=ABCD-EFGH", "interval": 1, "expires_in": 60})
             if path == "/v1/console/device/token":
-                return self.reply({"api_key": "nk_docs", "base_url": address, "tenant": "docs-test"})
-            if self.headers.get("Authorization") != "Bearer nk_docs":
+                return self.reply({"access_token": "nc_docs", "session_id": "cs_docs", "base_url": address, "tenant": "docs-test"})
+            if self.headers.get("Authorization") not in ("Bearer nk_docs", "Bearer nc_docs"):
                 return self.reply({"error": "unauthorized"}, 401)
+            if path == "/v1/session/logout":
+                return self.reply({}, 204)
             if path == "/v1/workloads":
                 submissions.append(payload)
                 if not self.headers.get("Idempotency-Key") or not payload.get("outcome", {}).get("max_cost_usd"):
@@ -189,7 +191,8 @@ def test_installed_terminal_commands(args, docs_api, tmp_path):
     assert result.returncode == 0, result.stderr
     assert "Traceback" not in result.stderr
     assert "\x1b" not in result.stdout
-    assert "elapsed" not in result.stderr
+    assert "\r" not in result.stderr
+    assert "\x1b" not in result.stderr
     if args[0] == "download":
         assert (tmp_path / "outputs/wl_docs/summarize/result").read_bytes() == DATA
 
@@ -207,6 +210,7 @@ def test_login_saved_credentials_and_logout_in_separate_processes(docs_api, tmp_
                                 cwd=tmp_path, capture_output=True, text=True, timeout=20)
         assert result.returncode == 0, result.stderr
         assert "nk_docs" not in result.stdout
+        assert "nc_docs" not in result.stdout
 
     result = subprocess.run([sys.executable, "-c", bootstrap, "list"], env=env,
                             cwd=tmp_path, capture_output=True, text=True, timeout=20)

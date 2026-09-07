@@ -249,10 +249,8 @@ _REMEDIES: dict[str, str] = {
         'finish_by must be a datetime, or RFC3339 text such as "2026-01-02T15:04:05Z".'
     ),
     "budget_exceeded": (
-        "Raise the cap in the console, or lower budget= or expected_runtime_hours "
-        "and resubmit; monthly_cap_usd, month_to_date_usd, accruing_usd, "
-        "in_flight_committed_usd and headroom_usd on this error carry the "
-        "arithmetic the refusal was made from."
+        "This run does not fit your available spending limit. "
+        "Review your team's limit in the console or set a smaller workload budget."
     ),
     "spend_check_unavailable": (
         "The account spend check could not be reached, so the submission was "

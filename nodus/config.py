@@ -1,16 +1,19 @@
 """``~/.nodus/config.toml``, the file ``nodus login`` writes and the client reads.
 
-One section, five keys, all text::
+One section, with text values::
 
     [default]
-    api_key    = "nk_live_..."
+    access_token = "nc_..."
     base_url   = "https://api.nodus.run"
-    key_id     = "key_a1b2c3d4e5f6"
+    session_id = "cs_a1b2c3d4e5f6"
     tenant     = "acme"
     expires_at = "2026-11-30T00:00:00Z"
+    email      = "you@example.com"
+    name       = "Your name"
 
-Building a client reads ``api_key`` and ``base_url`` and nothing else. The rest
-names the key, so ``nodus logout`` can say which one is left to revoke.
+Building a client reads the personal ``access_token`` and ``base_url``.
+Legacy ``api_key`` profiles remain readable for programmatic use.
+``nodus logout`` revokes a personal session before removing its local copy.
 ``expires_at`` is kept as text and never parsed here, because no two runtimes
 agree on what a timestamp may contain.
 
@@ -29,7 +32,6 @@ import re
 import stat
 import sys
 import tempfile
-import warnings
 from pathlib import Path
 from typing import Any, Callable
 
@@ -49,7 +51,7 @@ PROFILE = "default"
 
 #: Written by a login, cleared by a logout. ``api_key`` is the credential; the
 #: rest identifies it for the person who has to revoke it.
-CREDENTIAL_FIELDS = ("api_key", "key_id", "tenant", "expires_at")
+CREDENTIAL_FIELDS = ("api_key", "key_id", "tenant", "expires_at", "email", "name", "access_token", "session_id")
 
 # A key TOML lets stand without quotes. Anything else is quoted on the way out,
 # because a parsed key is written back verbatim and "my key" is not a bare key.
@@ -248,14 +250,15 @@ def _string(path: Path, section: dict[str, Any], name: str) -> str:
 
 
 def read_credentials() -> tuple[str, str]:
-    """``(api_key, base_url)`` from the file. Either is ``""`` when unset."""
+    """``(bearer_token, base_url)`` from the file, preferring a personal session."""
     path = config_path()
     section = _profile(path)
-    return _string(path, section, "api_key"), _string(path, section, "base_url")
+    token = _string(path, section, "access_token") or _string(path, section, "api_key")
+    return token, _string(path, section, "base_url")
 
 
 def read_metadata() -> dict[str, str]:
-    """What names the stored key: ``key_id``, ``tenant``, ``expires_at``.
+    """Metadata for the stored key and its human identity.
 
     Only the keys the file actually carries, so a file written before these
     existed reads as ``{}`` rather than as three empty strings.
@@ -263,7 +266,7 @@ def read_metadata() -> dict[str, str]:
     path = config_path()
     section = _profile(path)
     found = {}
-    for name in ("key_id", "tenant", "expires_at"):
+    for name in ("key_id", "tenant", "expires_at", "email", "name", "session_id"):
         value = _string(path, section, name)
         if value:
             found[name] = value
@@ -490,6 +493,8 @@ def save_credentials(
     key_id: str = "",
     tenant: str = "",
     expires_at: str = "",
+    email: str = "",
+    name: str = "",
 ) -> Path:
     """Store the key and what names it, and return the path written.
 
@@ -506,9 +511,11 @@ def save_credentials(
             "sent is worse than no key, so it is refused rather than stored."
         )
     path = config_path()
-    fields = {"key_id": key_id, "tenant": tenant, "expires_at": expires_at}
+    fields = {"key_id": key_id, "tenant": tenant, "expires_at": expires_at, "email": email, "name": name}
 
     def edit(section: dict[str, Any]) -> None:
+        section.pop("access_token", None)
+        section.pop("session_id", None)
         section["api_key"] = api_key
         section["base_url"] = base_url
         for name, value in fields.items():
@@ -518,13 +525,6 @@ def save_credentials(
                 section.pop(name, None)
 
     _rewrite(path, edit)
-    if os.name != "posix":
-        warnings.warn(
-            f"{path} holds your API key. This platform has no 0600, so the "
-            "file inherits the permissions of your profile directory rather "
-            "than being narrowed further.",
-            stacklevel=2,
-        )
     return path
 
 
@@ -536,7 +536,7 @@ def clear_api_key() -> dict[str, str] | None:
     """
     path = config_path()
     section = _profile(path)
-    if not section.get("api_key"):
+    if not section.get("api_key") and not section.get("access_token"):
         return None
     removed = read_metadata()
 
@@ -546,3 +546,27 @@ def clear_api_key() -> dict[str, str] | None:
 
     _rewrite(path, edit)
     return removed
+
+
+def read_session() -> tuple[str, str]:
+    """The personal access token and its base URL, without any API-key fallback."""
+    path = config_path()
+    section = _profile(path)
+    return _string(path, section, "access_token"), _string(path, section, "base_url")
+
+
+def save_session(access_token: str, base_url: str, *, session_id: str,
+                 tenant: str = "", expires_at: str = "", email: str = "", name: str = "") -> Path:
+    """Atomically replace the local login with a revocable personal session."""
+    if not _is_header_safe(access_token):
+        raise ConfigurationError("The sign-in token contains invalid characters. Sign in again.")
+    path = config_path()
+    def edit(section: dict[str, Any]) -> None:
+        for field in CREDENTIAL_FIELDS:
+            section.pop(field, None)
+        section.update(access_token=access_token, base_url=base_url, session_id=session_id)
+        for field, value in {"tenant": tenant, "expires_at": expires_at, "email": email, "name": name}.items():
+            if value:
+                section[field] = value
+    _rewrite(path, edit)
+    return path

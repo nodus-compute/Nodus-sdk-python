@@ -78,22 +78,6 @@ def _warn_if_it_cannot_bootstrap(image: str) -> None:
     )
 
 
-def _warn_if_it_is_uncapped(outcome: dict[str, Any]) -> None:
-    """Warn while the brief is still free, for a submission with no cost ceiling.
-
-    An omitted budget is not a small budget: the run is admitted against the
-    account cap alone and bills whatever it takes to finish.
-    """
-    if "max_cost_usd" in outcome:
-        return
-    warnings.warn(
-        "no budget= given, so this workload is capped only by the account spend "
-        "cap and will bill whatever it costs to finish. Pass budget=<usd> to "
-        "bound it.",
-        stacklevel=_caller_stacklevel(),
-    )
-
-
 def _as_command(command: list[str] | str | None) -> list[str]:
     """Argv for the workload. A string is split the way a shell would split it."""
     if isinstance(command, str):
@@ -161,6 +145,18 @@ def _reject_unknown(unknown: dict[str, Any], known: tuple[str, ...]) -> None:
     )
 
 
+def reject_customer_runtime(value: Any) -> None:
+    """Reject duration hints across all customer input surfaces."""
+    if isinstance(value, dict):
+        if any(isinstance(key, str) and key.casefold() == "expected_runtime_hours" for key in value):
+            raise ValueError("Nodus manages runtime estimates. Remove expected_runtime_hours from your workload.")
+        for field in ("requirements", "stages", "extra"):
+            reject_customer_runtime(value.get(field))
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            reject_customer_runtime(item)
+
+
 def build_payload(
     *,
     image: str | None = None,
@@ -172,7 +168,6 @@ def build_payload(
     model: str | None = None,
     compute_class: Any = None,
     peak_memory_gb: float | None = None,
-    expected_runtime_hours: float | None = None,
     budget: float | None = None,
     finish_by: datetime | str | None = None,
     continuity: Any = None,
@@ -188,6 +183,10 @@ def build_payload(
     ``extra`` is merged last, for a field the control plane models and this SDK
     version does not. Anything else is refused rather than forwarded.
     """
+    reject_customer_runtime(unknown)
+    reject_customer_runtime(requirements)
+    reject_customer_runtime(stages)
+    reject_customer_runtime(extra)
     _reject_unknown(unknown, BRIEF_FIELDS)
     _validate_assets(source_asset_id, inputs)
     _validate_outputs(outputs)
@@ -205,8 +204,6 @@ def build_payload(
         req.setdefault("compute_class", _enum_value(compute_class))
     if peak_memory_gb is not None:
         req.setdefault("peak_memory_gb", peak_memory_gb)
-    if expected_runtime_hours is not None:
-        req.setdefault("expected_runtime_hours", expected_runtime_hours)
 
     # Data residency lives in policy: the envelope reads Policy.DataRegions, and
     # Requirements has no such field. An explicit policy= wins over the shortcut.
@@ -351,7 +348,6 @@ def _warn_about_the_money(payload: dict[str, Any]) -> None:
     After the merge, not before: a warning drawn from a draft can describe a
     submission that never happens.
     """
-    _warn_if_it_is_uncapped(payload.get("outcome") or {})
     source = payload.get("source") or {}
     if source.get("image"):
         _warn_if_it_cannot_bootstrap(source["image"])

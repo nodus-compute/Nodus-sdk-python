@@ -58,15 +58,13 @@ same configuration and validation.
 ## Add options as needed
 
 Top-level keys use the same names as [Python submission parameters](../reference/parameters/index.md).
-For example, add `peak_memory_gb = 24` or `expected_runtime_hours = 2` before any
-TOML table. Nested dictionaries use TOML tables:
+For example, add `peak_memory_gb = 24` before any TOML table. Nested dictionaries use TOML tables:
 
 ```toml
 image = "YOUR_REGISTRY/trainer:v1"
 command = ["python", "/app/train.py"]
 budget = 25
 peak_memory_gb = 24
-expected_runtime_hours = 2
 
 [requirements]
 model = "LoRA-fine-tune"

@@ -25,6 +25,6 @@ Use timezone-aware datetimes. A naive datetime is interpreted in the submitting
 machine's local timezone before conversion to UTC. A string passes through for
 server validation. Use a future timestamp including an offset or `Z`.
 
-`finish_by` is a workload requirement, `expected_runtime_hours` is an estimate,
+`finish_by` is a workload requirement,
 and `wait(timeout_seconds=...)` bounds client polling. They are different knobs.
 See [costs](../../concepts/costs.md) for observed spend and settlement.

@@ -55,7 +55,7 @@ def test_log_404_checks_workload_exists(status, monkeypatch, capsys):
     assert cli.main(['logs', 'wl_test']) == (1 if status == 200 else 2)
     assert requests == ['/v1/workloads/wl_test/logs', '/v1/workloads/wl_test']
     output = capsys.readouterr()
-    assert ('no log recorded yet' in output.out) == (status == 200)
+    assert ('No logs are available' in output.out) == (status == 200)
 
 
 def test_wait_activity_only_uses_terminal_stderr(monkeypatch):

@@ -38,6 +38,5 @@ See [idempotency](../guides/ci-and-idempotency.md) and
 - **Missing output methods:** upgrade with
   `pip install --upgrade nodus-compute`.
 
-An omitted budget or known image without a fetch tool emits `UserWarning` before
-submission. Applications may turn warnings into errors using Python's warnings
-filters if that suits their policy.
+Without a workload budget, your team spending limit still applies. A known image
+without a fetch tool emits a setup warning before submission.

@@ -2,9 +2,9 @@
 
 A browser can hold a console session and a terminal cannot, so the terminal
 asks for a short code, a human approves it in the browser, and the terminal
-collects an API key once. Two unauthenticated console endpoints do it:
+collects a personal access token once. Two unauthenticated console endpoints do it:
 ``/v1/console/device/start`` hands back the code, ``/v1/console/device/token``
-answers ``authorization_pending`` until the human acts and the key exactly once
+answers ``authorization_pending`` until the human acts and the token exactly once
 after they do.
 
 Field names are read as documented and no other spelling is accepted: a server
@@ -90,18 +90,19 @@ class DeviceCode:
 
 @dataclass(frozen=True)
 class Credentials:
-    """What ``/token`` released.
+    """A revocable personal session from the device exchange.
 
-    Only ``api_key`` and ``base_url`` are needed to make a request. ``key_id``
-    is the handle the console revokes by, and ``expires_at`` is kept as text
-    and never parsed. Each is empty when none was sent.
+    The token is opaque. Its current team membership and role are checked by
+    the server on every request, independently of when this session began.
     """
 
-    api_key: str
+    access_token: str
     base_url: str
-    key_id: str = ""
+    session_id: str = ""
     tenant: str = ""
     expires_at: str = ""
+    email: str = ""
+    name: str = ""
 
 
 def client_name() -> str:
@@ -237,11 +238,13 @@ def poll_for_credentials(
             body = _mapping(resp, TOKEN_PATH)
             issued = _optional_text(body, "base_url")
             return Credentials(
-                api_key=_text(body, "api_key", TOKEN_PATH),
+                access_token=_text(body, "access_token", TOKEN_PATH),
                 base_url=issued or base_url,
-                key_id=_optional_text(body, "key_id"),
+                session_id=_text(body, "session_id", TOKEN_PATH),
                 tenant=_optional_text(body, "tenant"),
                 expires_at=_optional_text(body, "expires_at"),
+                email=_optional_text(body, "email"),
+                name=_optional_text(body, "name"),
             )
         if status not in (_PENDING, _SLOW_DOWN):
             raise error_from_response("POST", TOKEN_PATH, status, _body(resp))
@@ -255,3 +258,34 @@ def poll_for_credentials(
                 wait = max(wait, min(asked, _MAX_TTL))
         # Never past the deadline: sleeping through it only delays the refusal.
         sleep(min(wait, max(0.0, deadline - monotonic())))
+
+
+def fetch_identity(http: httpx.Client, api_key: str) -> dict[str, str]:
+    """Validate a saved key and read the human identity it belongs to."""
+    path = "/v1/identity"
+    try:
+        resp = http.get(path, headers={"Authorization": f"Bearer {api_key}"})
+    except httpx.HTTPError as exc:
+        raise APIConnectionError(
+            "Could not check your saved sign-in. Check your connection and try again. "
+            "Your saved credentials have not changed."
+        ) from exc
+    if resp.status_code >= 400:
+        raise error_from_response("GET", path, resp.status_code, _body(resp))
+    body = _body(resp)
+    if resp.status_code != 200 or not isinstance(body, dict) or not all(
+        isinstance(body.get(field), str) for field in ("email", "name")
+    ):
+        raise NodusError("Nodus returned an invalid account response. Try again.")
+    return {field: _optional_text(body, field) for field in ("email", "name")}
+
+
+def revoke_session(http: httpx.Client, access_token: str) -> None:
+    """Revoke this device's session. An already-expired token is signed out."""
+    path = "/v1/session/logout"
+    try:
+        resp = http.post(path, headers={"Authorization": f"Bearer {access_token}"})
+    except httpx.HTTPError as exc:
+        raise APIConnectionError("Could not revoke your session. Check your connection and retry nodus logout.") from exc
+    if resp.status_code not in (204, 401):
+        raise NodusError("Nodus did not confirm session revocation. Retry nodus logout.", status_code=resp.status_code)
