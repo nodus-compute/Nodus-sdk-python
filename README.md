@@ -49,7 +49,12 @@ import nodus
 with nodus.Client() as client:
     workload = client.run(
         image="pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime",
-        command=["python", "-c", "import torch\nassert torch.cuda.is_available()\nprint(torch.cuda.get_device_name(0))"],
+        command=[
+            "python", "-c",
+            "import torch\n"
+            "assert torch.cuda.is_available()\n"
+            "print(torch.cuda.get_device_name(0))",
+        ],
         compute_class="accelerator",
         model="GPU-smoke-test",
         budget=5,
@@ -59,30 +64,18 @@ with nodus.Client() as client:
     print(done.status, done.cost_now_usd)
     if not done.succeeded:
         raise RuntimeError(f"Workload {done.id} ended: {done.status}")
+    print(done.logs())
 ```
 
-`run()` returns after acceptance. `wait()` returns for completed, failed, or
-cancelled work. Check `succeeded`. The Python example requests cancellation on
-Ctrl+C. The CLI does the same while waiting. Resource cleanup happens remotely
-after the cancellation request. Closing a client alone does not cancel work.
+Run it with `python first_workload.py`. It prints the workload ID, waits for
+completion, then prints the status, current cost, and GPU name.
 
-Run it with `python first_workload.py`. The workload ID appears after acceptance.
-The final line reports the terminal status and current cost.
+`run()` accepts the workload. `wait()` waits for a terminal status, so check
+`succeeded` before using results. Ctrl+C while waiting requests cancellation
+and remote resource cleanup.
 
-## 3. Read the result
-
-Keep these calls inside the client context after `wait()`:
-
-```python
-print(done.logs())
-for output in done.outputs():
-    print(output.name, output.bytes)
-```
-
-The smoke test prints the GPU name in its logs. Your own workloads can also
-produce downloadable files. See [monitoring and outputs](docs/guides/monitoring-and-outputs.md)
-for progress and downloads, or the [CLI reference](docs/reference/cli.md) if you
-prefer terminal commands.
+The script prints the GPU name from the workload logs. For files produced by
+your own program, see [logs and results](docs/guides/monitoring-and-outputs.md).
 
 ## Run your own code
 

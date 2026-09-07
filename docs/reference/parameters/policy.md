@@ -9,13 +9,14 @@ Use region identifiers supported by your deployment's catalog. Restricting
 regions narrows eligible routes and can make a workload infeasible. The SDK
 forwards these identifiers. It does not translate cloud-specific region names.
 
+Inside a `with nodus.Client() as client:` block:
+
 ```python
 # allowed_regions is your account's supported region list.
 workload = client.run(
     command=["python", "-c", "print('regional workload')"],
     data_regions=allowed_regions,
     budget=5,
-    continuity="restartable",
 )
 ```
 

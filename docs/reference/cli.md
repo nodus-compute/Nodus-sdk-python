@@ -23,7 +23,7 @@ subcommands. Login also accepts it after `login`. There is no API-key CLI flag.
 | Flag | Meaning / default |
 |---|---|
 | `--image` | Container image. SDK default `python:3.11-slim` |
-| `--compute-class` | Use `accelerator` for GPU workloads. `vm` is accepted for compatibility but is not currently supported |
+| `--compute-class` | `accelerator` for GPU workloads |
 | `--model` | Free-text workload hint |
 | `--peak-memory-gb` | Memory requirement hint |
 | `--hours` | Estimated runtime hours |

@@ -4,10 +4,11 @@
 `async for` with iterator/event-stream methods. Bound concurrent submission and
 polling to avoid an unbounded number of API calls.
 
-Run [`examples/async_sweep.py`](../../examples/async_sweep.py):
+Save the [complete Python example](../../examples/async_sweep.py) as `async_sweep.py`
+in your current directory. Example scripts are not installed by pip. Then run:
 
 ```bash
-python examples/async_sweep.py --run-id experiment-001 --budget-per-run 5
+python async_sweep.py --run-id experiment-001 --budget-per-run 5
 ```
 
 This submits three self-contained workloads and permits two active tasks at a

@@ -8,7 +8,12 @@ import nodus
 with nodus.Client() as client:
     workload = client.run(
         image="pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime",
-        command=["python", "-c", "import torch\nassert torch.cuda.is_available()\nprint(torch.cuda.get_device_name(0))"],
+        command=[
+            "python", "-c",
+            "import torch\n"
+            "assert torch.cuda.is_available()\n"
+            "print(torch.cuda.get_device_name(0))",
+        ],
         compute_class="accelerator",
         peak_memory_gb=24,
         expected_runtime_hours=0.1,

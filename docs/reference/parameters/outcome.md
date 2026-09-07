@@ -9,6 +9,8 @@ Budget constrains cost to completion and admission. It is not a prepaid credit
 or reserved capacity. The account spend cap also applies. Warnings about omitted
 budgets apply to staged workloads too.
 
+Inside a `with nodus.Client() as client:` block:
+
 ```python
 from datetime import datetime, timedelta, timezone
 
@@ -16,7 +18,6 @@ workload = client.run(
     command=["python", "-c", "print('deadline example')"],
     budget=5,
     finish_by=datetime.now(timezone.utc) + timedelta(hours=2),
-    continuity="restartable",
 )
 ```
 
