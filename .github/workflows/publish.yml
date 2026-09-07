@@ -6,9 +6,8 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Existing release tag to publish
+        description: Existing tag to retry (create and push the tag first)
         required: true
-        default: v0.1.2
         type: string
 
 permissions:
