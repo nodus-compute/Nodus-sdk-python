@@ -34,8 +34,8 @@ See [idempotency](../guides/ci-and-idempotency.md) and
   A lost connection or force-killed process cannot confirm remote cleanup.
 - **Download failed:** ensure the destination parent exists, choose a declared
   output name/stage, and retry. Integrity failures leave existing files intact.
-- **Missing output methods:** use the SDK release containing these additions or
-  install the current checkout with `python -m pip install -e .`.
+- **Missing output methods:** upgrade with
+  `python -m pip install --upgrade "nodus_compute>=0.1.2"`.
 
 An omitted budget or known image without a fetch tool emits `UserWarning` before
 submission. Applications may turn warnings into errors using Python's warnings

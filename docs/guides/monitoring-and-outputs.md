@@ -42,9 +42,8 @@ manifest metadata rather than downloadable file contents.
 
 ## Download declared outputs
 
-On this checkout, sync and async clients expose output download helpers. If your
-installed release lacks these methods, install the updated SDK release or this
-checkout before using them.
+Sync and async clients expose output download helpers in SDK 0.1.2 or newer.
+Upgrade with `python -m pip install --upgrade "nodus_compute>=0.1.2"`.
 
 ```python
 from pathlib import Path
