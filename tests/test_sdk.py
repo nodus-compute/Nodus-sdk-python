@@ -99,7 +99,6 @@ def test_build_payload_is_the_nested_wire_shape():
         model="7B fine-tune",
         command=["python", "train.py"],
         peak_memory_gb=80,
-        expected_runtime_hours=18,
         budget=400,
         finish_by="2026-08-01T09:00:00Z",
     )
@@ -504,8 +503,7 @@ def test_run_without_a_budget_sends_no_cost_ceiling():
     ships, because that is what the Go client sends too. It is warned about
     rather than filled in.
     """
-    with pytest.warns(UserWarning, match="budget="):
-        outcome = _submitted_outcome(model="7B fine-tune", command=["python", "train.py"])
+    outcome = _submitted_outcome(model="7B fine-tune", command=["python", "train.py"])
     assert "max_cost_usd" not in outcome, f"invented a ceiling: {outcome}"
     assert outcome == {}
 
@@ -1589,44 +1587,27 @@ def test_a_datetime_deadline_reaches_the_wire_as_rfc3339():
     json.dumps(p)
 
 
-def test_a_brief_with_no_budget_says_it_is_uncapped():
-    """Uncapped is a choice, and it should be one somebody made on purpose."""
-    with pytest.warns(UserWarning, match="budget="):
-        build_payload(model="x", command=["a"])
-
-
-def test_a_money_warning_blames_the_brief_that_caused_it(recwarn):
-    """The default filter is one warning per location: blamed on the caller,
-    both briefs are told; blamed on the SDK, only the first would be."""
-    with client_with(lambda r: httpx.Response(202, json=SUBMIT_ACCEPTED)) as c:
-        with warnings.catch_warnings(record=True) as seen:
-            warnings.simplefilter("default")
-            c.run(model="first", command=["python", "train.py"])
-            c.run(model="second", command=["python", "train.py"])
-
-    uncapped = [w for w in seen if "budget=" in str(w.message)]
-    assert len(uncapped) == 2, [str(w.message) for w in seen]
-    for w in uncapped:
-        assert w.filename.endswith("test_sdk.py"), w.filename
-
-
-def test_a_money_warning_blames_a_direct_brief_too(recwarn):
-    """build_payload() sits one frame closer, and a hardcoded depth cannot be
-    right for both it and run()."""
+def test_uncapped_guidance_is_interactive_without_source_warning(monkeypatch, capsys):
+    monkeypatch.setattr("sys.stderr.isatty", lambda: True)
     with warnings.catch_warnings(record=True) as seen:
-        warnings.simplefilter("default")
+        warnings.simplefilter("always")
         build_payload(model="x", command=["a"])
-    assert len(seen) == 1
-    assert seen[0].filename.endswith("test_sdk.py"), seen[0].filename
+    assert not seen
+    assert "account spending limit" in capsys.readouterr().err
 
 
-def test_a_staged_brief_is_warned_about_a_budget_like_any_other():
-    """A staged pipeline is the brief with the most to spend, not the least."""
-    with pytest.warns(UserWarning, match="budget="):
+def test_uncapped_guidance_keeps_redirected_programs_quiet(capsys):
+    with warnings.catch_warnings(record=True) as seen:
+        warnings.simplefilter("always")
         build_payload(stages=[{"id": "train"}])
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        build_payload(stages=[{"id": "train"}], budget=50)
+    assert not seen
+    assert not capsys.readouterr().err
+
+
+def test_budgeted_run_does_not_show_uncapped_guidance(monkeypatch, capsys):
+    monkeypatch.setattr("sys.stderr.isatty", lambda: True)
+    build_payload(stages=[{"id": "train"}], budget=50)
+    assert not capsys.readouterr().err
 
 
 def test_stages_refuse_the_source_they_would_throw_away():

@@ -20,9 +20,10 @@ import warnings
 import webbrowser
 from typing import Any
 
-from . import Client, __version__, _is_header_safe, _redact, _resolve_base_url, config, login
+from . import Client, __version__, _is_header_safe, _redact, _resolve_base_url, _current_hosted_url, config, login
+from ._terminal import clean, show_table, show_workload, status_label
 from ._brief import STATUS_FILTERS
-from .errors import NodusError, NotFoundError
+from .errors import NodusError, NotFoundError, AuthenticationError, APIConnectionError, APITimeoutError
 from .types import _num
 from ._workload_file import load_workload_file, write_workload_file
 
@@ -55,12 +56,12 @@ def _positive_seconds(value: str) -> float:
 
 def _safe(text: Any) -> str:
     """Many-line text from elsewhere, with what a terminal acts on removed."""
-    return _CONTROL.sub("", str(text))
+    return clean(text)
 
 
 def _safe_line(text: Any) -> str:
     """A one-line value from elsewhere, with tab and newline gone too."""
-    return _CONTROL_LINE.sub("", str(text))
+    return clean(text, line=True)
 
 
 def _fmt_workload(wl: Any) -> str:
@@ -155,9 +156,10 @@ def _cmd_run(args: argparse.Namespace) -> int:
         print(_safe_line(wl.id), flush=True)
         if args.cmd == "submit":
             return 0
-        with _cancel_on_interrupt(client, wl.id), _wait_activity(wl.id):
-            wl.wait(poll_seconds=args.poll, timeout_seconds=args.timeout)
-        print(_fmt_workload(wl))
+        with _cancel_on_interrupt(client, wl.id):
+            wl.wait(poll_seconds=args.poll, timeout_seconds=args.timeout,
+                    progress=False if args.plain else None)
+        show_workload(wl, plain=args.plain)
         return 0 if wl.succeeded else 1
 
 
@@ -173,8 +175,9 @@ def _cmd_upload(args: argparse.Namespace) -> int:
 
 def _cmd_assets(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
-        for asset in client.assets.list():
-            print(f"{_safe_line(asset.id)}  {_safe_line(asset.state)}  {_safe_line(asset.name)}")
+        show_table(["Asset", "Status", "Name"],
+                   [[asset.id, asset.state, asset.name] for asset in client.assets.list()],
+                   empty="No assets yet. Use nodus upload FILE to add one.", plain=args.plain)
     return 0
 
 
@@ -192,17 +195,23 @@ def _cmd_download(args: argparse.Namespace) -> int:
 def _cmd_list(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
         filters = {"scope": args.status} if args.status in ("mine", "team") else {"status": args.status}
-        for wl in client.list(limit=args.limit, **filters):
-            print(_fmt_workload(wl))
+        workloads = client.list(limit=args.limit, **filters)
+        if args.json:
+            print(json.dumps([wl.raw for wl in workloads], indent=2, default=str))
+        else:
+            show_table(["Run", "Status", "Compute", "Cost"],
+                       [[wl.id, status_label(wl.status), wl.route.sku if wl.route else "Pending", f"${wl.cost_now_usd:.2f}"] for wl in workloads],
+                       empty="No runs yet. Start with nodus init, then nodus run.", plain=args.plain)
     return 0
 
 
 def _cmd_status(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
         if args.cmd == "wait":
-            with _cancel_on_interrupt(client, args.workload_id), _wait_activity(args.workload_id):
+            with _cancel_on_interrupt(client, args.workload_id):
                 wl = client.get(args.workload_id)
-                wl.wait(poll_seconds=args.poll, timeout_seconds=args.timeout)
+                wl.wait(poll_seconds=args.poll, timeout_seconds=args.timeout,
+                        progress=False if args.json or args.plain else None)
         else:
             wl = client.get(args.workload_id)
         if args.json:
@@ -210,19 +219,21 @@ def _cmd_status(args: argparse.Namespace) -> int:
             # raw wire text cannot reach the terminal through a dump.
             print(json.dumps(wl.raw, indent=2, default=str))
         else:
-            print(_fmt_workload(wl))
+            show_workload(wl, plain=args.plain)
         return 0 if wl.succeeded or not wl.is_terminal else 1
 
 
 def _cmd_events(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
         if args.follow:
+            print("Sequence  Event")
             with _cancel_on_interrupt(client, args.workload_id):
                 for ev in client.stream_events(args.workload_id, poll_seconds=args.poll):
                     print(f"{ev.seq:>5}  {_safe_line(ev.type)}")
         else:
-            for ev in client.events(args.workload_id):
-                print(f"{ev.seq:>5}  {_safe_line(ev.type)}")
+            show_table(["Sequence", "Event"],
+                       [[str(ev.seq), ev.type] for ev in client.events(args.workload_id)],
+                       empty="No events recorded yet.", plain=args.plain)
     return 0
 
 
@@ -231,7 +242,12 @@ def _cmd_artifacts(args: argparse.Namespace) -> int:
     # manifests, and a manifest names several objects, so flattening them into a
     # single line per row would have to pick one digest and drop the rest.
     with Client(base_url=args.base_url) as client:
-        for art in client.artifacts(args.workload_id):
+        artifacts = client.artifacts(args.workload_id)
+        if not artifacts:
+            print("No artifacts available yet.")
+        else:
+            print("Stage  Attempt  Type  Manifest")
+        for art in artifacts:
             mark = "final" if art.final else "checkpoint"
             print(f"{_safe_line(art.stage_id)}  gen{art.generation}/seq{art.sequence}"
                   f"  {mark}  {_safe_line(art.manifest_id)}")
@@ -245,7 +261,7 @@ def _cmd_artifacts(args: argparse.Namespace) -> int:
 def _cmd_cancel(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
         client.cancel(args.workload_id)
-    print(f"cancel requested for {_safe_line(args.workload_id)}")
+    print(f"Cancellation requested for {_safe_line(args.workload_id)}. Nodus is stopping the run.")
     return 0
 
 
@@ -255,6 +271,7 @@ def _cmd_ledger(args: argparse.Namespace) -> int:
         if args.json:
             print(json.dumps(led.raw, indent=2, default=str))
             return 0
+        print("Entry               Direction  Amount")
         for e in led.entries:
             side, amount = ("debit", e.debit_usd) if e.debit_usd else ("credit", e.credit_usd)
             print(f"  {_safe_line(e.entry_type):<18} {side:<7} ${amount:.6f}")
@@ -267,8 +284,7 @@ def _cmd_ledger(args: argparse.Namespace) -> int:
 
 
 _NO_LOG_YET = (
-    "no log recorded yet: the log is a committed artifact, so it appears"
-    " once Nodus has collected and verified it"
+    "No logs have been recorded for this run yet. Try again shortly."
 )
 
 
@@ -301,8 +317,6 @@ def _fmt_route(route: Any) -> list[str]:
         + (f"  |  {mem:g} GB" if mem else "")
         + (f"  |  {_safe_line(route.region)}" if getattr(route, 'region', '') else ""),
         f"{'rate':<22} ${route.price_usd_hour:.4f}/h",
-        f"{'expected hours':<22} {route.expected_hours:.2f}",
-        f"{'expected cost':<22} ${route.expected_cost_usd:.2f}",
         f"{'remaining budget':<22} ${route.remaining_budget_usd:.2f}",
     ]
     return lines
@@ -325,8 +339,7 @@ def _cmd_explain(args: argparse.Namespace) -> int:
         for line in _fmt_route(wl.route):
             print(f"  {line}")
         print()
-        print("  expected cost is cost to completion: the run plus the recovery reserve,")
-        print("  not rate x hours. It is the number the budget is checked against.")
+        print("  Your run budget is a spending limit. Nodus stops the run at that limit.")
     return 0
 
 
@@ -358,6 +371,24 @@ def _env_outranks(*names: str) -> list[str]:
 
 def _cmd_login(args: argparse.Namespace) -> int:
     base_url = _resolve_base_url(args.base_url)
+    if not args.force:
+        stored_key, stored_url = config.read_credentials()
+        env_key = os.environ.get("NODUS_API_KEY", "").strip()
+        same_deployment = _current_hosted_url(stored_url.strip().rstrip("/")) == base_url
+        key = env_key or (stored_key if same_deployment else "")
+        if key:
+            try:
+                with Client(api_key=key, base_url=base_url) as client:
+                    identity = client._request("GET", "/v1/me")
+            except AuthenticationError:
+                if env_key:
+                    raise AuthenticationError("NODUS_API_KEY was not accepted. Update or unset it before signing in.")
+            else:
+                email = identity.get("email") if isinstance(identity, dict) else None
+                who = f" as {_safe_line(email)}" if email else ""
+                print(f"Already signed in{who}. Welcome back!")
+                print("Ready to run. Use nodus login --force to sign in again.")
+                return 0
     # Before anything is minted: the console issues the key inside the call
     # that releases it, so a file that cannot be written has to fail now.
     config.ensure_writable()
@@ -405,6 +436,7 @@ def _cmd_login(args: argparse.Namespace) -> int:
                 key_id=creds.key_id,
                 tenant=creds.tenant,
                 expires_at=creds.expires_at,
+                email=creds.email,
             )
         except BaseException as exc:
             # The key exists on the server whether or not this write worked,
@@ -425,9 +457,9 @@ def _cmd_login(args: argparse.Namespace) -> int:
 
     # The redaction arm cannot carry a control character once the gate above
     # has passed; wrapped anyway so both arms follow the one rule.
-    who = _safe_line(creds.tenant) if creds.tenant else _safe_line(_redact(creds.api_key))
-    print(f"Signed in as {who}.")
-    print(f"Wrote {path}")
+    who = f" as {_safe_line(creds.email)}" if creds.email else ""
+    print(f"Signed in{who}. Welcome to Nodus!")
+    print(f"Saved your sign-in to {path}. You're ready to run.")
     for caveat in caveats:
         print(f"Note: {_safe_line(caveat.message)}", file=sys.stderr)
     for name in _env_outranks("NODUS_API_KEY", "NODUS_BASE_URL"):
@@ -487,6 +519,8 @@ Use nodus COMMAND --help for command options.""",
     )
     p.add_argument("--version", action="version", version=f"nodus {__version__}")
     p.add_argument("--base-url", default=None, help="override NODUS_BASE_URL")
+    p.add_argument("--plain", action="store_true", help="use plain output without live progress")
+    p.add_argument("--debug", action="store_true", help="show technical error details")
     sub = p.add_subparsers(dest="cmd", required=True, metavar="COMMAND", title="commands")
 
     # SUPPRESS, not None: a subparser default is copied over the namespace the
@@ -497,6 +531,7 @@ Use nodus COMMAND --help for command options.""",
                    help="which deployment to sign in to")
     i.add_argument("--no-browser", action="store_true",
                    help="print the address instead of opening it")
+    i.add_argument("--force", action="store_true", help="sign in again even when already signed in")
 
     sub.add_parser("logout", help="delete the stored API key")
 
@@ -516,6 +551,7 @@ Use nodus COMMAND --help for command options.""",
     l = sub.add_parser("list", help="list workloads")
     l.add_argument("status", nargs="?", default=None, choices=(*STATUS_FILTERS, "mine", "team"))
     l.add_argument("--limit", type=int, default=50)
+    l.add_argument("--json", action="store_true")
 
     for name, help_text in (
         ("status", "show workload status and cost"),
@@ -558,6 +594,11 @@ Use nodus COMMAND --help for command options.""",
 
     x = sub.add_parser("explain", help="why this route")
     x.add_argument("workload_id")
+    for parser in sub.choices.values():
+        parser.add_argument("--plain", action="store_true", default=argparse.SUPPRESS,
+                            help="use plain output without live progress")
+        parser.add_argument("--debug", action="store_true", default=argparse.SUPPRESS,
+                            help="show technical error details")
     return p
 
 
@@ -587,7 +628,18 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return handlers[args.cmd]()
     except (NodusError, ValueError, TypeError, OSError) as exc:
-        print(f"error: {_safe(exc)}", file=sys.stderr)
+        message = _safe(exc)
+        if isinstance(exc, APIConnectionError) and not args.debug:
+            message = "Could not connect to Nodus. Check your connection and try again. Your saved sign-in is unchanged."
+        elif isinstance(exc, NodusError) and not args.debug and exc.status_code and exc.status_code >= 500:
+            message = "Nodus is temporarily unable to complete this request. Please try again shortly."
+        elif isinstance(exc, NodusError) and not args.debug and exc.status_code == 404:
+            message = "That run was not found. Check the ID with nodus list and try again."
+        elif isinstance(exc, NodusError) and not args.debug and exc.status_code in (401, 403):
+            message = "Your sign-in was not accepted. Run nodus login --force to sign in again."
+        elif isinstance(exc, NodusError) and not args.debug and exc.status_code == 402:
+            message = "This run cannot start within your current spending limit. Review your account limit and available credits in the console."
+        print(f"Error: {message}", file=sys.stderr)
         return 2
     except KeyboardInterrupt:
         return 130

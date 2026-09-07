@@ -1,13 +1,14 @@
 # Terminal commands
 
 Use `nodus --help` for command groups and `nodus COMMAND --help` for options.
-Replace `ID` with a workload ID. These commands describe SDK 0.2.0.
+Replace `ID` with a workload ID. These commands describe SDK 0.3.0.
 
 ## Setup
 
 | Command | What it does |
 |---|---|
-| `nodus login` | Open browser sign-in and save credentials |
+| `nodus login` | Reuse a valid login or open browser sign-in |
+| `nodus login --force` | Start a fresh browser sign-in |
 | `nodus logout` | Remove the locally saved key |
 | `nodus init` | Create a starter `nodus.toml` without submitting work |
 
@@ -41,9 +42,9 @@ Set your image, command, budget, and advanced options in a
 | `nodus download ID` | Download declared output files under `outputs/ID` |
 | `nodus cancel ID` | Request cancellation and remote cleanup |
 
-Interactive waits show a spinner and elapsed time. Redirected output has no
-animation. Logs are snapshots, not a live stdout stream. Files must be declared
-as outputs to be downloadable.
+Interactive waits show lifecycle events, live logs, elapsed time, and reported
+training progress. Redirected output has no animation. `nodus logs` retrieves
+saved log snapshots. Declare files as outputs to download them.
 
 Ctrl+C during `run`, `wait`, or `events --follow` requests cancellation. Cleanup
 happens remotely after acceptance. If the request fails, the CLI reports that
@@ -78,7 +79,7 @@ For imports and programmatic uploads, see [code and datasets](../guides/assets.m
 | `nodus explain ID` | Selected route and cost estimate |
 | `nodus ledger ID` | Billing entries and settlement |
 
-Use command help for JSON output, polling, stage selection, and other diagnostic
+Use `nodus --debug COMMAND` for technical error details. Use command help for JSON output, polling, stage selection, and other diagnostic
 options. Agents can use the [Python client](python/client.md) for structured
 results without parsing terminal output.
 

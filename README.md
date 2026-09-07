@@ -12,7 +12,7 @@
 
 </div>
 
-Provide a container image, a command, and a budget. Nodus finds GPU capacity and
+Provide a container image and a command. Add a budget if you want a workload spending limit. Nodus finds GPU capacity and
 runs your workload. Use the same Python client for training, fine-tuning, or a
 batch of experiments.
 
@@ -24,11 +24,14 @@ nodus login
 ```
 
 Requires Python 3.10 or newer. Upgrading an existing installation? Use
-`pip install --upgrade nodus-compute`. These docs describe SDK 0.2.0.
+`pip install --upgrade nodus-compute`. These docs describe SDK 0.3.0.
 
 Your browser opens Nodus sign-in. Sign in and approve the code matching your
 terminal. You can then close the tab. The terminal finishes automatically and
 saves your credentials. Python clients use that login without extra setup.
+
+Running `nodus login` again reuses a valid login. Use `nodus login --force` for
+a fresh sign-in.
 
 For a machine without a browser, use `nodus login --no-browser`.
 See [authentication](docs/getting-started/authentication.md) for API keys and
@@ -65,8 +68,9 @@ with nodus.Client() as client:
     print(done.logs())
 ```
 
-Run it with `python first_workload.py`. It prints the workload ID, waits for
-completion, then prints the status, current cost, and GPU name.
+Run it with `python first_workload.py`. It prints the workload ID and shows live logs, lifecycle events, and elapsed
+time while waiting. Training workloads also show reported steps or epochs.
+The final output includes status, current cost, and GPU name.
 
 `run()` accepts the workload. `wait()` waits for a terminal status, so check
 `succeeded` before using results. Ctrl+C while waiting requests cancellation
@@ -91,6 +95,15 @@ nodus status WORKLOAD_ID
 nodus logs WORKLOAD_ID
 nodus cancel WORKLOAD_ID
 ```
+
+## Choose an optional preference
+
+Set `optimization="lowest_cost"`, `"lower_cost"`, `"balanced"`, `"faster"`, or
+`"fastest"`. The default is balanced. These preferences are recorded, with
+preference-specific routing coming later.
+
+Set `gpu="H100"` to require a GPU model, or omit it to let Nodus choose.
+No runtime estimate is needed. See [resource options](docs/reference/parameters/requirements.md).
 
 ## Run your own code
 

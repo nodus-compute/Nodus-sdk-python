@@ -102,6 +102,7 @@ class Credentials:
     key_id: str = ""
     tenant: str = ""
     expires_at: str = ""
+    email: str = ""
 
 
 def client_name() -> str:
@@ -242,6 +243,7 @@ def poll_for_credentials(
                 key_id=_optional_text(body, "key_id"),
                 tenant=_optional_text(body, "tenant"),
                 expires_at=_optional_text(body, "expires_at"),
+                email=_optional_text(body, "email"),
             )
         if status not in (_PENDING, _SLOW_DOWN):
             raise error_from_response("POST", TOKEN_PATH, status, _body(resp))

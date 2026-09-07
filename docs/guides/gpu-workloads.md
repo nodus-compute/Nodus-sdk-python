@@ -15,7 +15,6 @@ with nodus.Client() as client:
             "print(torch.cuda.get_device_name(0))",
         ],
         peak_memory_gb=24,
-        expected_runtime_hours=0.1,
         budget=5,
     )
     print(workload.id)
@@ -39,7 +38,6 @@ with nodus.Client() as client:
         command=["python", "/app/train.py", "--epochs", "3"],
         model="LoRA-fine-tune",
         peak_memory_gb=24,
-        expected_runtime_hours=2,
         budget=25,
     )
     print(workload.id)
@@ -50,7 +48,7 @@ with nodus.Client() as client:
 ```
 
 This is a template: `/app/train.py` and `--epochs` belong to your application.
-`model` is a sizing hint, not a model download. Choose memory and runtime estimates appropriate for your program.
+`model` is a sizing hint, not a model download. Choose enough GPU memory for your program.
 
 Declare final model files as stage outputs when you need SDK downloads. See
 [multi-stage workloads](multi-stage-workloads.md). Nodus handles placement and

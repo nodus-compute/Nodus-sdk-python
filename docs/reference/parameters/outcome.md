@@ -2,12 +2,11 @@
 
 | Argument | Type | Omitted | Workload file | HTTP field |
 |---|---|---|---|---|
-| `budget` | Positive finite number in USD | No per-workload ceiling. Warning emitted | `budget` | `outcome.max_cost_usd` |
+| `budget` | Positive finite number in USD | Account spending limit only | `budget` | `outcome.max_cost_usd` |
 | `finish_by` | RFC3339 string or `datetime` | No completion deadline | `finish_by` | `outcome.complete_by` |
 
-Budget constrains cost to completion and admission. It is not a prepaid credit
-or reserved capacity. The account spend cap also applies. Warnings about omitted
-budgets apply to staged workloads too.
+Budget is a hard workload spending limit, not a completion-price promise.
+The account spending limit also applies. Omit budget to use that account limit.
 
 Inside a `with nodus.Client() as client:` block:
 
@@ -25,6 +24,6 @@ Use timezone-aware datetimes. A naive datetime is interpreted in the submitting
 machine's local timezone before conversion to UTC. A string passes through for
 server validation. Use a future timestamp including an offset or `Z`.
 
-`finish_by` is a workload requirement, `expected_runtime_hours` is an estimate,
-and `wait(timeout_seconds=...)` bounds client polling. They are different knobs.
+`finish_by` expresses a completion deadline. `wait(timeout_seconds=...)` only
+bounds local observation and does not cancel the workload.
 See [costs](../../concepts/costs.md) for observed spend and settlement.

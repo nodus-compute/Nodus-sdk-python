@@ -135,7 +135,7 @@
             "schema": {
               "type": "integer"
             },
-            "description": "Page size. 1\u2013100. Omitted, nonpositive, or over 100 defaults to 50."
+            "description": "Page size. 1–100. Omitted, nonpositive, or over 100 defaults to 50."
           },
           {
             "name": "offset",
@@ -1111,6 +1111,77 @@
           }
         }
       }
+    },
+    "/v1/workloads/{id}/logs/live": {
+      "get": {
+        "summary": "Read live program log chunks",
+        "operationId": "liveLogs",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque cursor from the previous response."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Live logs, retained for 24 hours after termination. Capture is bounded to 8 MiB per generation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveLogPage"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Workload not found"
+          }
+        }
+      }
+    },
+    "/v1/me": {
+      "get": {
+        "summary": "Verify the current login",
+        "operationId": "identity",
+        "responses": {
+          "200": {
+            "description": "Authenticated identity. Email may be empty for a team key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "email": {
+                      "type": "string"
+                    },
+                    "tenant": {
+                      "type": "string"
+                    },
+                    "key_id": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credentials are invalid, expired, or revoked"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1251,16 +1322,33 @@
           "dataset_bytes": {
             "type": "integer"
           },
-          "expected_runtime_hours": {
-            "type": "number",
-            "description": "Estimated runtime in hours, used for placement and account admission. Omitted/nonpositive values use the profiler estimate. Account admission estimates omitted runtime at one hour. Not a timeout."
-          },
           "peak_memory_gb": {
             "type": "number",
             "description": "Peak memory fit hint in GB. Placement derives infrastructure. This is not an instance SKU."
           },
           "notes": {
             "type": "string"
+          },
+          "optimization": {
+            "type": "string",
+            "enum": [
+              "lowest_cost",
+              "lower_cost",
+              "balanced",
+              "faster",
+              "fastest"
+            ],
+            "default": "balanced",
+            "description": "Optional routing preference. Recorded now, preference-specific routing is not active yet."
+          },
+          "gpu": {
+            "type": "string",
+            "description": "Optional required GPU model family, such as H100. Memory is specified separately. Nodus does not substitute another model."
+          },
+          "expected_runtime_hours": {
+            "type": "number",
+            "deprecated": true,
+            "description": "Legacy wire compatibility only. Customers do not need to supply a runtime estimate. It does not determine spending admission."
           }
         },
         "x-go-source": "internal/models/models.go",
@@ -1271,7 +1359,7 @@
         "properties": {
           "max_cost_usd": {
             "type": "number",
-            "description": "Per-workload cost ceiling in USD. Zero/omitted means uncapped. Account monthly spend cap is separate. Use a positive value for an explicit ceiling."
+            "description": "Hard customer spending limit in USD for this workload. Omitted means account limit only. Acceptance does not guarantee completion within the limit."
           },
           "complete_by": {
             "type": "string",
@@ -1716,6 +1804,18 @@
                 "type": "null"
               }
             ]
+          },
+          "metric_total_steps": {
+            "type": "integer",
+            "description": "Optional reported training display metric. Independent of recovery progress."
+          },
+          "metric_epoch": {
+            "type": "number",
+            "description": "Optional reported training display metric. Independent of recovery progress."
+          },
+          "metric_total_epochs": {
+            "type": "number",
+            "description": "Optional reported training display metric. Independent of recovery progress."
           }
         },
         "x-go-source": "internal/models/models.go",
@@ -2281,6 +2381,48 @@
         "x-go-source": "internal/assets/import.go",
         "x-go-type": "Request",
         "description": "The server requires the source appropriate to kind. Import limits are deployment specific and returned by GET /v1/assets. Archives cannot contain links, special files, unsafe paths or more than 10000 files."
+      },
+      "LiveLogPage": {
+        "type": "object",
+        "required": [
+          "chunks",
+          "next_cursor",
+          "truncated"
+        ],
+        "properties": {
+          "chunks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "stage_id",
+                "generation",
+                "text"
+              ],
+              "properties": {
+                "id": {
+                  "type": "integer"
+                },
+                "stage_id": {
+                  "type": "string"
+                },
+                "generation": {
+                  "type": "integer"
+                },
+                "text": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "next_cursor": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        }
       }
     }
   },

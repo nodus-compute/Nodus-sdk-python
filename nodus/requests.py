@@ -29,14 +29,15 @@ class Source(TypedDict, total=False):
 class Requirements(TypedDict, total=False):
     """Workload fit signals, without selecting a supplier or instance SKU.
 
-    Memory is in GB, dataset size in bytes, and runtime in hours. All fields
+    Memory is in GB and dataset size in bytes. All fields
     are optional. Omitted compute class defaults to accelerator on the API.
     """
 
     model: str
     compute_class: Literal["vm", "accelerator"] | ComputeClass
     dataset_bytes: int
-    expected_runtime_hours: float
+    optimization: Literal["lowest_cost", "lower_cost", "balanced", "faster", "fastest"]
+    gpu: str
     peak_memory_gb: float
     notes: str
 

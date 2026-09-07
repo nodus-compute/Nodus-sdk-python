@@ -3,14 +3,14 @@
 `Client.run()` and `AsyncClient.run()` share this keyword-only interface. A brief
 is translated to the nested HTTP request. The table covers every explicit
 submission argument. Omitted flat values are generally absent from the wire,
-except the default image and continuity policy.
+except the default image, continuity policy, and balanced optimization.
 
 | Python argument | HTTP location | Reference |
 |---|---|---|
 | `image`, `command` | `source.image`, `source.command` | [Source](source.md) |
 | `source_asset_id`, `inputs`, `outputs` | Source asset and stage file declarations | [Files](source.md#input-and-output-files) |
 | `framework` | `framework` | [Source](source.md) |
-| `model`, `compute_class`, `peak_memory_gb`, `expected_runtime_hours` | `requirements.*` | [Resources](requirements.md) |
+| `model`, `compute_class`, `peak_memory_gb`, `optimization`, `gpu` | `requirements.*` | [Resources](requirements.md) |
 | `requirements` | `requirements` | [Resources](requirements.md) |
 | `budget`, `finish_by` | `outcome.max_cost_usd`, `outcome.complete_by` | [Budget and deadline](outcome.md) |
 | `continuity` | `continuity` | [Recovery](continuity.md) |

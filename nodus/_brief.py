@@ -15,6 +15,7 @@ import os
 import re
 from pathlib import PurePosixPath
 import shlex
+import sys
 import warnings
 from datetime import datetime, timezone
 from typing import Any
@@ -86,12 +87,8 @@ def _warn_if_it_is_uncapped(outcome: dict[str, Any]) -> None:
     """
     if "max_cost_usd" in outcome:
         return
-    warnings.warn(
-        "no budget= given, so this workload is capped only by the account spend "
-        "cap and will bill whatever it costs to finish. Pass budget=<usd> to "
-        "bound it.",
-        stacklevel=_caller_stacklevel(),
-    )
+    if sys.stderr.isatty():
+        print("Using your account spending limit. Add budget=<usd> to limit this run.", file=sys.stderr)
 
 
 def _as_command(command: list[str] | str | None) -> list[str]:
@@ -120,6 +117,7 @@ def _enum_value(v: Any) -> Any:
 # Brief fields the control plane does not model, and what to reach for instead.
 # Sending one costs a caller the constraint they believe they set.
 UNSUPPORTED: dict[str, str] = {
+    "expected_runtime_hours": "Remove expected_runtime_hours. Nodus estimates runtime automatically.",
     "interrupt_tolerance": (
         "the control plane does not model this yet: it derives the envelope's "
         "tolerance from continuity, so declaring 'low' here yields the opposite. "
@@ -146,7 +144,7 @@ def _reject_unknown(unknown: dict[str, Any], known: tuple[str, ...]) -> None:
     named = sorted(set(unknown) & set(UNSUPPORTED))
     if named:
         raise TypeError(
-            "; ".join(f"{name}=: {UNSUPPORTED[name]}" for name in named)
+            "\n".join(f"{name}=: {UNSUPPORTED[name]}" for name in named)
         )
     parts = []
     for name in sorted(unknown):
@@ -172,7 +170,8 @@ def build_payload(
     model: str | None = None,
     compute_class: Any = None,
     peak_memory_gb: float | None = None,
-    expected_runtime_hours: float | None = None,
+    optimization: str = "balanced",
+    gpu: str | None = None,
     budget: float | None = None,
     finish_by: datetime | str | None = None,
     continuity: Any = None,
@@ -205,8 +204,10 @@ def build_payload(
         req.setdefault("compute_class", _enum_value(compute_class))
     if peak_memory_gb is not None:
         req.setdefault("peak_memory_gb", peak_memory_gb)
-    if expected_runtime_hours is not None:
-        req.setdefault("expected_runtime_hours", expected_runtime_hours)
+    req.setdefault("optimization", optimization)
+    if gpu is not None:
+        req.setdefault("gpu", gpu)
+    req = validate_requirements(req)
 
     # Data residency lives in policy: the envelope reads Policy.DataRegions, and
     # Requirements has no such field. An explicit policy= wins over the shortcut.
@@ -282,8 +283,41 @@ def build_payload(
         payload["policy"] = pol
 
     _merge_extra(payload, extra)
+    if "expected_runtime_hours" in payload:
+        raise ValueError(UNSUPPORTED["expected_runtime_hours"])
+    for stage in payload.get("stages", []):
+        if "expected_runtime_hours" in stage:
+            raise ValueError(UNSUPPORTED["expected_runtime_hours"])
+        if "requirements" in stage:
+            stage["requirements"] = validate_requirements(stage["requirements"])
     _warn_about_the_money(payload)
     return payload
+
+
+OPTIMIZATIONS = ("lowest_cost", "lower_cost", "balanced", "faster", "fastest")
+GPU_FAMILIES = ("A100", "H100", "H200", "B200", "A10", "A10G", "L4", "L40", "L40S", "T4", "V100", "RTX A6000", "RTX 3090", "RTX 4090", "RTX 5090")
+
+
+def validate_requirements(requirements: dict[str, Any]) -> dict[str, Any]:
+    """Validate customer placement choices without mutating their dictionary."""
+    if not isinstance(requirements, dict):
+        raise ValueError("requirements must be a dictionary")
+    result = dict(requirements)
+    if "expected_runtime_hours" in result:
+        raise ValueError(UNSUPPORTED["expected_runtime_hours"])
+    if "optimization" in result and result["optimization"] not in OPTIMIZATIONS:
+        raise ValueError("optimization must be one of: " + ", ".join(OPTIMIZATIONS))
+    if "gpu" in result:
+        value = result["gpu"]
+        compact = re.sub(r"\s+", "", value.upper()) if isinstance(value, str) else ""
+        compact = compact.removeprefix("NVIDIA")
+        if compact == "A6000":
+            compact = "RTXA6000"
+        canonical = next((family for family in GPU_FAMILIES if family.replace(" ", "") == compact), None)
+        if canonical is None:
+            raise ValueError("gpu must name a supported GPU family: " + ", ".join(GPU_FAMILIES) + ". Use peak_memory_gb for memory requirements.")
+        result["gpu"] = canonical
+    return result
 
 
 def _validate_assets(source_asset_id: str | None, inputs: list[dict[str, str]] | None) -> None:

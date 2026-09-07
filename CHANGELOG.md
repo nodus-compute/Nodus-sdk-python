@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.0
+
+- Add optional optimization preferences and a strict GPU model requirement.
+- Remove customer runtime estimates. Existing callers should remove that argument.
+- Add Rich terminal tables, status summaries, live logs, and reported training progress.
+- Reuse valid logins, show email, and add `login --force` for a fresh sign-in.
+- Replace noisy budget warnings and raw CLI failures with concise guidance.
+- Add `wait(progress=...)` and cursor-based `live_logs()` for sync and async clients.
+- Support hard workload and account caps with the compatible backend release.
+
+
 ## 0.2.1
 
 - Update the default hosted API endpoint.

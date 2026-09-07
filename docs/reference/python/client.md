@@ -14,13 +14,14 @@ Prefer a `with` block. Otherwise call `close()`.
 | `list(limit=50, offset=0, status=None)` | One page of workloads |
 | `list_page(limit=50, offset=0, status=None)` | `(workloads, next_offset)` |
 | `iter_workloads(page_size=50, status=None)` | Iterator over offset-based pages |
-| `wait(id, poll_seconds=2.0, timeout_seconds=None)` | Terminal workload. Inspect `succeeded` |
+| `wait(id, poll_seconds=2.0, timeout_seconds=None, progress=None)` | Terminal workload. Inspect `succeeded` |
 | `cancel(id, idempotency_key=None)` | Request cancellation. Returns `None` |
 | `events(id, after=0)` | One page of `Event` objects |
 | `iter_events(id, after=0)` | Iterator over event history |
 | `stream_events(id, poll_seconds=2.0)` | Poll events until terminal |
 | `artifacts(id)` | List of `Artifact` manifests |
 | `logs(id, stage=None, generation=None)` | Committed log text |
+| `live_logs(id, after="")` | Live log chunks, cursor, and truncation state |
 | `outputs(id)` | List of `Output` objects |
 | `download_output(id, name, destination, stage=None)` | Verified local `Path` |
 | `routing(id)` | Placement-history dictionaries ordered by stage ID and generation |
@@ -50,7 +51,7 @@ Use `download_output(name, destination, stage=...)` for one specific file.
 | Type | Useful fields |
 |---|---|
 | `Event` | `seq`, `id`, `type`, `payload`, `created_at` |
-| `StageRun` | `id`, `status`, `completed_units`, `total_units`, optional `last_loss`, `metric_rate`, `metric_step` |
+| `StageRun` | `id`, `status`, `completed_units`, `total_units`, optional `last_loss`, `metric_rate`, `metric_step`, `metric_total_steps`, `metric_epoch`, `metric_total_epochs` |
 | `Artifact` | `manifest_id`, `stage_id`, `generation`, `sequence`, `final`, `files`, `outputs` |
 | `ManifestFile` | `uri`, `sha256`, `bytes`, `media`, `is_tar` |
 | `Output` | `name`, `stage_id`, `sha256`, `bytes`, `download` |
