@@ -18,27 +18,21 @@ batch of experiments.
 ## 1. Install and sign in
 
 ```bash
-python -m pip install --upgrade "nodus_compute>=0.1.2"
-nodus login --base-url https://YOUR_NODUS_API_HOST
+pip install nodus-compute
+nodus login
 ```
 
-Requires Python 3.10 or newer and Nodus SDK 0.1.2 or newer.
+Requires Python 3.10 or newer. Upgrading an existing installation? Use
+`pip install --upgrade nodus-compute`. Browser login without a URL requires 0.1.3
+or newer.
 
-Obtain your account access and API address from your Nodus onboarding contact.
-Replace the placeholder URL with that address. Approve
-the displayed code in your browser. The CLI saves credentials for subsequent
-commands and Python clients. Device login requires a deployment with device
-authorization enabled. API keys also work directly.
+Your browser opens Nodus sign-in. Sign in and approve the code matching your
+terminal. You can then close the tab. The terminal finishes automatically and
+saves your credentials. Python clients use that login without extra setup.
 
-| Where you run | Authentication |
-|---|---|
-| Laptop | `nodus login --base-url https://YOUR_NODUS_API_HOST` |
-| Headless server | Add `--no-browser`. Open the displayed URL on another device |
-| CI / production | Set both `NODUS_API_KEY` and `NODUS_BASE_URL` using your secret manager |
-| Explicit configuration | `nodus.Client(api_key=key, base_url=url)` |
-
-Settings resolve individually: explicit arguments → environment → saved login.
-See [authentication](docs/getting-started/authentication.md) for setup and logout.
+For a machine without a browser, use `nodus login --no-browser`.
+See [authentication](docs/getting-started/authentication.md) for API keys and
+custom deployments.
 
 ## 2. Run your first workload
 
@@ -46,14 +40,7 @@ This GPU smoke test prints the available GPU name. No local script is uploaded.
 It submits paid compute with a $5 workload budget. Available capacity and account
 limits still determine admission.
 
-```bash
-nodus run --compute-class accelerator \
-  --image pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime \
-  --model GPU-smoke-test --budget 5 --wait \
-  -- python -c 'print(__import__("torch").cuda.get_device_name(0))'
-```
-
-Or use Python (`nodus_compute` is the package name. `nodus` is the import):
+Save this as `first_workload.py`:
 
 <!-- test: first-workload -->
 ```python
@@ -79,23 +66,23 @@ cancelled work. Check `succeeded`. The Python example requests cancellation on
 Ctrl+C. The CLI does the same while waiting. Resource cleanup happens remotely
 after the cancellation request. Closing a client alone does not cancel work.
 
-## 3. Inspect and manage the run
+Run it with `python first_workload.py`. The workload ID appears after acceptance.
+The final line reports the terminal status and current cost.
 
-Use the workload ID printed above:
+## 3. Read the result
 
-```bash
-nodus get WORKLOAD_ID
-nodus events WORKLOAD_ID --follow
-nodus logs WORKLOAD_ID
-nodus artifacts WORKLOAD_ID
-nodus explain WORKLOAD_ID
-nodus ledger WORKLOAD_ID
-nodus cancel WORKLOAD_ID
+Keep these calls inside the client context after `wait()`:
+
+```python
+print(done.logs())
+for output in done.outputs():
+    print(output.name, output.bytes)
 ```
 
-Events show lifecycle progress. Logs are committed artifacts, so they may be
-unavailable before the first commit. [Monitoring and outputs](docs/guides/monitoring-and-outputs.md)
-explains how to retrieve results.
+The smoke test prints the GPU name in its logs. Your own workloads can also
+produce downloadable files. See [monitoring and outputs](docs/guides/monitoring-and-outputs.md)
+for progress and downloads, or the [CLI reference](docs/reference/cli.md) if you
+prefer terminal commands.
 
 ## Run your own workloads
 

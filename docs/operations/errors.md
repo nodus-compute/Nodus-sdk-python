@@ -35,7 +35,7 @@ See [idempotency](../guides/ci-and-idempotency.md) and
 - **Download failed:** ensure the destination parent exists, choose a declared
   output name/stage, and retry. Integrity failures leave existing files intact.
 - **Missing output methods:** upgrade with
-  `python -m pip install --upgrade "nodus_compute>=0.1.2"`.
+  `pip install --upgrade nodus-compute`.
 
 An omitted budget or known image without a fetch tool emits `UserWarning` before
 submission. Applications may turn warnings into errors using Python's warnings

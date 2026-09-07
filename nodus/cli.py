@@ -345,7 +345,8 @@ def _cmd_login(args: argparse.Namespace) -> int:
             print("Opened that page in your browser.")
         print()
         print("Waiting for you to approve it...")
-        creds = login.poll_for_credentials(http, device, base_url)
+        with _wait_activity("browser sign-in"):
+            creds = login.poll_for_credentials(http, device, base_url)
 
     # The same predicate that gates sending a key gates keeping one: a stored
     # key the client cannot put in a header fails every later command, and by

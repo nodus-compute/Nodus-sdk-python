@@ -1,7 +1,8 @@
 # Python client reference
 
 `Client(api_key=None, base_url=None, timeout=30.0, max_retries=2)` pools HTTP
-connections. Prefer a `with` block. Otherwise call `close()`.
+connections. With no arguments it uses your saved login and the hosted service.
+Prefer a `with` block. Otherwise call `close()`.
 `AsyncClient` uses `async with` or `await aclose()` and mirrors the methods below.
 
 | Method | Result / behavior |

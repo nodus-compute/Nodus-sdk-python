@@ -6,19 +6,17 @@ and its constraints, never a machine, an instance type, or a supplier.
 
 Sign in once and the client finds its own settings:
 
-    nodus login --base-url https://your-api-address
+    nodus login
 
 That approves a code in your browser and writes ~/.nodus/config.toml. Or set
-the two settings yourself, which is what CI does:
-
-    export NODUS_BASE_URL=https://…
+an API key for automation:
     export NODUS_API_KEY=nk_live_…
 
     import nodus
 
     with nodus.Client() as client:
         wl = client.run(
-            model="7B fine-tune",
+            model="LoRA-fine-tune",
             command=["python", "train.py"],
             peak_memory_gb=80,
             expected_runtime_hours=18,
@@ -269,33 +267,15 @@ def _setup_help(missing: list[str]) -> str:
     code page turns a typographic ellipsis into a replacement character,
     mojibake in the one message whose whole job is to be read and copied.
     """
-    joined = " and ".join(missing)
-    verb = "is" if len(missing) == 1 else "are"
     return (
-        f"Nodus is not configured yet: {joined} {verb} not set.\n"
-        "\n"
-        "Sign in at https://nodus.run/console/ and create an API key. The\n"
-        "quickstart shown there has your key and the API address in it:\n"
-        "\n"
-        "    export NODUS_BASE_URL=https://your-api-address\n"
-        "    export NODUS_API_KEY=nk_live_your_key\n"
-        "\n"
-        "Or pass them straight in: nodus.Client(api_key=..., base_url=...).\n"
-        "Or run: nodus login"
+        "You are not signed in to Nodus. Run: nodus login\n"
+        "For automation, set NODUS_API_KEY in your secret manager."
     )
 
 
-#: What ``nodus login`` needs before it can dial anything, and where it comes
-#: from. There is no default address for the same reason there is no default
-#: key: a guess is either nobody's deployment or somebody else's.
-_LOGIN_NEEDS_BASE_URL = (
-    "nodus login needs the address of the Nodus deployment to sign in to,\n"
-    "and none is set. It is the API address your account was given.\n"
-    "\n"
-    "    nodus login --base-url https://your-api-address\n"
-    "\n"
-    "Or set it once: export NODUS_BASE_URL=https://your-api-address"
-)
+# Hosted API shared with the Nodus console. Explicit, environment and saved
+# endpoints still take precedence for private deployments and local development.
+DEFAULT_BASE_URL = "https://nodus-api-74it.onrender.com"
 
 
 def _check_scheme(url: str, stacklevel: int) -> None:
@@ -303,7 +283,7 @@ def _check_scheme(url: str, stacklevel: int) -> None:
     if scheme not in ("http", "https"):
         raise ConfigurationError(
             f"base_url must start with http:// or https://, got {url!r}. "
-            "It is the API address from https://nodus.run/console/."
+            "Use --base-url only for a custom deployment."
         )
     if scheme == "http" and not _is_loopback(url):
         warnings.warn(
@@ -337,6 +317,7 @@ def _resolve(api_key: str | None, base_url: str | None) -> tuple[str, str]:
         stored_key, stored_url = read_credentials()
         key = key or stored_key.strip()
         url = url or stored_url.strip().rstrip("/")
+    url = url or DEFAULT_BASE_URL
     missing = [
         name
         for name, value in (("NODUS_BASE_URL", url), ("NODUS_API_KEY", key))
@@ -356,7 +337,7 @@ def _resolve_base_url(base_url: str | None) -> str:
     if not url:
         url = read_credentials()[1].strip().rstrip("/")
     if not url:
-        raise ConfigurationError(_LOGIN_NEEDS_BASE_URL)
+        url = DEFAULT_BASE_URL
     _check_header_safe("NODUS_BASE_URL", url)
     _check_scheme(url, stacklevel=3)
     return url

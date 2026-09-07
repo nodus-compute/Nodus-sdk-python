@@ -6,7 +6,7 @@ subcommands. Login also accepts it after `login`. There is no API-key CLI flag.
 
 | Command | Options / behavior |
 |---|---|
-| `login` | `--base-url`, `--no-browser`. Store device credentials |
+| `login` | `--base-url`, `--no-browser`. Open browser sign-in and save credentials. URL override is optional |
 | `logout` | Remove locally saved key |
 | `run` | Submit. Prints workload ID |
 | `list` | `--limit` (50), `--status` (one status, `active`, or `terminal`) |

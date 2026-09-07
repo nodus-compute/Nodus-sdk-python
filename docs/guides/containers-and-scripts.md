@@ -23,8 +23,24 @@ name with your actual registry namespace:
 ```bash
 docker build -t YOUR_REGISTRY/hello:v1 .
 docker push YOUR_REGISTRY/hello:v1
-nodus run --compute-class accelerator --image YOUR_REGISTRY/hello:v1 \
-  --budget 5 --wait -- python /app/hello.py
+```
+
+Submit the image from Python:
+
+```python
+import nodus
+
+with nodus.Client() as client:
+    workload = client.run(
+        image="YOUR_REGISTRY/hello:v1",
+        command=["python", "/app/hello.py"],
+        compute_class="accelerator",
+        budget=5,
+    )
+    done = workload.wait()
+    if not done.succeeded:
+        raise RuntimeError(f"Workload ended: {done.status}")
+    print(done.logs())
 ```
 
 Use absolute program paths so runner working-directory conventions do not affect

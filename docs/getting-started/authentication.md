@@ -1,80 +1,72 @@
-# Installation and authentication
+# Install and sign in
 
-Requires Python 3.10 or newer and Nodus SDK 0.1.2 or newer.
+Install with Python 3.10 or newer:
 
 ```bash
-python -m pip install --upgrade "nodus_compute>=0.1.2"
-nodus --version
+pip install nodus-compute
+nodus login
 ```
 
-Ask your Nodus onboarding contact for account access and your deployment API
-base URL. For API-key authentication, obtain a key through the same onboarding
-process. There is no public signup endpoint documented here.
+Your browser opens the Nodus sign-in page. Sign in, check that the device code
+matches your terminal, and approve. Close the tab once approved. Your terminal
+updates automatically and saves the login for both the CLI and Python SDK.
+There is no API URL or key to copy.
 
-## Interactive login
+Existing users can upgrade with `pip install --upgrade nodus-compute`.
+The hosted default requires SDK 0.1.3 or newer.
+
+## Use your login in Python
+
+```python
+import nodus
+
+with nodus.Client() as client:
+    for workload in client.list(limit=5):
+        print(workload.id, workload.status)
+```
+
+This lists your workloads without starting paid compute.
+Continue with [your first GPU workload](../../README.md#2-run-your-first-workload).
+
+## Without a local browser
+
+```bash
+nodus login --no-browser
+```
+
+Open the printed link on another device. Approve the matching code there.
+The original terminal saves the login automatically.
+
+## API keys for automation
+
+Set `NODUS_API_KEY` through your secret manager. `nodus.Client()` reads it
+automatically and connects to the hosted service. Never commit an API key.
+
+## Custom deployments
+
+Only private deployments and local development need a different API address:
 
 ```bash
 nodus login --base-url https://YOUR_NODUS_API_HOST
 ```
 
-Use the API base URL issued for your deployment, without `/v1`. There is no
-built-in hosted endpoint. Approve the displayed code at the displayed verification
-URL. Credentials are stored in `~/.nodus/config.toml`. Device authorization must
-be enabled on that deployment. If it is unavailable, use the API-key method below.
+Use the API origin without `/v1`. `NODUS_BASE_URL` and
+`nodus.Client(base_url=...)` remain available.
 
-## Headless login
+| Setting | Resolution order |
+|---|---|
+| API key | Explicit argument, then `NODUS_API_KEY`, then saved login |
+| API URL | Explicit argument, then `NODUS_BASE_URL`, then saved login, then hosted default |
 
-```bash
-nodus login --base-url https://YOUR_NODUS_API_HOST --no-browser
-```
+Each setting resolves independently. An environment variable overrides the saved
+login, so keep custom deployment credentials and addresses paired.
+Credentials are stored in `~/.nodus/config.toml`.
 
-Open the printed verification URL on a device with a browser and enter the code.
-The initiating terminal waits for approval and saves the credentials locally.
-
-## API key: CI, servers, and notebooks
-
-Inject these variables from your deployment's secret manager:
-
-```bash
-export NODUS_BASE_URL='https://YOUR_NODUS_API_HOST'
-export NODUS_API_KEY='YOUR_API_KEY'
-```
-
-Then `nodus.Client()` and the CLI use them automatically. Avoid embedding actual
-keys in source files, notebook output, or checked-in shell scripts.
-For an explicitly configured client:
-
-```python
-import os
-import nodus
-
-with nodus.Client(
-    api_key=os.environ["NODUS_API_KEY"],
-    base_url=os.environ["NODUS_BASE_URL"],
-) as client:
-    print([workload.id for workload in client.list(limit=5)])
-```
-
-This lists workloads without submitting compute. It requires a valid account key.
-
-## Configuration precedence
-
-| Setting | First | Second | Third |
-|---|---|---|---|
-| API key | `Client(api_key=...)` | `NODUS_API_KEY` | Saved config |
-| API URL | `Client(base_url=...)` / CLI `--base-url` | `NODUS_BASE_URL` | Saved config |
-
-Each setting resolves independently. Environment variables can override a new
-login, including with a different deployment. Keep the key and URL paired.
-Missing configuration raises `ConfigurationError` before network access.
-For ordinary CLI commands put global flags first:
-`nodus --base-url https://YOUR_NODUS_API_HOST list`.
-
-## Logout
+## Sign out
 
 ```bash
 nodus logout
 ```
 
-Logout removes the saved key. It does not revoke the key at the server or unset
-shell variables. Revoke the key in your deployment's console when retiring it.
+This removes the locally saved key. To revoke that key on the server, use the
+console. Environment variables remain set until you remove them.

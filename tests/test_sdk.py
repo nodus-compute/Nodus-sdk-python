@@ -257,19 +257,11 @@ def test_base_url_must_be_http(monkeypatch):
         nodus.Client(base_url="ftp://nope")
 
 
-# There is no built-in address, and this is the test that keeps it that way. Any
-# address the SDK could pick is either a domain that does not resolve or an
-# account this caller is not on, so it would answer a setup mistake with a
-# network error. The client must refuse before it opens a socket, naming the
-# setting and where its value comes from.
-def test_missing_base_url_says_what_to_set_and_where_to_get_it(monkeypatch):
+def test_api_key_alone_uses_hosted_default(monkeypatch):
     monkeypatch.setenv("NODUS_API_KEY", "nk_live_test")
     monkeypatch.delenv("NODUS_BASE_URL", raising=False)
-    with pytest.raises(nodus.ConfigurationError) as exc:
-        nodus.Client()
-    message = str(exc.value)
-    assert "NODUS_BASE_URL" in message
-    assert "https://nodus.run/console/" in message
+    with nodus.Client() as client:
+        assert client.base_url == nodus.DEFAULT_BASE_URL
 
 
 @pytest.mark.parametrize(
@@ -374,7 +366,7 @@ def test_both_missing_are_reported_together(monkeypatch):
     with pytest.raises(nodus.ConfigurationError) as exc:
         nodus.Client()
     message = str(exc.value)
-    assert "NODUS_BASE_URL" in message and "NODUS_API_KEY" in message
+    assert "nodus login" in message and "NODUS_API_KEY" in message
 
 
 # -- submission and handles ------------------------------------------------
