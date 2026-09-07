@@ -278,9 +278,9 @@ def test_an_unconfigured_client_never_reaches_the_network(monkeypatch):
     with pytest.raises(nodus.ConfigurationError) as exc:
         nodus.Client()
     message = str(exc.value)
-    assert "NODUS_BASE_URL" in message
+    assert "nodus login" in message
     assert "NODUS_API_KEY" in message
-    assert "https://nodus.run/console/" in message
+    assert "secret manager" in message
 
 
 def test_the_environment_alone_is_enough_to_build_a_client(plane, monkeypatch):

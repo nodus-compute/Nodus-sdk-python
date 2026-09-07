@@ -1,6 +1,6 @@
 # CI and safe retries
 
-Provide `NODUS_API_KEY` and `NODUS_BASE_URL` through your CI secret manager.
+Provide `NODUS_API_KEY` through your CI secret manager.
 Use a stable ID for one logical submission, preserved across job retries:
 
 ```bash

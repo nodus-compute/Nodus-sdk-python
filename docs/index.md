@@ -7,7 +7,7 @@ and execution. These guides cover currently supported GPU workloads.
 
 1. [Install and authenticate](getting-started/authentication.md)
 2. [Run your first workload](../README.md#2-run-your-first-workload)
-3. [Inspect status, logs, outputs, and routing](guides/monitoring-and-outputs.md)
+3. [Read status, logs, and outputs](guides/monitoring-and-outputs.md)
 
 ## Workload guides
 
@@ -33,7 +33,7 @@ Use this repository's docs for the SDK version checked out. Begin with the
 need in the [parameter index](reference/parameters/index.md).
 The [example scripts](../examples/README.md) are complete programs with explicit
 configuration requirements. Do not invent `env=`, top-level `inputs=`, local
-file upload, GPU SKU selectors, or a production API URL. Set a budget and persist
+file upload, GPU SKU selectors, or new API methods. Set a budget and persist
 the workload ID and logical submission's idempotency key. Check terminal success.
 A successful API response means acceptance, not completed computation.
 

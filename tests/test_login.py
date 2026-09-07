@@ -837,11 +837,14 @@ def test_a_token_response_without_a_key_is_a_protocol_error_not_a_login(console,
     assert not nodus_config.exists()
 
 
-def test_login_needs_an_address_and_says_which_flag_supplies_it(nodus_config, capsys):
-    assert cli.main(["login"]) == 2
-    err = capsys.readouterr().err
-    assert "--base-url" in err
-    assert "NODUS_BASE_URL" in err
+def test_login_uses_hosted_default_opens_browser_and_saves_credentials(
+    console, nodus_config, monkeypatch, no_browser_opens
+):
+    monkeypatch.setattr(nodus, "DEFAULT_BASE_URL", console.base_url)
+    assert cli.main(["login"]) == 0
+    assert no_browser_opens == [_started()["verification_url"]]
+    with nodus.Client() as client:
+        assert client.base_url == APPROVED["base_url"]
 
 
 def test_login_takes_the_address_from_the_environment_when_no_flag_is_given(

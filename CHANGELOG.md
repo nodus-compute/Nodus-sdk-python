@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.3
+
+- Connect to hosted Nodus with `nodus login` without an API URL.
+- Show terminal activity while browser approval is pending.
+- Keep custom endpoint overrides and saved configuration precedence.
+- Lead the quickstart and workload guides with Python examples.
+
+
 ## 0.1.2
 
 - Focus customer onboarding and examples on GPU workloads and clear installation steps.

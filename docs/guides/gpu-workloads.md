@@ -26,11 +26,24 @@ to fit your account, region policy, and available capacity.
 For training, [build an image](containers-and-scripts.md) containing your code,
 framework dependencies, and data-access logic. Then run its actual command:
 
-```bash
-nodus run --compute-class accelerator \
-  --image YOUR_REGISTRY/trainer:v1 --model LoRA-fine-tune \
-  --peak-memory-gb 24 --hours 2 --budget 25 --wait \
-  -- python /app/train.py --epochs 3
+```python
+import nodus
+
+with nodus.Client() as client:
+    workload = client.run(
+        image="YOUR_REGISTRY/trainer:v1",
+        command=["python", "/app/train.py", "--epochs", "3"],
+        compute_class="accelerator",
+        model="LoRA-fine-tune",
+        peak_memory_gb=24,
+        expected_runtime_hours=2,
+        budget=25,
+    )
+    print(workload.id)
+    done = workload.wait()
+    if not done.succeeded:
+        raise RuntimeError(f"Training ended: {done.status}")
+    print(done.logs())
 ```
 
 This is a template: `/app/train.py` and `--epochs` belong to your application.
