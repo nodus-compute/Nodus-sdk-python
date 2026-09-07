@@ -70,7 +70,6 @@ BRIEF_PARAMETERS = {
     "image",
     "model",
     "peak_memory_gb",
-    "expected_runtime_hours",
     "budget",
     "compute_class",
     "continuity",
@@ -175,7 +174,8 @@ def test_the_command_answers_a_missing_log_with_a_sentence(monkeypatch, capsys):
     monkeypatch.setattr(cli, "Client", _Fake)
     assert cli.main(["logs", "wl_abc"]) == 1
     out = capsys.readouterr()
-    assert "committed artifact" in out.out
+    assert "No logs are available" in out.out
+    assert "committed artifact" not in out.out
     assert "Traceback" not in out.err
 
 

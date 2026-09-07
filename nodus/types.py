@@ -178,7 +178,9 @@ class Route:
     ``expected_cost_usd`` is cost to completion: the run plus the recovery the
     router expects to pay for on this route. That is why it can exceed
     ``price_usd_hour * expected_hours``, and it is the number the budget is
-    checked against.
+    checked against. When ``cost_basis`` is ``initial_reservation``, runtime
+    is unknown and ``initial_reservation_usd`` is the starting reservation,
+    not a prediction of the final cost.
     """
 
     sku: str = ""
@@ -187,6 +189,8 @@ class Route:
     region: str = ""
     memory_gb: float = 0.0
     price_usd_hour: float = 0.0
+    cost_basis: str = ""
+    initial_reservation_usd: float = 0.0
     expected_cost_usd: float = 0.0
     expected_hours: float = 0.0
     remaining_budget_usd: float = 0.0
@@ -205,6 +209,8 @@ class Route:
             region=_text(d.get("region")),
             memory_gb=_num(d.get("memory_gb")),
             price_usd_hour=_num(d.get("price_usd_hour")),
+            cost_basis=_text(d.get("cost_basis")),
+            initial_reservation_usd=_num(d.get("initial_reservation_usd")),
             expected_cost_usd=_num(d.get("expected_cost_usd")),
             expected_hours=_num(d.get("expected_hours")),
             remaining_budget_usd=_num(d.get("remaining_budget_usd")),

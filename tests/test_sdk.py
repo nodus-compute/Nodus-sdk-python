@@ -99,7 +99,6 @@ def test_build_payload_is_the_nested_wire_shape():
         model="7B fine-tune",
         command=["python", "train.py"],
         peak_memory_gb=80,
-        expected_runtime_hours=18,
         budget=400,
         finish_by="2026-08-01T09:00:00Z",
     )
@@ -501,11 +500,10 @@ def test_run_without_a_budget_sends_no_cost_ceiling():
     The mirror of Go's TestRunWithoutABudgetSendsNoCostCeiling: the two clients
     submit the same bytes for the same brief, so neither can drift back into a
     private ceiling on somebody else's money. The empty outcome object still
-    ships, because that is what the Go client sends too. It is warned about
-    rather than filled in.
+    ships, because that is what the Go client sends too. The account cap
+    remains the default protection.
     """
-    with pytest.warns(UserWarning, match="budget="):
-        outcome = _submitted_outcome(model="7B fine-tune", command=["python", "train.py"])
+    outcome = _submitted_outcome(model="7B fine-tune", command=["python", "train.py"])
     assert "max_cost_usd" not in outcome, f"invented a ceiling: {outcome}"
     assert outcome == {}
 
@@ -1589,44 +1587,22 @@ def test_a_datetime_deadline_reaches_the_wire_as_rfc3339():
     json.dumps(p)
 
 
-def test_a_brief_with_no_budget_says_it_is_uncapped():
-    """Uncapped is a choice, and it should be one somebody made on purpose."""
-    with pytest.warns(UserWarning, match="budget="):
-        build_payload(model="x", command=["a"])
-
-
-def test_a_money_warning_blames_the_brief_that_caused_it(recwarn):
-    """The default filter is one warning per location: blamed on the caller,
-    both briefs are told; blamed on the SDK, only the first would be."""
-    with client_with(lambda r: httpx.Response(202, json=SUBMIT_ACCEPTED)) as c:
-        with warnings.catch_warnings(record=True) as seen:
-            warnings.simplefilter("default")
-            c.run(model="first", command=["python", "train.py"])
-            c.run(model="second", command=["python", "train.py"])
-
-    uncapped = [w for w in seen if "budget=" in str(w.message)]
-    assert len(uncapped) == 2, [str(w.message) for w in seen]
-    for w in uncapped:
-        assert w.filename.endswith("test_sdk.py"), w.filename
-
-
-def test_a_money_warning_blames_a_direct_brief_too(recwarn):
-    """build_payload() sits one frame closer, and a hardcoded depth cannot be
-    right for both it and run()."""
+def test_an_omitted_budget_is_silent_and_preserves_account_cap_behavior():
     with warnings.catch_warnings(record=True) as seen:
-        warnings.simplefilter("default")
-        build_payload(model="x", command=["a"])
-    assert len(seen) == 1
-    assert seen[0].filename.endswith("test_sdk.py"), seen[0].filename
+        warnings.simplefilter("always")
+        payload = build_payload(model="x", command=["a"])
+        staged = build_payload(stages=[{"id": "train"}])
+    assert not seen
+    assert "max_cost_usd" not in payload.get("outcome", {})
+    assert "max_cost_usd" not in staged.get("outcome", {})
 
 
-def test_a_staged_brief_is_warned_about_a_budget_like_any_other():
-    """A staged pipeline is the brief with the most to spend, not the least."""
-    with pytest.warns(UserWarning, match="budget="):
-        build_payload(stages=[{"id": "train"}])
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        build_payload(stages=[{"id": "train"}], budget=50)
+def test_explicit_budget_is_preserved_without_warning():
+    with warnings.catch_warnings(record=True) as seen:
+        warnings.simplefilter("always")
+        payload = build_payload(stages=[{"id": "train"}], budget=50)
+    assert not seen
+    assert payload["outcome"]["max_cost_usd"] == 50
 
 
 def test_stages_refuse_the_source_they_would_throw_away():

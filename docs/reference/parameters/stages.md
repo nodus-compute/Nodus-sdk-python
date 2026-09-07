@@ -32,6 +32,6 @@ directory. Runtime integrations expose resolved inputs through `NODUS_INPUT_<nam
 The value is a local file path, not the original storage URI.
 
 Stage requirements support the same six fields as workload requirements:
-`model`, `compute_class`, `dataset_bytes`, `expected_runtime_hours`,
+`model`, `compute_class`, `dataset_bytes`,
 `peak_memory_gb`, and `notes`. See [resources](requirements.md) and the complete
 [multi-stage example](../../guides/multi-stage-workloads.md).

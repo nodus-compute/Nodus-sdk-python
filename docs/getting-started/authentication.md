@@ -70,3 +70,9 @@ nodus logout
 
 This removes the locally saved key. To revoke that key on the server, use the
 console. Environment variables remain set until you remove them.
+
+## Returning to Nodus
+
+`nodus login` checks and reuses your saved sign-in. You only need the browser
+when your credentials expire or you run `nodus login --force` to sign in again.
+A connection problem keeps your existing credentials intact.

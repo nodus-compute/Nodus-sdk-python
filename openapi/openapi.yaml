@@ -1111,6 +1111,57 @@
           }
         }
       }
+    },
+    "/v1/identity": {
+      "get": {
+        "operationId": "getIdentity",
+        "summary": "Read the saved credential identity",
+        "description": "Returns the owning user email when this credential belongs to a current team member. Service keys return empty email and name fields. No workload is submitted.",
+        "tags": [
+          "Account"
+        ],
+        "responses": {
+          "200": {
+            "description": "Authenticated identity. This response is not cached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "email",
+                    "name",
+                    "tenant"
+                  ],
+                  "properties": {
+                    "email": {
+                      "type": "string",
+                      "description": "Owner email, or empty for a service key."
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "Display name when available, otherwise empty."
+                    },
+                    "tenant": {
+                      "type": "string",
+                      "description": "Authenticated account identifier."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1246,10 +1297,6 @@
           "dataset_bytes": {
             "type": "integer"
           },
-          "expected_runtime_hours": {
-            "type": "number",
-            "description": "Estimated runtime in hours, used for placement and account admission. Omitted/nonpositive values use the profiler estimate. Account admission estimates omitted runtime at one hour. Not a timeout."
-          },
           "peak_memory_gb": {
             "type": "number",
             "description": "Peak memory fit hint in GB. Placement derives infrastructure. This is not an instance SKU."
@@ -1259,7 +1306,11 @@
           }
         },
         "x-go-source": "internal/models/models.go",
-        "x-go-type": "Requirements"
+        "x-go-type": "Requirements",
+        "additionalProperties": false,
+        "x-go-internal-properties": [
+          "expected_runtime_hours"
+        ]
       },
       "Outcome": {
         "type": "object",
@@ -1517,6 +1568,17 @@
             "items": {
               "$ref": "#/components/schemas/CustomerRejectedOffer"
             }
+          },
+          "cost_basis": {
+            "type": "string",
+            "enum": [
+              "initial_reservation"
+            ],
+            "description": "Present when runtime is unknown. The amount reserves an initial execution window and does not predict completion cost."
+          },
+          "initial_reservation_usd": {
+            "type": "number",
+            "description": "Initial execution reservation in USD. Actual charges and configured spending limits govern the running workload."
           }
         },
         "x-go-source": "internal/models/models.go",
@@ -1582,6 +1644,13 @@
           },
           "total_usd": {
             "type": "number"
+          },
+          "basis": {
+            "type": "string",
+            "enum": [
+              "initial_reservation"
+            ],
+            "description": "Identifies a bounded initial execution window instead of a completion estimate."
           }
         },
         "x-go-source": "internal/models/models.go",

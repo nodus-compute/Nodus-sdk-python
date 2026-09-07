@@ -102,6 +102,8 @@ class Credentials:
     key_id: str = ""
     tenant: str = ""
     expires_at: str = ""
+    email: str = ""
+    name: str = ""
 
 
 def client_name() -> str:
@@ -242,6 +244,8 @@ def poll_for_credentials(
                 key_id=_optional_text(body, "key_id"),
                 tenant=_optional_text(body, "tenant"),
                 expires_at=_optional_text(body, "expires_at"),
+                email=_optional_text(body, "email"),
+                name=_optional_text(body, "name"),
             )
         if status not in (_PENDING, _SLOW_DOWN):
             raise error_from_response("POST", TOKEN_PATH, status, _body(resp))
@@ -255,3 +259,21 @@ def poll_for_credentials(
                 wait = max(wait, min(asked, _MAX_TTL))
         # Never past the deadline: sleeping through it only delays the refusal.
         sleep(min(wait, max(0.0, deadline - monotonic())))
+
+
+def fetch_identity(http: httpx.Client, api_key: str) -> dict[str, str]:
+    """Validate a saved key and read the human identity it belongs to."""
+    path = "/v1/identity"
+    try:
+        resp = http.get(path, headers={"Authorization": f"Bearer {api_key}"})
+    except httpx.HTTPError as exc:
+        raise APIConnectionError(
+            "Could not check your saved sign-in. Check your connection and try again. "
+            "Your saved credentials have not changed."
+        ) from exc
+    if resp.status_code >= 400:
+        raise error_from_response("GET", path, resp.status_code, _body(resp))
+    body = _body(resp)
+    if not isinstance(body, dict):
+        raise NodusError("Nodus returned an invalid account response. Try again.")
+    return {field: _optional_text(body, field) for field in ("email", "name")}

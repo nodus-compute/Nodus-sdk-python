@@ -1,6 +1,6 @@
 """``~/.nodus/config.toml``, the file ``nodus login`` writes and the client reads.
 
-One section, five keys, all text::
+One section, with text values::
 
     [default]
     api_key    = "nk_live_..."
@@ -8,6 +8,8 @@ One section, five keys, all text::
     key_id     = "key_a1b2c3d4e5f6"
     tenant     = "acme"
     expires_at = "2026-11-30T00:00:00Z"
+    email      = "you@example.com"
+    name       = "Your name"
 
 Building a client reads ``api_key`` and ``base_url`` and nothing else. The rest
 names the key, so ``nodus logout`` can say which one is left to revoke.
@@ -29,7 +31,6 @@ import re
 import stat
 import sys
 import tempfile
-import warnings
 from pathlib import Path
 from typing import Any, Callable
 
@@ -49,7 +50,7 @@ PROFILE = "default"
 
 #: Written by a login, cleared by a logout. ``api_key`` is the credential; the
 #: rest identifies it for the person who has to revoke it.
-CREDENTIAL_FIELDS = ("api_key", "key_id", "tenant", "expires_at")
+CREDENTIAL_FIELDS = ("api_key", "key_id", "tenant", "expires_at", "email", "name")
 
 # A key TOML lets stand without quotes. Anything else is quoted on the way out,
 # because a parsed key is written back verbatim and "my key" is not a bare key.
@@ -255,7 +256,7 @@ def read_credentials() -> tuple[str, str]:
 
 
 def read_metadata() -> dict[str, str]:
-    """What names the stored key: ``key_id``, ``tenant``, ``expires_at``.
+    """Metadata for the stored key and its human identity.
 
     Only the keys the file actually carries, so a file written before these
     existed reads as ``{}`` rather than as three empty strings.
@@ -263,7 +264,7 @@ def read_metadata() -> dict[str, str]:
     path = config_path()
     section = _profile(path)
     found = {}
-    for name in ("key_id", "tenant", "expires_at"):
+    for name in ("key_id", "tenant", "expires_at", "email", "name"):
         value = _string(path, section, name)
         if value:
             found[name] = value
@@ -490,6 +491,8 @@ def save_credentials(
     key_id: str = "",
     tenant: str = "",
     expires_at: str = "",
+    email: str = "",
+    name: str = "",
 ) -> Path:
     """Store the key and what names it, and return the path written.
 
@@ -506,7 +509,7 @@ def save_credentials(
             "sent is worse than no key, so it is refused rather than stored."
         )
     path = config_path()
-    fields = {"key_id": key_id, "tenant": tenant, "expires_at": expires_at}
+    fields = {"key_id": key_id, "tenant": tenant, "expires_at": expires_at, "email": email, "name": name}
 
     def edit(section: dict[str, Any]) -> None:
         section["api_key"] = api_key
@@ -518,13 +521,6 @@ def save_credentials(
                 section.pop(name, None)
 
     _rewrite(path, edit)
-    if os.name != "posix":
-        warnings.warn(
-            f"{path} holds your API key. This platform has no 0600, so the "
-            "file inherits the permissions of your profile directory rather "
-            "than being narrowed further.",
-            stacklevel=2,
-        )
     return path
 
 

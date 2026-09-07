@@ -189,7 +189,8 @@ def test_installed_terminal_commands(args, docs_api, tmp_path):
     assert result.returncode == 0, result.stderr
     assert "Traceback" not in result.stderr
     assert "\x1b" not in result.stdout
-    assert "elapsed" not in result.stderr
+    assert "\r" not in result.stderr
+    assert "\x1b" not in result.stderr
     if args[0] == "download":
         assert (tmp_path / "outputs/wl_docs/summarize/result").read_bytes() == DATA
 

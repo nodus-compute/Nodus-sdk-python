@@ -14,7 +14,7 @@ Prefer a `with` block. Otherwise call `close()`.
 | `list(limit=50, offset=0, status=None)` | One page of workloads |
 | `list_page(limit=50, offset=0, status=None)` | `(workloads, next_offset)` |
 | `iter_workloads(page_size=50, status=None)` | Iterator over offset-based pages |
-| `wait(id, poll_seconds=2.0, timeout_seconds=None)` | Terminal workload. Inspect `succeeded` |
+| `wait(id, poll_seconds=2.0, timeout_seconds=None, progress=None)` | Terminal workload. Inspect `succeeded` |
 | `cancel(id, idempotency_key=None)` | Request cancellation. Returns `None` |
 | `events(id, after=0)` | One page of `Event` objects |
 | `iter_events(id, after=0)` | Iterator over event history |
@@ -39,6 +39,10 @@ download, routing, and ledger methods without repeating the ID. Reads and waits
 on the handle mutate it in place. Useful attributes are `id`, `status`,
 `succeeded`, `is_terminal`, `route`, `stages`, `meter`, `cost_now_usd`, and `raw`.
 Unknown server enum values remain strings for forward compatibility.
+
+In a terminal, `wait()` displays live status, elapsed time, events, and available
+logs. Use `progress=False` for quiet execution or `progress=True` to show updates
+when output is redirected. Waiting does not stop a run when a client timeout expires.
 
 `workload.download(destination=None)` downloads all declared customer outputs
 and returns a list of local `Path` objects. The default directory is

@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import warnings
 import shutil
 import subprocess
 import sys
@@ -405,21 +406,20 @@ def test_the_written_file_is_readable_only_by_its_owner(nodus_config):
 
 
 @pytest.mark.skipif(os.name == "posix", reason="POSIX has a mode bit meaning this")
-def test_a_platform_with_no_file_mode_says_what_is_true_instead(nodus_config):
-    """Not "anyone can read it" -- it inherits the profile directory's ACL."""
-    with pytest.warns(UserWarning, match="inherits the permissions"):
+def test_windows_save_does_not_emit_a_routine_permission_warning(nodus_config):
+    """Windows uses the profile directory ACL without a routine warning."""
+    with warnings.catch_warnings(record=True) as emitted:
         config.save_credentials("nk_live_written", "https://written.example")
+    assert not emitted
 
 
 @pytest.mark.skipif(os.name == "posix", reason="POSIX has a mode bit meaning this")
-def test_a_login_states_the_file_mode_caveat_as_a_sentence(console, nodus_config, capsys):
-    """The warning existing is not the same as a person being told.
-
-    Pinning only the UserWarning left the line that prints it deletable with
-    the suite still green.
-    """
+def test_windows_login_uses_plain_private_file_guidance(console, nodus_config, capsys):
+    """Normal Windows sign-in avoids POSIX permission terminology."""
     assert _login(console) == 0
-    assert "inherits the permissions" in capsys.readouterr().err
+    output = capsys.readouterr()
+    assert "0600" not in output.err
+    assert "Keep this file private" in output.out
 
 
 def test_a_failed_write_leaves_no_temporary_file_holding_the_key(nodus_config, monkeypatch):
@@ -663,7 +663,8 @@ def test_login_writes_a_config_the_client_then_resolves_from(console, nodus_conf
     printed = _both_streams(capsys)
     assert "WXYZ-4823" in printed
     assert str(nodus_config) in printed
-    assert "acme" in printed
+    assert "Welcome!" in printed
+    assert "Signed in as acme" not in printed
     assert APPROVED["api_key"] not in printed, "the key itself must not be printed"
 
     with nodus.Client() as c:
@@ -1018,3 +1019,12 @@ def test_logout_names_the_key_it_removed_and_is_honest_about_the_server(
 def test_logout_with_nothing_stored_is_not_a_failure(nodus_config, capsys):
     assert cli.main(["logout"]) == 0
     assert "no stored key" in capsys.readouterr().out.lower()
+
+
+def test_device_login_displays_person_not_tenant(console, nodus_config, capsys):
+    console.token = [(200, dict(APPROVED, email="viswa@example.com", name="Viswa", tenant="ten_nodus-random"))]
+    assert _login(console) == 0
+    out = _both_streams(capsys)
+    assert "Welcome, viswa@example.com!" in out
+    assert "ten_nodus-random" not in out
+    assert config.read_metadata()["email"] == "viswa@example.com"

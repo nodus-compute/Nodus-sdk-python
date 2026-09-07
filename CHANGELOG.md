@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.0
+
+- Reuse saved sign-in and greet you by email. Use `nodus login --force` to sign in again.
+- Add structured terminal summaries, table headings, and actionable errors.
+- Show elapsed time, real events, stage progress, and available logs while waiting.
+- Remove customer runtime estimates from Python, workload files, and request types.
+- Distinguish an initial execution reservation from a full-run cost estimate.
+- Keep scripts quiet with `progress=False` and structured CLI output with `--json`.
+
+This release requires the matching server identity and automatic-runtime update.
+
 ## 0.2.0
 
 - Simplify the CLI around workload files and short commands. Replace `get` with

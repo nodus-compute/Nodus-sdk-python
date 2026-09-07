@@ -304,7 +304,6 @@ def test_the_whole_journey(client, plane):
         command=["sh", "-c", "for i in 1 2 3; do echo step-$i; sleep 3; done"],
         model="7B fine-tune",
         peak_memory_gb=24,
-        expected_runtime_hours=0.1,
         budget=25,
     )
 

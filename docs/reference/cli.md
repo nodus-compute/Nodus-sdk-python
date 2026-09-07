@@ -1,7 +1,7 @@
 # Terminal commands
 
 Use `nodus --help` for command groups and `nodus COMMAND --help` for options.
-Replace `ID` with a workload ID. These commands describe SDK 0.2.0.
+Replace `ID` with a workload ID. These commands describe SDK 0.3.0.
 
 ## Setup
 
@@ -95,3 +95,11 @@ Replace `nodus get ID` with `nodus status ID`, and `nodus get ID --wait` with
 `nodus wait ID`. Submission flags have moved into workload files. Use `nodus run`
 to submit and wait, or `nodus submit` to return immediately. Python `client.get()`
 and `client.run()` keep their existing behavior.
+
+## Terminal output
+
+`list` includes column headings. `status` shows the run, status, placement, and
+current cost. `run` and `wait` show elapsed time, events, and available logs.
+Use `--json` where supported for structured output. `submit` prints only the
+workload ID so it can be captured by scripts. Colors adapt to the terminal and
+respect `NO_COLOR`.

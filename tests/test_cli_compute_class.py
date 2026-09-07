@@ -13,8 +13,14 @@ from nodus import cli
 def test_file_submission_and_observation(command, monkeypatch, tmp_path, capsys):
     sent = []
     methods = []
+    paths = []
     def handler(req):
         methods.append(req.method)
+        paths.append(req.url.path)
+        if req.url.path.endswith('/logs'):
+            return httpx.Response(200, text='GPU ready')
+        if req.url.path.endswith('/events'):
+            return httpx.Response(200, json={'events': []})
         if req.method == 'POST':
             sent.append(json.loads(req.content))
             return httpx.Response(202, json={'id': 'wl_test', 'status': 'accepted'})
@@ -28,6 +34,7 @@ def test_file_submission_and_observation(command, monkeypatch, tmp_path, capsys)
     assert sent[0]['source']['command'] == ['python', 'train.py']
     assert sent[0]['requirements'].get('compute_class') in (None, 'accelerator')
     assert methods == (['POST', 'GET'] if command == 'run' else ['POST'])
+    assert not any(path.endswith(('/events', '/logs')) for path in paths)
     output = capsys.readouterr().out
     assert output.startswith('wl_test\n')
     assert ('completed' in output) == (command == 'run')
@@ -104,7 +111,8 @@ def test_upload_streams_file_and_assets_sanitizes_rows(monkeypatch, tmp_path, ca
     assert capsys.readouterr().out == "asset_data\n"
     assert cli.main(["assets"]) == 0
     output = capsys.readouterr().out
-    assert len(output.splitlines()) == 1
+    assert len(output.splitlines()) == 3
+    assert "ASSET" in output and "STATE" in output and "NAME" in output
     assert "\x1b" not in output
     assert len(requests) == 3
 

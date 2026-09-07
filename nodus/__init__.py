@@ -19,7 +19,6 @@ an API key for automation:
             model="LoRA-fine-tune",
             command=["python", "train.py"],
             peak_memory_gb=80,
-            expected_runtime_hours=18,
             budget=400,
         )
         done = client.wait(wl.id)
@@ -43,6 +42,7 @@ from importlib.metadata import PackageNotFoundError, version as _distribution_ve
 from typing import Any, AsyncIterator, Iterator
 from pathlib import Path
 
+from ._progress import Progress
 from ._outputs import download_path, verified_file, output_destinations
 from ._assets import Asset, Assets, AsyncAssets
 
@@ -719,7 +719,6 @@ class Client(_Transport):
         outputs: dict[str, str] | None = None,
         model: str | None = None,
         peak_memory_gb: float | None = None,
-        expected_runtime_hours: float | None = None,
         budget: float | None = None,
         compute_class: ComputeClass | str | None = None,
         continuity: ContinuityMode | str | ContinuitySpec | dict[str, Any] | None = None,
@@ -761,7 +760,6 @@ class Client(_Transport):
             outputs=outputs,
             model=model,
             peak_memory_gb=peak_memory_gb,
-            expected_runtime_hours=expected_runtime_hours,
             budget=budget,
             compute_class=compute_class,
             continuity=continuity,
@@ -972,20 +970,23 @@ class Client(_Transport):
         *,
         poll_seconds: float = 2.0,
         timeout_seconds: float | None = None,
+        progress: bool | None = None,
     ) -> "Workload":
         """Poll until terminal. Ctrl+C requests remote cancellation.
 
         Transient failures are retried while waiting. A timeout ends local
         observation without cancellation. See :class:`_WaitPolicy`.
         """
-        with _cancel_wait_on_interrupt(self, workload_id):
+        with _cancel_wait_on_interrupt(self, workload_id), Progress(workload_id, progress) as display:
             policy = _WaitPolicy(poll_seconds, timeout_seconds)
             while True:
                 try:
                     wl = self.get(workload_id)
                 except NodusError as exc:
                     delay = policy.failed(exc)
+                    display.retrying()
                 else:
+                    display.update(self, wl, deadline=policy.deadline)
                     if wl.is_terminal:
                         return wl
                     delay = policy.polled()
@@ -1079,7 +1080,7 @@ class Workload(_WorkloadState):
         self._absorb(self._client._one(self._client._request("GET", path), "GET", path))
         return self
 
-    def wait(self, *, poll_seconds: float = 2.0, timeout_seconds: float | None = None) -> "Workload":
+    def wait(self, *, poll_seconds: float = 2.0, timeout_seconds: float | None = None, progress: bool | None = None) -> "Workload":
         """Poll until terminal. Ctrl+C requests remote cancellation.
 
         Raises :class:`APITimeoutError` if ``timeout_seconds`` elapses first.
@@ -1087,14 +1088,16 @@ class Workload(_WorkloadState):
         cancellation. Transient poll failures are retried for the life of the
         wait, permanent ones raised at once. See :class:`_WaitPolicy`.
         """
-        with _cancel_wait_on_interrupt(self._client, self.id):
+        with _cancel_wait_on_interrupt(self._client, self.id), Progress(self.id, progress) as display:
             policy = _WaitPolicy(poll_seconds, timeout_seconds)
             while True:
                 try:
                     self.refresh()
                 except NodusError as exc:
                     delay = policy.failed(exc)
+                    display.retrying()
                 else:
+                    display.update(self._client, self, deadline=policy.deadline)
                     if self.is_terminal:
                         return self
                     delay = policy.polled()
@@ -1272,7 +1275,6 @@ class AsyncClient(_Transport):
         outputs: dict[str, str] | None = None,
         model: str | None = None,
         peak_memory_gb: float | None = None,
-        expected_runtime_hours: float | None = None,
         budget: float | None = None,
         compute_class: ComputeClass | str | None = None,
         continuity: ContinuityMode | str | ContinuitySpec | dict[str, Any] | None = None,
@@ -1295,7 +1297,6 @@ class AsyncClient(_Transport):
             outputs=outputs,
             model=model,
             peak_memory_gb=peak_memory_gb,
-            expected_runtime_hours=expected_runtime_hours,
             budget=budget,
             compute_class=compute_class,
             continuity=continuity,
@@ -1496,19 +1497,23 @@ class AsyncClient(_Transport):
         *,
         poll_seconds: float = 2.0,
         timeout_seconds: float | None = None,
+        progress: bool | None = None,
     ) -> "AsyncWorkload":
         """Poll until the workload is terminal. Same policy as :meth:`Client.wait`."""
-        policy = _WaitPolicy(poll_seconds, timeout_seconds)
-        while True:
-            try:
-                wl = await self.get(workload_id)
-            except NodusError as exc:
-                delay = policy.failed(exc)
-            else:
-                if wl.is_terminal:
-                    return wl
-                delay = policy.polled()
-            await asyncio.sleep(policy.hold(delay, workload_id))
+        with Progress(workload_id, progress) as display:
+            policy = _WaitPolicy(poll_seconds, timeout_seconds)
+            while True:
+                try:
+                    wl = await self.get(workload_id)
+                except NodusError as exc:
+                    delay = policy.failed(exc)
+                    display.retrying()
+                else:
+                    await display.update_async(self, wl, deadline=policy.deadline)
+                    if wl.is_terminal:
+                        return wl
+                    delay = policy.polled()
+                await asyncio.sleep(policy.hold(delay, workload_id))
 
     async def stream_events(
         self, workload_id: str, *, poll_seconds: float = 2.0
@@ -1563,20 +1568,23 @@ class AsyncWorkload(_WorkloadState):
         return self
 
     async def wait(
-        self, *, poll_seconds: float = 2.0, timeout_seconds: float | None = None
+        self, *, poll_seconds: float = 2.0, timeout_seconds: float | None = None, progress: bool | None = None
     ) -> "AsyncWorkload":
         """Poll until terminal. Same policy as :meth:`Workload.wait`."""
-        policy = _WaitPolicy(poll_seconds, timeout_seconds)
-        while True:
-            try:
-                await self.refresh()
-            except NodusError as exc:
-                delay = policy.failed(exc)
-            else:
-                if self.is_terminal:
-                    return self
-                delay = policy.polled()
-            await asyncio.sleep(policy.hold(delay, self.id))
+        with Progress(self.id, progress) as display:
+            policy = _WaitPolicy(poll_seconds, timeout_seconds)
+            while True:
+                try:
+                    await self.refresh()
+                except NodusError as exc:
+                    delay = policy.failed(exc)
+                    display.retrying()
+                else:
+                    await display.update_async(self._client, self, deadline=policy.deadline)
+                    if self.is_terminal:
+                        return self
+                    delay = policy.polled()
+                await asyncio.sleep(policy.hold(delay, self.id))
 
     async def events(self, *, after: int = 0) -> list[Event]:
         return await self._client.events(self.id, after=after)

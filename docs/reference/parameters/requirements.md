@@ -5,11 +5,11 @@
 | `model` | Free-text `str` | No model hint | `model` | `requirements.model` |
 | `compute_class` | `"accelerator"` for GPU workloads | Accelerator on the current API | `compute_class` | `requirements.compute_class` |
 | `peak_memory_gb` | Number in GB | No explicit memory hint | `peak_memory_gb` | `requirements.peak_memory_gb` |
-| `expected_runtime_hours` | Number in hours | No explicit duration estimate | `expected_runtime_hours` | `requirements.expected_runtime_hours` |
 | `requirements` | Dictionary | Empty object | Same key or table | `requirements` |
 
-Provide realistic positive memory and runtime estimates. Runtime informs routing
-and pricing. It is not a stop timer. `model` describes the workload. It does not
+Provide a positive memory requirement when your workload needs one. Nodus manages
+runtime estimates. You do not need to predict how long your command will take.
+`model` describes the workload. It does not
 download weights. The memory hint alone is not a request for a specific GPU SKU
 or topology. Inspect the selected route after placement.
 
@@ -21,7 +21,6 @@ workload = client.run(
     command=["python", "-c", "import torch\nprint(torch.cuda.is_available())"],
     compute_class="accelerator",
     peak_memory_gb=24,
-    expected_runtime_hours=0.1,
     budget=5,
 )
 ```
