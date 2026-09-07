@@ -10,7 +10,7 @@ def main():
     args = parser.parse_args()
     with nodus.Client() as client:
         workload = client.run(
-            image="pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime", compute_class="accelerator",
+            image="pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime",
             command=["python", "-c", "import torch\nassert torch.arange(10, device='cuda').sum().item() == 45\nprint('passed')"],
             budget=args.budget,
             idempotency_key=f"ci-{args.submission_id}",

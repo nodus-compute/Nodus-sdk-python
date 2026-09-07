@@ -24,8 +24,7 @@ nodus login
 ```
 
 Requires Python 3.10 or newer. Upgrading an existing installation? Use
-`pip install --upgrade nodus-compute`. Browser login without a URL requires 0.1.3
-or newer.
+`pip install --upgrade nodus-compute`. These docs describe SDK 0.2.0.
 
 Your browser opens Nodus sign-in. Sign in and approve the code matching your
 terminal. You can then close the tab. The terminal finishes automatically and
@@ -56,8 +55,6 @@ with nodus.Client() as client:
             "assert torch.cuda.is_available()\n"
             "print(torch.cuda.get_device_name(0))",
         ],
-        compute_class="accelerator",
-        model="GPU-smoke-test",
         budget=5,
     )
     print("Workload:", workload.id)
@@ -78,12 +75,30 @@ and remote resource cleanup.
 The script prints the GPU name from the workload logs. For files produced by
 your own program, see [logs and results](docs/guides/monitoring-and-outputs.md).
 
+## Prefer the terminal?
+
+```bash
+nodus init
+nodus run
+```
+
+`init` creates `nodus.toml` with the GPU smoke test and a $5 budget. Review the
+file, then `run` submits it and waits for completion. Edit the image, command,
+and budget to run your own workload. See [workload files](docs/getting-started/workload-files.md).
+
+```bash
+nodus status WORKLOAD_ID
+nodus logs WORKLOAD_ID
+nodus cancel WORKLOAD_ID
+```
+
 ## Run your own code
 
-Package your script and dependencies in a container image, then pass its image
-and command to `client.run()`. The SDK does not upload your local files.
+Upload your script with `client.assets.upload()` or package it in a container.
+Choose an image with your dependencies and pass its command to `client.run()`.
 
 - [Run a Python script](docs/guides/containers-and-scripts.md)
+- [Attach code and datasets](docs/guides/assets.md)
 - [Train or fine-tune a model](docs/guides/gpu-workloads.md)
 - [Read logs and download results](docs/guides/monitoring-and-outputs.md)
 

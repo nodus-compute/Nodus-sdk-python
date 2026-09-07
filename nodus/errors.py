@@ -32,6 +32,7 @@ __all__ = [
     "SpendCheckUnavailableError",
     "SignatureError",
     "APIError",
+    "AssetInUseError",
     "APIConnectionError",
     "APITimeoutError",
     "error_from_response",
@@ -215,6 +216,10 @@ class APIError(NodusError):
     """Any other 4xx/5xx with no more specific class."""
 
 
+class AssetInUseError(APIError):
+    """An asset cannot be deleted while an active workload uses it."""
+
+
 class APIConnectionError(NodusError):
     """The request never reached the control plane."""
 
@@ -254,6 +259,7 @@ _REMEDIES: dict[str, str] = {
         "refused rather than admitted without one: nothing was created and "
         "nothing was charged. Retry in a moment with the same brief."
     ),
+    "asset_in_use": "Wait for dependent workloads to finish before deleting this asset.",
     "idempotency_conflict": (
         "That Idempotency-Key already names a different payload. Resend the "
         "original brief, or mint a new key for the new intent."
@@ -310,6 +316,8 @@ def error_from_response(
     # Only the code the API actually writes counts.
     if status_code == 401 and code == "invalid_signature":
         cls: type[NodusError] = SignatureError
+    elif status_code == 409 and code == "asset_in_use":
+        cls = AssetInUseError
     elif status_code == 503 and code == "spend_check_unavailable":
         # The only 503 the control plane sends. Anything else at this status is
         # an infrastructure answer, not a statement about this brief.

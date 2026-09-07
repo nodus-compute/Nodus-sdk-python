@@ -16,6 +16,7 @@ issue. Python argument mistakes (`TypeError` / `ValueError`) are separate.
 | `RateLimitError` | Pace requests. SDK honors bounded retry-after delays |
 | `CapacityUnavailableError` | Retry later or relax feasible workload constraints |
 | `APIConnectionError` / `APITimeoutError` | Preserve submission key. Outcome may be unknown |
+| `AssetInUseError` | Finish or cancel dependent workloads before deleting the asset |
 | `APIError` | Inspect HTTP status and response payload |
 
 SDK request retries are finite. Capacity becoming available is not guaranteed.

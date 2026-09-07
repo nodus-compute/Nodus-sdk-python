@@ -1,14 +1,14 @@
 # Stage parameters
 
 `stages` is a list of dictionaries or `nodus.StageSpec` values. A nonempty list
-replaces the top-level source. Use Python for staged submission. The CLI has no
-stage-file option. Do not combine `framework` with explicit stages: a recognized
+replaces the top-level source. Use Python or `[[stages]]` entries in a
+[workload file](../../getting-started/workload-files.md). Do not combine `framework` with explicit stages: a recognized
 framework takes precedence in the current compiler.
 
 | Stage field | Type | Omission / purpose |
 |---|---|---|
 | `id` | Unique string, 1–64 characters | Required. Letters, digits, `_`, `-`, `.`. Cannot start with `.` or `-` |
-| `source` | `{image: str, command: list[str]}` | Give explicit executable argv and image. Missing image defaults to Python image server-side |
+| `source` | `{image: str, command: list[str], asset_id?: str}` | Give explicit executable argv and image. Missing image defaults to Python image server-side |
 | `depends_on` | List of stage IDs | Empty. Dependency edges must be acyclic |
 | `inputs` | List of input references below | Empty |
 | `outputs` | Mapping from logical name to relative output path | Empty. Files must actually be produced |

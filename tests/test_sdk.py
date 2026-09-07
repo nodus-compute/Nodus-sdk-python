@@ -169,8 +169,8 @@ def test_the_command_offers_only_statuses_that_filter():
     from nodus import cli
 
     with pytest.raises(SystemExit):
-        cli.build_parser().parse_args(["list", "--status", "runnning"])
-    assert cli.build_parser().parse_args(["list", "--status", "active"]).status == "active"
+        cli.build_parser().parse_args(["list", "runnning"])
+    assert cli.build_parser().parse_args(["list", "active"]).status == "active"
 
 
 def test_data_regions_go_where_the_server_reads_them():
@@ -1182,7 +1182,6 @@ def test_every_unknown_keyword_is_named_at_once():
     [
         ({"interrupt_tolerance": "low"}, "continuity"),
         ({"env": {"HF_TOKEN": "secret"}}, "command"),
-        ({"inputs": [{"uri": "key:datasets/x"}]}, "stages"),
     ],
 )
 def test_a_brief_field_the_control_plane_cannot_honour_is_refused(brief, why):
@@ -1220,7 +1219,7 @@ def test_an_unsupported_field_never_reaches_the_network():
         return httpx.Response(202, json=SUBMIT_ACCEPTED)
 
     with client_with(handler) as c:
-        for brief in ({"interrupt_tolerance": "low"}, {"env": {"A": "1"}}, {"inputs": []}):
+        for brief in ({"interrupt_tolerance": "low"}, {"env": {"A": "1"}}):
             with pytest.raises(TypeError):
                 c.run(model="x", budget=1, **brief)
     assert not calls

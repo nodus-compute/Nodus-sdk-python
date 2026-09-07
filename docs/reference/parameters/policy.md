@@ -1,9 +1,9 @@
 # Policy and data regions
 
-| Argument | Type | Omitted | CLI | HTTP field |
+| Argument | Type | Omitted | Workload file | HTTP field |
 |---|---|---|---|---|
-| `data_regions` | `list[str]` | No explicit region restriction from shortcut | Repeat `--data-region` | `policy.data_regions` |
-| `policy` | Dictionary | Absent unless populated | Python only | `policy` |
+| `data_regions` | `list[str]` | No explicit region restriction from shortcut | `data_regions` | `policy.data_regions` |
+| `policy` | Dictionary | Absent unless populated | Same key or table | `policy` |
 
 Use region identifiers supported by your deployment's catalog. Restricting
 regions narrows eligible routes and can make a workload infeasible. The SDK

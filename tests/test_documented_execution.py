@@ -52,6 +52,8 @@ def docs_api(monkeypatch):
             calls.append(("GET", path))
             if self.headers.get("Authorization") != "Bearer nk_docs":
                 return self.reply({"error": "unauthorized"}, 401)
+            if path == "/v1/assets":
+                return self.reply({"assets": [], "max_import_bytes": 1048576})
             if path == "/v1/workloads":
                 return self.reply({"workloads": [row]})
             if path == "/v1/workloads/wl_docs":
@@ -73,7 +75,23 @@ def docs_api(monkeypatch):
 
         def do_POST(self):
             path = urlsplit(self.path).path
-            payload = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+            if self.headers.get("Transfer-Encoding") == "chunked":
+                body = bytearray()
+                while True:
+                    count = int(self.rfile.readline().strip(), 16)
+                    if count == 0:
+                        self.rfile.readline()
+                        break
+                    body.extend(self.rfile.read(count))
+                    self.rfile.read(2)
+                raw = bytes(body)
+            else:
+                raw = self.rfile.read(int(self.headers.get("Content-Length", 0)))
+            if path in ("/v1/assets/upload", "/v1/assets/import"):
+                if self.headers.get("Authorization") != "Bearer nk_docs":
+                    return self.reply({"error": "unauthorized"}, 401)
+                return self.reply({"id": "asset_docs", "state": "ready", "name": "fixture", "kind": "file"}, 201)
+            payload = json.loads(raw or b"{}")
             calls.append(("POST", path))
             if path == "/v1/console/device/start":
                 return self.reply({"device_code": "device-test", "user_code": "ABCD-EFGH",
@@ -120,6 +138,10 @@ def test_python_documentation_executes(path, number, body, docs_api, tmp_path, m
     if path.name == "containers-and-scripts.md" and number == 0:
         pytest.skip("container-side CUDA program requires a GPU and PyTorch image")
     monkeypatch.chdir(tmp_path)
+    for name in ("hello.py", "train.py", "data.csv"):
+        (tmp_path / name).write_text("test fixture")
+    from nodus._workload_file import write_workload_file
+    write_workload_file(tmp_path / "train.toml")
     with nodus.Client() as client:
         namespace = {"__name__": "__docs__", "client": client, "nodus": nodus,
                      "workload_id": "wl_docs", "allowed_regions": ["test-region"],
@@ -151,21 +173,25 @@ def test_complete_example_programs(script, args, docs_api, tmp_path):
 
 @pytest.mark.parametrize("args", [
     ["--version"], ["--help"], ["run", "--help"], ["login", "--help"],
-    ["run", "--compute-class", "accelerator", "--image", "pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime",
-     "--budget", "5", "--wait", "--", "python", "-c", "print('ready')"],
-    ["list", "--status", "active", "--limit", "10"],
-    ["get", "wl_docs", "--json"], ["get", "wl_docs", "--wait"],
-    ["events", "wl_docs", "--follow"], ["logs", "wl_docs", "--tail", "50"],
+    ["init"], ["run"], ["submit"], ["list", "active"],
+    ["status", "wl_docs"], ["wait", "wl_docs"],
+    ["events", "wl_docs"], ["logs", "wl_docs"],
     ["artifacts", "wl_docs"], ["explain", "wl_docs"], ["ledger", "wl_docs"],
-    ["ledger", "wl_docs", "--json"], ["cancel", "wl_docs"],
+    ["download", "wl_docs"], ["cancel", "wl_docs"], ["assets"], ["upload", "hello.py"],
 ])
 def test_installed_terminal_commands(args, docs_api, tmp_path):
+    from nodus._workload_file import write_workload_file
+    if args[0] != "init":
+        write_workload_file(tmp_path / "nodus.toml")
+    (tmp_path / "hello.py").write_text("print('ready')")
     executable = Path(sysconfig.get_path("scripts")) / ("nodus.exe" if os.name == "nt" else "nodus")
     result = subprocess.run([str(executable), *args], cwd=tmp_path, capture_output=True, text=True, timeout=20)
     assert result.returncode == 0, result.stderr
     assert "Traceback" not in result.stderr
     assert "\x1b" not in result.stdout
     assert "elapsed" not in result.stderr
+    if args[0] == "download":
+        assert (tmp_path / "outputs/wl_docs/summarize/result").read_bytes() == DATA
 
 
 def test_login_saved_credentials_and_logout_in_separate_processes(docs_api, tmp_path):

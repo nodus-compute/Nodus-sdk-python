@@ -1,12 +1,12 @@
 # Resource requirements
 
-| Argument | Type / values | Omitted | CLI | HTTP field |
+| Argument | Type / values | Omitted | Workload file | HTTP field |
 |---|---|---|---|---|
-| `model` | Free-text `str` | No model hint | `--model` | `requirements.model` |
-| `compute_class` | `"accelerator"` for GPU workloads | Accelerator on the current API | `--compute-class` | `requirements.compute_class` |
-| `peak_memory_gb` | Number in GB | No explicit memory hint | `--peak-memory-gb` | `requirements.peak_memory_gb` |
-| `expected_runtime_hours` | Number in hours | No explicit duration estimate | `--hours` | `requirements.expected_runtime_hours` |
-| `requirements` | Dictionary | Empty object | Python only | `requirements` |
+| `model` | Free-text `str` | No model hint | `model` | `requirements.model` |
+| `compute_class` | `"accelerator"` for GPU workloads | Accelerator on the current API | `compute_class` | `requirements.compute_class` |
+| `peak_memory_gb` | Number in GB | No explicit memory hint | `peak_memory_gb` | `requirements.peak_memory_gb` |
+| `expected_runtime_hours` | Number in hours | No explicit duration estimate | `expected_runtime_hours` | `requirements.expected_runtime_hours` |
+| `requirements` | Dictionary | Empty object | Same key or table | `requirements` |
 
 Provide realistic positive memory and runtime estimates. Runtime informs routing
 and pricing. It is not a stop timer. `model` describes the workload. It does not

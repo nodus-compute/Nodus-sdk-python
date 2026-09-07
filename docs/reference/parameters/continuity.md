@@ -1,7 +1,7 @@
 # Continuity and recovery
 
 `continuity` accepts a string, `nodus.ContinuityMode`, or dictionary.
-The CLI exposes `--continuity` with the three string values below.
+Workload files accept a `continuity` string or a `[continuity]` table.
 
 | Mode | Intended application behavior | Default `resume_on_interruption` |
 |---|---|---|

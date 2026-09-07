@@ -10,12 +10,21 @@ Install the SDK, sign in, and run your code from Python. Nodus handles execution
 
 ## Run your code
 
-- [Package a Python script](guides/containers-and-scripts.md)
+- [Run a Python script](guides/containers-and-scripts.md)
+- [Attach code and datasets](guides/assets.md)
 - [Train or fine-tune a model](guides/gpu-workloads.md)
+- [Run from a workload file](getting-started/workload-files.md)
+
+## Go further
+
+- [Concurrent experiments](guides/async-sweeps.md)
+- [Stages and downloadable files](guides/multi-stage-workloads.md)
+- [CI and safe retries](guides/ci-and-idempotency.md)
 
 ## Reference
 
 - [Python client](reference/python/client.md)
+- [Terminal commands](reference/cli.md)
 - [Workload parameters](reference/parameters/index.md)
 - [Troubleshooting](operations/errors.md)
 

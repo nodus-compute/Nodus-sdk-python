@@ -43,7 +43,8 @@ from importlib.metadata import PackageNotFoundError, version as _distribution_ve
 from typing import Any, AsyncIterator, Iterator
 from pathlib import Path
 
-from ._outputs import download_path, verified_file
+from ._outputs import download_path, verified_file, output_destinations
+from ._assets import Asset, Assets, AsyncAssets
 
 import httpx
 
@@ -53,6 +54,7 @@ from .config import _is_header_safe, read_credentials
 from .errors import (
     APIConnectionError,
     APIError,
+    AssetInUseError,
     APITimeoutError,
     AuthenticationError,
     BudgetExceededError,
@@ -96,6 +98,7 @@ except PackageNotFoundError:
     __version__ = "0.0.0+source"
 
 __all__ = [
+    "Asset",
     "Client",
     "AsyncClient",
     "Workload",
@@ -134,6 +137,7 @@ __all__ = [
     "SpendCheckUnavailableError",
     "SignatureError",
     "APIError",
+    "AssetInUseError",
     "APIConnectionError",
     "APITimeoutError",
     "__version__",
@@ -417,6 +421,7 @@ class _WorkloadState:
     """Fields shared by the sync and async workload handles."""
 
     id: str = ""
+    owner_user_id: str | None = None
     status: Any = None
     route: Route | None = None
     #: Settled charges only. What a running workload costs is ``cost_now_usd``.
@@ -451,6 +456,8 @@ class _WorkloadState:
         # Both spellings name the same workload.
         d = _obj(d)
         self.id = d.get("id") or d.get("workload_id") or self.id
+        if "owner_user_id" in d:
+            self.owner_user_id = d["owner_user_id"]
         if "status" in d:
             self.status = WorkloadStatus.coerce(d.get("status"))
         self.route = Route.from_dict(d.get("route")) or self.route
@@ -707,6 +714,9 @@ class Client(_Transport):
         *,
         command: list[str] | str | None = None,
         image: str | None = None,
+        source_asset_id: str | None = None,
+        inputs: list[dict[str, str]] | None = None,
+        outputs: dict[str, str] | None = None,
         model: str | None = None,
         peak_memory_gb: float | None = None,
         expected_runtime_hours: float | None = None,
@@ -746,6 +756,9 @@ class Client(_Transport):
         payload = build_payload(
             command=command,
             image=image,
+            source_asset_id=source_asset_id,
+            inputs=inputs,
+            outputs=outputs,
             model=model,
             peak_memory_gb=peak_memory_gb,
             expected_runtime_hours=expected_runtime_hours,
@@ -776,6 +789,17 @@ class Client(_Transport):
             raise NodusError("submit returned no workload id", body=res)
         return wl
 
+    @property
+    def assets(self) -> Assets:
+        """Upload and import code or data for workloads."""
+        return Assets(self)
+
+    def run_file(self, path: str | Path = "nodus.toml") -> "Workload":
+        """Submit a validated workload file. Each call submits one workload."""
+        from ._workload_file import load_workload_file
+
+        return self.run(**load_workload_file(path))
+
     def get(self, workload_id: str) -> "Workload":
         path = f"/v1/workloads/{_valid_id(workload_id)}"
         wl = Workload(self)
@@ -783,21 +807,25 @@ class Client(_Transport):
         return wl
 
     def list(
-        self, *, limit: int = 50, offset: int = 0, status: Any = None
+        self, *, limit: int = 50, offset: int = 0, status: Any = None, scope: str | None = None
     ) -> list["Workload"]:
         """The first page only, use ``iter_workloads()`` for all of them.
 
         Newest first. ``status`` accepts a member, a wire string, a list of
         either, or the presets ``"active"`` and ``"terminal"``.
         """
-        items, _ = self.list_page(limit=limit, offset=offset, status=status)
+        items, _ = self.list_page(limit=limit, offset=offset, status=status, scope=scope)
         return items
 
     def list_page(
-        self, *, limit: int = 50, offset: int = 0, status: Any = None
+        self, *, limit: int = 50, offset: int = 0, status: Any = None, scope: str | None = None
     ) -> tuple[list["Workload"], int | None]:
         """A page plus the next offset, or ``None`` when the page is the last."""
         params: dict[str, Any] = {"limit": limit, "offset": offset}
+        if scope is not None:
+            if scope not in ("mine", "team"):
+                raise ValueError("scope must be 'mine' or 'team'")
+            params["scope"] = scope
         wire = status_filter(status)
         if wire:
             params["status"] = wire
@@ -809,7 +837,7 @@ class Client(_Transport):
             out.append(wl)
         return out, res.get("next_offset")
 
-    def iter_workloads(self, *, page_size: int = 50, status: Any = None) -> Iterator["Workload"]:
+    def iter_workloads(self, *, page_size: int = 50, status: Any = None, scope: str | None = None) -> Iterator["Workload"]:
         """Page lazily so a long history never has to be held in memory.
 
         Stops when the next offset does not advance: an offset that repeats is
@@ -817,7 +845,7 @@ class Client(_Transport):
         """
         offset = 0
         while True:
-            page, nxt = self.list_page(limit=page_size, offset=offset, status=status)
+            page, nxt = self.list_page(limit=page_size, offset=offset, status=status, scope=scope)
             for wl in page:
                 yield wl
             if nxt is None or nxt <= offset:
@@ -876,7 +904,7 @@ class Client(_Transport):
 
     def download_output(
         self, workload_id: str, name: str, destination: str | os.PathLike[str],
-        *, stage: str | None = None,
+        *, stage: str | None = None, overwrite: bool = True,
     ) -> Path:
         """Stream an output to destination and verify its SHA-256 before replacing it.
 
@@ -897,7 +925,7 @@ class Client(_Transport):
                     error = httpx.Response(resp.status_code, headers=resp.headers,
                                            content=bytes(body), request=resp.request)
                     self._raise("GET", path, error)
-                with verified_file(destination, resp.headers) as write:
+                with verified_file(destination, resp.headers, overwrite=overwrite) as write:
                     for chunk in resp.iter_bytes(chunk_size=1024 * 1024):
                         write(chunk)
         except httpx.TimeoutException as exc:
@@ -1092,11 +1120,21 @@ class Workload(_WorkloadState):
         """Read this workload's placement history."""
         return self._client.routing(self.id)
 
+    def download(self, destination: str | os.PathLike[str] | None = None) -> list[Path]:
+        """Download declared outputs into stage folders, refusing existing files."""
+        root = Path(destination) if destination is not None else Path("outputs") / _valid_id(self.id)
+        planned = output_destinations(root, self.outputs())
+        saved = []
+        for output, path in planned:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            saved.append(self.download_output(output.name, path, stage=output.stage_id, overwrite=False))
+        return saved
+
     def download_output(
-        self, name: str, destination: str | os.PathLike[str], *, stage: str | None = None
+        self, name: str, destination: str | os.PathLike[str], *, stage: str | None = None, overwrite: bool = True
     ) -> Path:
         """Download a named output and verify it before replacing destination."""
-        return self._client.download_output(self.id, name, destination, stage=stage)
+        return self._client.download_output(self.id, name, destination, stage=stage, overwrite=overwrite)
 
     def ledger(self) -> Ledger:
         return self._client.ledger(self.id)
@@ -1229,6 +1267,9 @@ class AsyncClient(_Transport):
         *,
         command: list[str] | str | None = None,
         image: str | None = None,
+        source_asset_id: str | None = None,
+        inputs: list[dict[str, str]] | None = None,
+        outputs: dict[str, str] | None = None,
         model: str | None = None,
         peak_memory_gb: float | None = None,
         expected_runtime_hours: float | None = None,
@@ -1249,6 +1290,9 @@ class AsyncClient(_Transport):
         payload = build_payload(
             command=command,
             image=image,
+            source_asset_id=source_asset_id,
+            inputs=inputs,
+            outputs=outputs,
             model=model,
             peak_memory_gb=peak_memory_gb,
             expected_runtime_hours=expected_runtime_hours,
@@ -1279,6 +1323,17 @@ class AsyncClient(_Transport):
             raise NodusError("submit returned no workload id", body=res)
         return wl
 
+    @property
+    def assets(self) -> AsyncAssets:
+        """Upload and import code or data for workloads."""
+        return AsyncAssets(self)
+
+    async def run_file(self, path: str | Path = "nodus.toml") -> "AsyncWorkload":
+        """Submit a validated workload file. Each call submits one workload."""
+        from ._workload_file import load_workload_file
+
+        return await self.run(**load_workload_file(path))
+
     async def get(self, workload_id: str) -> "AsyncWorkload":
         path = f"/v1/workloads/{_valid_id(workload_id)}"
         wl = AsyncWorkload(self)
@@ -1286,20 +1341,24 @@ class AsyncClient(_Transport):
         return wl
 
     async def list(
-        self, *, limit: int = 50, offset: int = 0, status: Any = None
+        self, *, limit: int = 50, offset: int = 0, status: Any = None, scope: str | None = None
     ) -> list["AsyncWorkload"]:
         """The first page only, use ``iter_workloads()`` for all of them.
 
         Newest first. ``status`` accepts a member, a wire string, a list of
         either, or the presets ``"active"`` and ``"terminal"``.
         """
-        items, _ = await self.list_page(limit=limit, offset=offset, status=status)
+        items, _ = await self.list_page(limit=limit, offset=offset, status=status, scope=scope)
         return items
 
     async def list_page(
-        self, *, limit: int = 50, offset: int = 0, status: Any = None
+        self, *, limit: int = 50, offset: int = 0, status: Any = None, scope: str | None = None
     ) -> tuple[list["AsyncWorkload"], int | None]:
         params: dict[str, Any] = {"limit": limit, "offset": offset}
+        if scope is not None:
+            if scope not in ("mine", "team"):
+                raise ValueError("scope must be 'mine' or 'team'")
+            params["scope"] = scope
         wire = status_filter(status)
         if wire:
             params["status"] = wire
@@ -1312,7 +1371,7 @@ class AsyncClient(_Transport):
         return out, res.get("next_offset")
 
     async def iter_workloads(
-        self, *, page_size: int = 50, status: Any = None
+        self, *, page_size: int = 50, status: Any = None, scope: str | None = None
     ) -> AsyncIterator["AsyncWorkload"]:
         """Page lazily so a long history never has to be held in memory.
 
@@ -1321,7 +1380,7 @@ class AsyncClient(_Transport):
         """
         offset = 0
         while True:
-            page, nxt = await self.list_page(limit=page_size, offset=offset, status=status)
+            page, nxt = await self.list_page(limit=page_size, offset=offset, status=status, scope=scope)
             for wl in page:
                 yield wl
             if nxt is None or nxt <= offset:
@@ -1381,7 +1440,7 @@ class AsyncClient(_Transport):
 
     async def download_output(
         self, workload_id: str, name: str, destination: str | os.PathLike[str],
-        *, stage: str | None = None,
+        *, stage: str | None = None, overwrite: bool = True,
     ) -> Path:
         """Stream an output to destination and verify its SHA-256 before replacing it.
 
@@ -1402,7 +1461,7 @@ class AsyncClient(_Transport):
                     error = httpx.Response(resp.status_code, headers=resp.headers,
                                            content=bytes(body), request=resp.request)
                     self._raise("GET", path, error)
-                with verified_file(destination, resp.headers) as write:
+                with verified_file(destination, resp.headers, overwrite=overwrite) as write:
                     async for chunk in resp.aiter_bytes(chunk_size=1024 * 1024):
                         write(chunk)
         except httpx.TimeoutException as exc:
@@ -1539,11 +1598,21 @@ class AsyncWorkload(_WorkloadState):
         """Read this workload's placement history."""
         return await self._client.routing(self.id)
 
+    async def download(self, destination: str | os.PathLike[str] | None = None) -> list[Path]:
+        """Download declared outputs into stage folders, refusing existing files."""
+        root = Path(destination) if destination is not None else Path("outputs") / _valid_id(self.id)
+        planned = output_destinations(root, await self.outputs())
+        saved = []
+        for output, path in planned:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            saved.append(await self.download_output(output.name, path, stage=output.stage_id, overwrite=False))
+        return saved
+
     async def download_output(
-        self, name: str, destination: str | os.PathLike[str], *, stage: str | None = None
+        self, name: str, destination: str | os.PathLike[str], *, stage: str | None = None, overwrite: bool = True
     ) -> Path:
         """Download a named output and verify it before replacing destination."""
-        return await self._client.download_output(self.id, name, destination, stage=stage)
+        return await self._client.download_output(self.id, name, destination, stage=stage, overwrite=overwrite)
 
     async def ledger(self) -> Ledger:
         return await self._client.ledger(self.id)

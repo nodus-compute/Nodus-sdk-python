@@ -1,68 +1,97 @@
-# Command-line reference
+# Terminal commands
 
-After [authentication](../getting-started/authentication.md), `nodus --help` and
-`nodus COMMAND --help` show available options. Global `--base-url` precedes ordinary
-subcommands. Login also accepts it after `login`. There is no API-key CLI flag.
+Use `nodus --help` for command groups and `nodus COMMAND --help` for options.
+Replace `ID` with a workload ID. These commands describe SDK 0.2.0.
 
-| Command | Options / behavior |
+## Setup
+
+| Command | What it does |
 |---|---|
-| `login` | `--base-url`, `--no-browser`. Open browser sign-in and save credentials. URL override is optional |
-| `logout` | Remove locally saved key |
-| `run` | Submit. Prints workload ID |
-| `list` | `--limit` (50), `--status` (one status, `active`, or `terminal`) |
-| `get ID` | `--json`, `--wait`, `--poll` (2), `--timeout` (unbounded) |
-| `events ID` | `--follow`, `--poll` (2). Prints sequence and type |
-| `logs ID` | `--stage`, `--generation`, `--tail` (0, all lines) |
-| `artifacts ID` | Manifest and object summaries |
-| `explain ID` | Selected route and cost estimate |
-| `ledger ID` | `--json`. Billing entries and settlement |
-| `cancel ID` | Idempotent cancellation request |
+| `nodus login` | Open browser sign-in and save credentials |
+| `nodus logout` | Remove the locally saved key |
+| `nodus init` | Create a starter `nodus.toml` without submitting work |
 
-## Submission flags
+For headless machines and automation, see [authentication](../getting-started/authentication.md).
 
-| Flag | Meaning / default |
+## Run
+
+| Command | What it does |
 |---|---|
-| `--image` | Container image. SDK default `python:3.11-slim` |
-| `--compute-class` | `accelerator` for GPU workloads |
-| `--model` | Free-text workload hint |
-| `--peak-memory-gb` | Memory requirement hint |
-| `--hours` | Estimated runtime hours |
-| `--budget` | Workload USD ceiling. Unset is uncapped at workload level |
-| `--finish-by` | RFC3339 completion deadline |
-| `--continuity` | `checkpointed` (default), `restartable`, `ephemeral` |
-| `--data-region` | Allowed region. Repeat for several |
-| `--idempotency-key` | Stable key for a logical submission |
-| `--wait` | Wait after submission |
-| `--timeout` | Bound waiting only, in seconds. Default unbounded |
-| `--poll` | Poll interval in seconds. Default 2 |
+| `nodus run` | Submit `nodus.toml` and wait for completion |
+| `nodus run train.toml` | Submit another file and wait |
+| `nodus submit train.toml` | Submit and print the ID without waiting |
+| `nodus list` | List your workloads |
+| `nodus list active` | List active workloads |
+| `nodus list mine` | List workloads attributed to your member login |
+| `nodus list team` | List workloads across your team |
 
-Everything after `--` is the remote process argv. Put all Nodus flags before it:
+Personal history requires a member-associated login. Shared keys can use team history.
 
-```bash
-nodus run --compute-class accelerator --image pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime --budget 5 --wait \
-  -- python -c 'print(__import__("torch").cuda.get_device_name(0))'
-nodus list --status active --limit 10
-nodus get WORKLOAD_ID --json
-nodus events WORKLOAD_ID --follow
-nodus logs WORKLOAD_ID --tail 50
-```
+`submit` also defaults to `nodus.toml` when no path is given.
+Set your image, command, budget, and advanced options in a
+[workload file](../getting-started/workload-files.md).
 
-Use Python for advanced dictionaries, multi-stage submission, downloads, and
-multi-status filtering. CLI `--status` accepts one parser choice, not a
-comma-separated list.
+## Monitor and collect results
+
+| Command | What it does |
+|---|---|
+| `nodus status ID` | Show status and current cost |
+| `nodus wait ID` | Wait for a terminal status |
+| `nodus logs ID` | Print committed logs |
+| `nodus download ID` | Download declared output files under `outputs/ID` |
+| `nodus cancel ID` | Request cancellation and remote cleanup |
+
+Interactive waits show a spinner and elapsed time. Redirected output has no
+animation. Logs are snapshots, not a live stdout stream. Files must be declared
+as outputs to be downloadable.
+
+Ctrl+C during `run`, `wait`, or `events --follow` requests cancellation. Cleanup
+happens remotely after acceptance. If the request fails, the CLI reports that
+cancellation is unconfirmed and prints `nodus cancel ID`. A second Ctrl+C stops
+the cancellation attempt. A wait timeout ends observation without cancelling.
+
+## Code and datasets
+
+| Command | What it does |
+|---|---|
+| `nodus upload FILE` | Upload a file or archive and print its asset ID |
+| `nodus assets` | List stored assets |
+
+See [code and datasets](../guides/assets.md) for imports and attaching assets to work.
+
+## Assets
+
+| Command | What it does |
+|---|---|
+| `nodus upload FILE` | Upload a file or archive and print its asset ID |
+| `nodus assets` | List your uploaded and imported assets |
+
+Put the returned ID in `source_asset_id` or an input entry in your workload file.
+For imports and programmatic uploads, see [code and datasets](../guides/assets.md).
+
+## Advanced diagnostics
+
+| Command | What it does |
+|---|---|
+| `nodus events ID` | Execution event history |
+| `nodus artifacts ID` | Artifact manifests |
+| `nodus explain ID` | Selected route and cost estimate |
+| `nodus ledger ID` | Billing entries and settlement |
+
+Use command help for JSON output, polling, stage selection, and other diagnostic
+options. Agents can use the [Python client](python/client.md) for structured
+results without parsing terminal output.
 
 | Exit code | Meaning |
 |---|---|
 | 0 | Command succeeded |
 | 1 | Failed/cancelled workload, unavailable logs, or route not yet selected |
 | 2 | API/configuration error or invalid CLI usage |
-| 130 | Interrupted with Ctrl+C. Active wait/follow commands request remote cancellation |
+| 130 | Interrupted with Ctrl+C |
 
-Ctrl+C during `run --wait`, `get --wait`, or `events --follow` requests cancellation
-of the observed workload. Cleanup happens remotely after acceptance. If the
-request fails, the CLI says cancellation is unconfirmed and prints a manual
-`nodus cancel ID` command. A second Ctrl+C interrupts that cancellation attempt.
+## Upgrading from 0.1
 
-A wait timeout only ends observation. Use `nodus cancel ID` to stop work after a
-timeout. Interactive waits show a spinner and elapsed time. Redirected output
-keeps the workload ID and final summary without animation.
+Replace `nodus get ID` with `nodus status ID`, and `nodus get ID --wait` with
+`nodus wait ID`. Submission flags have moved into workload files. Use `nodus run`
+to submit and wait, or `nodus submit` to return immediately. Python `client.get()`
+and `client.run()` keep their existing behavior.

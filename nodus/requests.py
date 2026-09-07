@@ -21,6 +21,7 @@ class Source(TypedDict, total=False):
     command for portable execution across deployment modes.
     """
 
+    asset_id: str
     image: str
     command: list[str]
 

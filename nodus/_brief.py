@@ -12,12 +12,15 @@ from __future__ import annotations
 import difflib
 import inspect
 import os
+import re
+from pathlib import PurePosixPath
 import shlex
 import warnings
 from datetime import datetime, timezone
 from typing import Any
 
 from .types import WorkloadStatus
+from ._outputs import portable_output_name
 
 _PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -127,11 +130,6 @@ UNSUPPORTED: dict[str, str] = {
         "image and a command, so environment never reaches the host. Bake the "
         "values into the image, or pass them in the command."
     ),
-    "inputs": (
-        "the control plane does not model this yet: a top-level inputs list is "
-        "decoded and read by nothing. Stage inputs are the ones that are "
-        "honoured -- declare them on stages=[...]."
-    ),
 }
 
 
@@ -166,6 +164,9 @@ def _reject_unknown(unknown: dict[str, Any], known: tuple[str, ...]) -> None:
 def build_payload(
     *,
     image: str | None = None,
+    source_asset_id: str | None = None,
+    inputs: list[dict[str, str]] | None = None,
+    outputs: dict[str, str] | None = None,
     command: list[str] | str | None = None,
     requirements: dict[str, Any] | None = None,
     model: str | None = None,
@@ -188,6 +189,15 @@ def build_payload(
     version does not. Anything else is refused rather than forwarded.
     """
     _reject_unknown(unknown, BRIEF_FIELDS)
+    _validate_assets(source_asset_id, inputs)
+    _validate_outputs(outputs)
+    for stage in stages or []:
+        if isinstance(stage, dict) and stage.get("outputs"):
+            _validate_outputs(stage["outputs"])
+            if not portable_output_name(stage.get("id")):
+                raise ValueError("Stages with outputs must use portable file names as IDs.")
+    if outputs is not None and (stages or framework):
+        raise TypeError("outputs cannot be combined with stages or framework. Declare outputs on each stage.")
     req: dict[str, Any] = dict(requirements or {})
     if model is not None:
         req.setdefault("model", model)
@@ -238,7 +248,7 @@ def build_payload(
         discarded = sorted(
             name
             for name, value in (
-                ("image", image), ("command", command)
+                ("image", image), ("command", command), ("source_asset_id", source_asset_id)
             )
             if value
         )
@@ -256,7 +266,15 @@ def build_payload(
         cmd = _as_command(command)
         if cmd:
             src["command"] = cmd
-        payload["source"] = src
+        if source_asset_id is not None:
+            src["asset_id"] = source_asset_id
+        if outputs is not None:
+            payload["stages"] = [{"id": "main", "source": src, "outputs": dict(outputs)}]
+        else:
+            payload["source"] = src
+
+    if inputs is not None:
+        payload["inputs"] = [dict(value) for value in inputs]
 
     if framework:
         payload["framework"] = framework
@@ -266,6 +284,43 @@ def build_payload(
     _merge_extra(payload, extra)
     _warn_about_the_money(payload)
     return payload
+
+
+def _validate_assets(source_asset_id: str | None, inputs: list[dict[str, str]] | None) -> None:
+    def valid_id(value: Any) -> bool:
+        return isinstance(value, str) and re.fullmatch(r"asset_[A-Za-z0-9-]{1,64}", value) is not None
+    if source_asset_id is not None and not valid_id(source_asset_id):
+        raise ValueError("source_asset_id must be an asset ID returned by Nodus.")
+    if inputs is None:
+        return
+    if not isinstance(inputs, list) or len(inputs) > 8:
+        raise ValueError("inputs must be a list of at most eight named assets.")
+    names: set[str] = set()
+    for value in inputs:
+        if not isinstance(value, dict) or set(value) != {"name", "asset_id"}:
+            raise ValueError("Each input requires name and asset_id. Import or upload the data first.")
+        name = value["name"]
+        if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,63}", name) or name in names:
+            raise ValueError("Input names must be unique identifiers starting with a letter.")
+        if not valid_id(value["asset_id"]):
+            raise ValueError("Input asset_id must be an asset ID returned by Nodus.")
+        names.add(name)
+
+
+def _validate_outputs(outputs: dict[str, str] | None) -> None:
+    if outputs is None:
+        return
+    if not isinstance(outputs, dict):
+        raise TypeError("outputs must map output names to relative file paths.")
+    if len({name.casefold() for name in outputs if isinstance(name, str)}) != len(outputs):
+        raise ValueError("Output names must be distinct on case-insensitive filesystems.")
+    for name, path in outputs.items():
+        if not portable_output_name(name):
+            raise ValueError("Output names must be portable file names using letters, digits, dots, underscores or hyphens.")
+        if (not isinstance(path, str) or not path or "\\" in path or ":" in path
+                or any(ord(c) < 32 for c in path) or PurePosixPath(path).is_absolute()
+                or any(part in ("", ".", "..") for part in path.split("/"))):
+            raise ValueError("Output paths must name files inside the workload working directory.")
 
 
 def _merge_extra(payload: dict[str, Any], extra: dict[str, Any] | None) -> None:

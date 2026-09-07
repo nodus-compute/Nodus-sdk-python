@@ -22,6 +22,9 @@
     },
     {
       "name": "Webhooks"
+    },
+    {
+      "name": "Assets"
     }
   ],
   "paths": {
@@ -814,6 +817,300 @@
           }
         }
       }
+    },
+    "/v1/assets": {
+      "get": {
+        "operationId": "listAssets",
+        "summary": "List imported code and datasets",
+        "tags": [
+          "Assets"
+        ],
+        "description": "Returns the latest 500 nondeleted assets, newest first. Imports and uploads complete synchronously. Limits describe this deployment and may change.",
+        "responses": {
+          "200": {
+            "description": "Asset list and storage limits",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssetList"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Asset listing or storage usage unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/assets/import": {
+      "post": {
+        "operationId": "importAsset",
+        "summary": "Import code or a dataset",
+        "tags": [
+          "Assets"
+        ],
+        "description": "Import a GitHub repository, a Hugging Face dataset repository, or a public HTTPS file or archive. GitHub imports can use the team's connected GitHub account. URL imports use signed links for private downloads and reject tokens. The operation may take up to ten minutes. It has no idempotency contract. After a timeout, inspect the asset list before repeating the request.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssetImportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Import complete and asset ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Asset"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid import, source access, unsupported archive or size limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Storage quota reached or two imports already in progress",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Asset staging or commit failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Object storage unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/assets/upload": {
+      "post": {
+        "operationId": "uploadAsset",
+        "summary": "Upload a local file or archive",
+        "tags": [
+          "Assets"
+        ],
+        "description": "Send raw file bytes, not multipart form data. The server packages a file or extracts a supported archive. Read max_import_bytes from GET /v1/assets first. Imports and uploads have no idempotency contract. After a timeout, inspect the asset list before repeating the request.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "dataset"
+            },
+            "description": "Filename, including its archive extension when uploading an archive."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Upload complete and asset ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Asset"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid file, archive or size limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Storage quota reached or two imports already in progress",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Asset staging or commit failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Object storage unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/assets/{id}": {
+      "delete": {
+        "operationId": "deleteAsset",
+        "summary": "Delete an unused asset",
+        "tags": [
+          "Assets"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Asset identifier returned by an import, upload or list."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Asset deleted"
+          },
+          "404": {
+            "description": "Asset not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Asset is importing or used by an active workload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Asset deletion could not be finalized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Stored input could not be deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -839,7 +1136,8 @@
             "items": {
               "$ref": "#/components/schemas/WorkloadInput"
             },
-            "description": "Accepted legacy URI metadata. Does not upload or automatically materialize local data. Fetch data in your command, or use explicit stage output dependencies."
+            "description": "Up to eight imported dataset assets. Each asset is extracted before the command starts and exposed through its NODUS_INPUT_<name> directory. Direct input URIs are unsupported.",
+            "maxItems": 8
           },
           "requirements": {
             "$ref": "#/components/schemas/Requirements"
@@ -895,7 +1193,8 @@
           },
           "asset_id": {
             "type": "string",
-            "description": "Identifier of code previously imported into this team. The runner stages it before starting the command."
+            "description": "Identifier of code previously imported into this team. The runner stages it before starting the command.",
+            "pattern": "^(asset_[A-Za-z0-9-]{1,64})?$"
           }
         },
         "x-go-source": "internal/models/models.go",
@@ -905,18 +1204,29 @@
         "type": "object",
         "properties": {
           "name": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+            "description": "Unique input name. Must not conflict with a stage input name."
           },
           "uri": {
-            "type": "string"
+            "type": "string",
+            "enum": [
+              ""
+            ],
+            "description": "Retained wire field. Nonempty direct input URIs are rejected. Import data first and supply asset_id."
           },
           "asset_id": {
             "type": "string",
-            "description": "Identifier of a dataset previously imported into this team. Raw external download URLs must be imported before submission."
+            "description": "Identifier of a dataset previously imported into this team. Raw external download URLs must be imported before submission.",
+            "pattern": "^asset_[A-Za-z0-9-]{1,64}$"
           }
         },
         "x-go-source": "internal/models/models.go",
-        "x-go-type": "WorkloadInput"
+        "x-go-type": "WorkloadInput",
+        "required": [
+          "name",
+          "asset_id"
+        ]
       },
       "Requirements": {
         "type": "object",
@@ -1825,6 +2135,142 @@
             "format": "date-time"
           }
         }
+      },
+      "Asset": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "description": "Current asset state, such as importing, ready or deleting."
+          },
+          "revision": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "stored_bytes": {
+            "type": "integer"
+          },
+          "imported_bytes": {
+            "type": "integer"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ready_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "deleted_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "x-go-source": "internal/store/assets.go",
+        "x-go-type": "Asset"
+      },
+      "AssetList": {
+        "type": "object",
+        "properties": {
+          "assets": {
+            "type": "array",
+            "maxItems": 500,
+            "items": {
+              "$ref": "#/components/schemas/Asset"
+            }
+          },
+          "max_import_bytes": {
+            "type": "integer",
+            "description": "Maximum source bytes for one import or upload."
+          },
+          "storage_quota_bytes": {
+            "type": "integer"
+          },
+          "staged_bytes": {
+            "type": "integer"
+          },
+          "stored_bytes": {
+            "type": "integer"
+          },
+          "billing_enabled": {
+            "type": "boolean",
+            "const": false
+          }
+        },
+        "required": [
+          "assets",
+          "max_import_bytes",
+          "storage_quota_bytes",
+          "staged_bytes",
+          "stored_bytes",
+          "billing_enabled"
+        ]
+      },
+      "AssetImportRequest": {
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "github",
+              "huggingface",
+              "url"
+            ]
+          },
+          "url": {
+            "type": "string",
+            "description": "Public HTTPS direct download URL for kind=url. Private downloads use signed links."
+          },
+          "repo": {
+            "type": "string",
+            "description": "owner/name for GitHub or a Hugging Face dataset. Matching HTTPS repository URLs are also accepted."
+          },
+          "ref": {
+            "type": "string",
+            "maxLength": 255,
+            "default": "main",
+            "description": "Repository revision. Omitted or empty selects main. Carriage returns and newlines are rejected."
+          },
+          "files": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "maxItems": 100,
+            "items": {
+              "type": "string"
+            },
+            "description": "Hugging Face dataset file patterns. Omitted selects recognized data file extensions. GitHub imports include the repository archive."
+          },
+          "token": {
+            "type": "string",
+            "writeOnly": true,
+            "description": "Optional GitHub or Hugging Face credential. Rejected for URL imports."
+          }
+        },
+        "x-go-source": "internal/assets/import.go",
+        "x-go-type": "Request",
+        "description": "The server requires the source appropriate to kind. Import limits are deployment specific and returned by GET /v1/assets. Archives cannot contain links, special files, unsafe paths or more than 10000 files."
       }
     }
   },

@@ -10,7 +10,7 @@ async def run(args):
         async def experiment(index):
             async with semaphore:
                 workload = await client.run(
-                    image="pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime", compute_class="accelerator",
+                    image="pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime",
                     command=["python", "-c", f"import torch\nx=torch.arange({index + 10}, device='cuda')\nprint((x*x).sum().item())"],
                     budget=args.budget_per_run,
                     idempotency_key=f"sweep-{args.run_id}-{index}",

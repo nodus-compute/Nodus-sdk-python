@@ -8,6 +8,7 @@ except the default image and continuity policy.
 | Python argument | HTTP location | Reference |
 |---|---|---|
 | `image`, `command` | `source.image`, `source.command` | [Source](source.md) |
+| `source_asset_id`, `inputs`, `outputs` | Source asset and stage file declarations | [Files](source.md#input-and-output-files) |
 | `framework` | `framework` | [Source](source.md) |
 | `model`, `compute_class`, `peak_memory_gb`, `expected_runtime_hours` | `requirements.*` | [Resources](requirements.md) |
 | `requirements` | `requirements` | [Resources](requirements.md) |
@@ -18,8 +19,7 @@ except the default image and continuity policy.
 | `idempotency_key` | `Idempotency-Key` header | [Safe retries](../../guides/ci-and-idempotency.md) |
 | `extra` | Additional top-level fields | [Extensions](#extensions-and-validation) |
 
-Do not pass `env`, top-level `inputs`, or `interrupt_tolerance`: they are explicitly
-unsupported. Unknown Python keywords raise `TypeError` before submission.
+Do not pass `env` or `interrupt_tolerance`: they are explicitly unsupported. Unknown Python keywords raise `TypeError` before submission.
 Raw dictionaries are advanced interfaces: use the deployed API schema, not
 plausible-looking field names. See each page for precedence and defaults.
 
@@ -35,6 +35,6 @@ A non-colliding name is not proof that a server supports it. Unknown server
 fields may be ignored on older deployments. Verify support in the deployed
 contract before using extensions. Do not send secrets in arbitrary metadata.
 
-Unsupported top-level arguments are `env`, `inputs`, and `interrupt_tolerance`.
+Unsupported top-level arguments are `env` and `interrupt_tolerance`.
 Stage inputs have a separate supported shape. See [stages](stages.md).
 Python typos raise `TypeError`, distinct from a server `nodus.ValidationError`.
