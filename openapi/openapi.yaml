@@ -1557,6 +1557,13 @@
           },
           "meter": {
             "$ref": "#/components/schemas/Meter"
+          },
+          "owner_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The submitting team member, or null when no member owns this workload."
           }
         },
         "x-go-source": "internal/models/models.go",
