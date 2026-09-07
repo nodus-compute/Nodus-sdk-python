@@ -878,6 +878,10 @@
               "type": "string"
             },
             "description": "Explicit argv is recommended. Use sh -c explicitly for shell syntax. An omitted command is accepted for compatibility. Do not rely on image ENTRYPOINT execution across deployments."
+          },
+          "asset_id": {
+            "type": "string",
+            "description": "Identifier of code previously imported into this team. The runner stages it before starting the command."
           }
         },
         "x-go-source": "internal/models/models.go",
@@ -891,6 +895,10 @@
           },
           "uri": {
             "type": "string"
+          },
+          "asset_id": {
+            "type": "string",
+            "description": "Identifier of a dataset previously imported into this team. Raw external download URLs must be imported before submission."
           }
         },
         "x-go-source": "internal/models/models.go",
@@ -1459,6 +1467,10 @@
           },
           "meter": {
             "$ref": "#/components/schemas/Meter"
+          },
+          "name": {
+            "type": "string",
+            "description": "Saved display name for the workload."
           }
         },
         "x-go-source": "internal/store/pilot.go",
