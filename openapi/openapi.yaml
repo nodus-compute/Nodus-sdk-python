@@ -151,6 +151,20 @@
               "type": "string"
             },
             "description": "Comma-separated statuses. Active and terminal expand to lifecycle groups. Unknown tokens are ignored."
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "mine",
+                "team"
+              ],
+              "default": "team"
+            },
+            "description": "Team lists all workloads in your team. Mine lists workloads attributed to the authenticated member before pagination. Mine requires a member-associated credential and returns attribution_required otherwise. Historical workloads and shared keys can have no owner. This filter does not change shared team access."
           }
         ]
       }
@@ -1467,6 +1481,13 @@
           },
           "meter": {
             "$ref": "#/components/schemas/Meter"
+          },
+          "owner_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Member who submitted the workload. Null for historical or unattributed submissions. Attribution is assigned by the server."
           }
         },
         "x-go-source": "internal/store/pilot.go",
