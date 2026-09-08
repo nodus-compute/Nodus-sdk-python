@@ -11,9 +11,9 @@ Prefer a `with` block. Otherwise call `close()`.
 | `run_file(path="nodus.toml")` | Accepted `Workload` from a [workload file](../../getting-started/workload-files.md) |
 | `assets` | [Upload, import, list, and delete code or dataset assets](../../guides/assets.md) |
 | `get(id)` | Refreshed `Workload` |
-| `list(limit=50, offset=0, status=None)` | One page of workloads |
-| `list_page(limit=50, offset=0, status=None)` | `(workloads, next_offset)` |
-| `iter_workloads(page_size=50, status=None)` | Iterator over offset-based pages |
+| `list(limit=50, offset=0, status=None, scope=None)` | One page of workloads |
+| `list_page(limit=50, offset=0, status=None, scope=None)` | `(workloads, next_offset)` |
+| `iter_workloads(page_size=50, status=None, scope=None)` | Iterator over offset-based pages |
 | `wait(id, poll_seconds=2.0, timeout_seconds=None, progress=None)` | Terminal workload. Inspect `succeeded` |
 | `cancel(id, idempotency_key=None)` | Request cancellation. Returns `None` |
 | `events(id, after=0)` | One page of `Event` objects |
@@ -23,7 +23,7 @@ Prefer a `with` block. Otherwise call `close()`.
 | `logs(id, stage=None, generation=None)` | Committed log text |
 | `live_logs(id, after="")` | Live log chunks, cursor, and truncation state |
 | `outputs(id)` | List of `Output` objects |
-| `download_output(id, name, destination, stage=None)` | Verified local `Path` |
+| `download_output(id, name, destination, stage=None, overwrite=True)` | Verified local `Path` |
 | `routing(id)` | Placement-history dictionaries ordered by stage ID and generation |
 | `ledger(id)` | `Ledger` |
 | `set_webhook(url, secret=None)` | Webhook configuration response dictionary |
@@ -37,7 +37,7 @@ submissions can shift pages. It is not a consistent historical snapshot.
 
 `Workload` offers `refresh`, `wait`, `cancel`, events, logs, artifacts, outputs,
 download, routing, and ledger methods without repeating the ID. Reads and waits
-on the handle mutate it in place. Useful attributes are `id`, `status`,
+with `refresh()` and `wait()` update it in place. Useful attributes are `id`, `status`,
 `succeeded`, `is_terminal`, `route`, `stages`, `meter`, `cost_now_usd`, and `raw`.
 Unknown server enum values remain strings for forward compatibility.
 

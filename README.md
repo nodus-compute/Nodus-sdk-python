@@ -5,10 +5,10 @@
 **One interface for running AI workloads on GPUs.**
 
 [![PyPI version](https://img.shields.io/pypi/v/nodus-compute)](https://pypi.org/project/nodus-compute/)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
-[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://github.com/nodus-compute/Nodus-sdk-python/blob/main/pyproject.toml)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue)](https://github.com/nodus-compute/Nodus-sdk-python/blob/main/LICENSE)
 
-[Documentation](docs/index.md) · [Parameter reference](docs/reference/parameters/index.md) · [Examples](examples/README.md) · [Issues](https://github.com/Nodus-compute/Nodus-sdk-python/issues)
+[Documentation](https://nodus-compute.ai/docs/) · [Parameter reference](https://nodus-compute.ai/docs/reference/parameters/) · [Examples](https://github.com/nodus-compute/Nodus-sdk-python/blob/main/examples/README.md) · [Issues](https://github.com/Nodus-compute/Nodus-sdk-python/issues)
 
 </div>
 
@@ -24,7 +24,7 @@ nodus login
 ```
 
 Requires Python 3.10 or newer. Upgrading an existing installation? Use
-`pip install --upgrade nodus-compute`. These docs describe SDK 0.3.0.
+`pip install --upgrade nodus-compute`. These docs cover SDK 0.3.x.
 
 Your browser opens Nodus sign-in. Sign in and approve the code matching your
 terminal. You can then close the tab. The terminal finishes automatically and
@@ -34,7 +34,7 @@ Running `nodus login` again reuses a valid login. Use `nodus login --force` for
 a fresh sign-in.
 
 For a machine without a browser, use `nodus login --no-browser`.
-See [authentication](docs/getting-started/authentication.md) for API keys and
+See [authentication](https://nodus-compute.ai/docs/getting-started/authentication/) for API keys and
 custom deployments.
 
 ## 2. Run your first workload
@@ -77,7 +77,7 @@ The final output includes status, current cost, and GPU name.
 and remote resource cleanup.
 
 The script prints the GPU name from the workload logs. For files produced by
-your own program, see [logs and results](docs/guides/monitoring-and-outputs.md).
+your own program, see [logs and results](https://nodus-compute.ai/docs/guides/monitoring-and-outputs/).
 
 ## Prefer the terminal?
 
@@ -88,7 +88,7 @@ nodus run
 
 `init` creates `nodus.toml` with the GPU smoke test and a $5 budget. Review the
 file, then `run` submits it and waits for completion. Edit the image, command,
-and budget to run your own workload. See [workload files](docs/getting-started/workload-files.md).
+and budget to run your own workload. See [workload files](https://nodus-compute.ai/docs/getting-started/workload-files/).
 
 ```bash
 nodus status WORKLOAD_ID
@@ -103,22 +103,22 @@ Set `optimization="lowest_cost"`, `"lower_cost"`, `"balanced"`, `"faster"`, or
 preference-specific routing coming later.
 
 Set `gpu="H100"` to require a GPU model, or omit it to let Nodus choose.
-No runtime estimate is needed. See [resource options](docs/reference/parameters/requirements.md).
+No runtime estimate is needed. See [resource options](https://nodus-compute.ai/docs/reference/parameters/requirements/).
 
 ## Run your own code
 
 Upload your script with `client.assets.upload()` or package it in a container.
 Choose an image with your dependencies and pass its command to `client.run()`.
 
-- [Run a Python script](docs/guides/containers-and-scripts.md)
-- [Attach code and datasets](docs/guides/assets.md)
-- [Train or fine-tune a model](docs/guides/gpu-workloads.md)
-- [Read logs and download results](docs/guides/monitoring-and-outputs.md)
+- [Run a Python script](https://nodus-compute.ai/docs/guides/containers-and-scripts/)
+- [Attach code and datasets](https://nodus-compute.ai/docs/guides/assets/)
+- [Train or fine-tune a model](https://nodus-compute.ai/docs/guides/gpu-workloads/)
+- [Read logs and download results](https://nodus-compute.ai/docs/guides/monitoring-and-outputs/)
 
-For individual options, use the [Python reference](docs/reference/python/client.md)
-and [parameter reference](docs/reference/parameters/index.md).
-See [troubleshooting](docs/operations/errors.md) if a run fails.
+For individual options, use the [Python reference](https://nodus-compute.ai/docs/reference/python/client/)
+and [parameter reference](https://nodus-compute.ai/docs/reference/parameters/).
+See [troubleshooting](https://nodus-compute.ai/docs/operations/errors/) if a run fails.
 
 ## Contributing
 
-See [RELEASING.md](RELEASING.md) for release steps. Licensed under [Apache-2.0](LICENSE).
+See [RELEASING.md](https://github.com/nodus-compute/Nodus-sdk-python/blob/main/RELEASING.md) for release steps. Licensed under [Apache-2.0](https://github.com/nodus-compute/Nodus-sdk-python/blob/main/LICENSE).

@@ -2,11 +2,11 @@
 
 | Argument | Type | Omitted | Workload file | HTTP field |
 |---|---|---|---|---|
-| `budget` | Positive finite number in USD | Account spending limit only | `budget` | `outcome.max_cost_usd` |
+| `budget` | Positive finite number in USD | No separate per-run limit | `budget` | `outcome.max_cost_usd` |
 | `finish_by` | RFC3339 string or `datetime` | No completion deadline | `finish_by` | `outcome.complete_by` |
 
 Budget is a hard workload spending limit, not a completion-price promise.
-The account spending limit also applies. Omit budget to use that account limit.
+Available credits and any configured account spending limit also apply.
 
 Inside a `with nodus.Client() as client:` block:
 
@@ -14,6 +14,7 @@ Inside a `with nodus.Client() as client:` block:
 from datetime import datetime, timedelta, timezone
 
 workload = client.run(
+    image="pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime",
     command=["python", "-c", "print('deadline example')"],
     budget=5,
     finish_by=datetime.now(timezone.utc) + timedelta(hours=2),

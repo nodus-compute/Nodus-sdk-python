@@ -86,7 +86,7 @@
             }
           }
         },
-        "description": "202 means accepted, not running. 402 budget_exceeded is the account monthly cap. 409 is an idempotency conflict. 503 spend_check_unavailable may be retried using the same key."
+        "description": "202 means accepted, not running. 402 budget_exceeded means available credits or a configured spending limit prevent submission. 409 is an idempotency conflict. 503 spend_check_unavailable may be retried using the same key."
       },
       "get": {
         "operationId": "listWorkloads",
@@ -1038,40 +1038,6 @@
       }
     },
     "/v1/assets/{id}": {
-      "get": {
-        "operationId": "getAsset",
-        "summary": "Read an asset owned by the authenticated team",
-        "tags": ["Assets"],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {"type": "string"},
-            "description": "Asset identifier returned by an import, upload or list."
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Asset metadata. This endpoint does not download file contents.",
-            "content": {
-              "application/json": {"schema": {"$ref": "#/components/schemas/Asset"}}
-            }
-          },
-          "404": {
-            "description": "Asset not found in the authenticated team",
-            "content": {
-              "application/json": {"schema": {"$ref": "#/components/schemas/Error"}}
-            }
-          },
-          "default": {
-            "description": "Authentication, rate limits and transient failures apply.",
-            "content": {
-              "application/json": {"schema": {"$ref": "#/components/schemas/Error"}}
-            }
-          }
-        }
-      },
       "delete": {
         "operationId": "deleteAsset",
         "summary": "Delete an unused asset",
@@ -1393,7 +1359,7 @@
         "properties": {
           "max_cost_usd": {
             "type": "number",
-            "description": "Hard customer spending limit in USD for this workload. Omitted means account limit only. Acceptance does not guarantee completion within the limit."
+            "description": "Hard customer spending limit in USD for this workload. Omitted means no per-run limit. Available credits and configured account limits still apply. Acceptance does not guarantee completion within the limit."
           },
           "complete_by": {
             "type": "string",

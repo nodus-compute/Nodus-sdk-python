@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.2
+
+- Make README links usable from PyPI and align CLI documentation with SDK 0.3.x.
+- Explain optional budgets, account limits, and pending cost accounting accurately.
+- Clarify log pagination, status refresh, cancellation, and output download behavior.
+- Remove an asset lookup entry that the hosted API does not serve.
+
 ## 0.3.1
 
 - Show finished stage status when training metrics are unavailable.

@@ -13,6 +13,7 @@ issue. Python argument mistakes (`TypeError` / `ValueError`) are separate.
 | `IdempotencyConflictError` | Reuse the original payload or assign a new logical key |
 | `NotFoundError` | Check workload ownership/ID. Logs may not yet be committed |
 | `BudgetExceededError` | Inspect headroom and adjust actual work or account limit |
+| `SpendCheckUnavailableError` | Spending authorization is temporarily unavailable. Retry using the same submission key |
 | `RateLimitError` | Pace requests. SDK honors bounded retry-after delays |
 | `CapacityUnavailableError` | Retry later or relax feasible workload constraints |
 | `APIConnectionError` / `APITimeoutError` | Preserve submission key. Outcome may be unknown |
@@ -38,6 +39,6 @@ See [idempotency](../guides/ci-and-idempotency.md) and
 - **Missing output methods:** upgrade with
   `pip install --upgrade nodus-compute`.
 
-An omitted budget or known image without a fetch tool emits `UserWarning` before
-submission. Applications may turn warnings into errors using Python's warnings
-filters if that suits their policy.
+An omitted budget prints a short notice only in an interactive terminal. It
+does not emit `UserWarning`. A known image without a bootstrap fetch tool can
+still emit `UserWarning` before submission.

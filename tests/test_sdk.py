@@ -1593,7 +1593,7 @@ def test_uncapped_guidance_is_interactive_without_source_warning(monkeypatch, ca
         warnings.simplefilter("always")
         build_payload(model="x", command=["a"])
     assert not seen
-    assert "account spending limit" in capsys.readouterr().err
+    assert "No per-run budget" in capsys.readouterr().err
 
 
 def test_uncapped_guidance_keeps_redirected_programs_quiet(capsys):
@@ -1832,5 +1832,5 @@ def test_the_version_is_read_from_the_package_metadata_not_repeated():
 
 def test_the_module_docstring_shows_one_idiom():
     doc = nodus.__doc__ or ""
-    assert "client.wait(" in doc
+    assert "workload.wait(" in doc
     assert "nodus.run(" not in doc

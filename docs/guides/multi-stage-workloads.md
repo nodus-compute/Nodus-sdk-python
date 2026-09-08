@@ -1,8 +1,9 @@
 # Multi-stage workloads and final outputs
 
-Use an explicit stage list when work has dependencies or publishes downloadable
-outputs. Even one stage can declare an output. Multiple stages can reference
-those names without sharing a machine or filesystem.
+Use an explicit stage list when work has multiple steps or dependencies.
+For one command, declare downloadable files with `outputs={"result": "result.json"}`
+directly on `client.run()`. Multiple stages can reference output names without
+sharing a machine or filesystem.
 
 Save the [complete Python example](../../examples/multi_stage.py) as `multi_stage.py`
 in your current directory. Example scripts are not installed by pip. Then run:

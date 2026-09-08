@@ -50,5 +50,6 @@ Workload files reject duplicate flat and nested settings so the choice is clear.
 
 The requirements dictionary also accepts `dataset_bytes` (nonnegative integer)
 and `notes` (text). These are hints and do not transfer data or install dependencies.
-`nodus.Requirements(...)` provides optional static typing. Submission validates
-the values for both typed and ordinary dictionaries.
+`nodus.Requirements(...)` provides optional static typing. The SDK validates GPU
+names and optimization choices for both typed and ordinary dictionaries. The
+API validates the remaining resource hints when you submit the workload.

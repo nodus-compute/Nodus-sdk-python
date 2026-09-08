@@ -1,28 +1,21 @@
-"""Nodus Python SDK.
+r"""Run GPU workloads, observe progress, and download declared outputs.
 
-Submit workload requirements and outcomes. Nodus matches infrastructure,
-manages cost to completion, and recovers through reclaim. You describe the work
-and its constraints, never a machine, an instance type, or a supplier.
-
-Sign in once and the client finds its own settings:
-
-    nodus login
-
-That approves a code in your browser and writes ~/.nodus/config.toml. Or set
-an API key for automation:
-    export NODUS_API_KEY=nk_live_…
+Sign in with ``nodus login`` or configure ``NODUS_API_KEY`` for automation.
+Upload local code explicitly or include it in the selected container image.
 
     import nodus
 
     with nodus.Client() as client:
-        wl = client.run(
-            model="LoRA-fine-tune",
-            command=["python", "train.py"],
-            peak_memory_gb=80,
-            budget=400,
+        workload = client.run(
+            image="pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime",
+            command=["python", "-c", "import torch\nprint(torch.cuda.get_device_name(0))"],
+            budget=5,
         )
-        done = client.wait(wl.id)
-        print(done.status, done.route.sku, done.cost_now_usd)
+        print(workload.id)
+        done = workload.wait()
+        if not done.succeeded:
+            raise RuntimeError(f"Workload ended: {done.status}")
+        print(done.logs())
 """
 
 from __future__ import annotations
@@ -942,9 +935,9 @@ class Client(_Transport):
                     for chunk in resp.iter_bytes(chunk_size=1024 * 1024):
                         write(chunk)
         except httpx.TimeoutException as exc:
-            raise APITimeoutError("Output download timed out; retry to restart.") from exc
+            raise APITimeoutError("Output download timed out. Retry to restart.") from exc
         except httpx.HTTPError as exc:
-            raise APIConnectionError("Output download interrupted; retry to restart.") from exc
+            raise APIConnectionError("Output download interrupted. Retry to restart.") from exc
         return Path(destination)
 
     def ledger(self, workload_id: str) -> Ledger:
@@ -1501,9 +1494,9 @@ class AsyncClient(_Transport):
                     async for chunk in resp.aiter_bytes(chunk_size=1024 * 1024):
                         write(chunk)
         except httpx.TimeoutException as exc:
-            raise APITimeoutError("Output download timed out; retry to restart.") from exc
+            raise APITimeoutError("Output download timed out. Retry to restart.") from exc
         except httpx.HTTPError as exc:
-            raise APIConnectionError("Output download interrupted; retry to restart.") from exc
+            raise APIConnectionError("Output download interrupted. Retry to restart.") from exc
         return Path(destination)
 
     async def ledger(self, workload_id: str) -> Ledger:

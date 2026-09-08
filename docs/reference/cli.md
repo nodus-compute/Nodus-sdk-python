@@ -1,7 +1,7 @@
 # Terminal commands
 
 Use `nodus --help` for command groups and `nodus COMMAND --help` for options.
-Replace `ID` with a workload ID. These commands describe SDK 0.3.0.
+Replace `ID` with a workload ID. These commands describe SDK 0.3.x.
 
 ## Setup
 
@@ -59,16 +59,6 @@ the cancellation attempt. A wait timeout ends observation without cancelling.
 | `nodus assets` | List stored assets |
 
 See [code and datasets](../guides/assets.md) for imports and attaching assets to work.
-
-## Assets
-
-| Command | What it does |
-|---|---|
-| `nodus upload FILE` | Upload a file or archive and print its asset ID |
-| `nodus assets` | List your uploaded and imported assets |
-
-Put the returned ID in `source_asset_id` or an input entry in your workload file.
-For imports and programmatic uploads, see [code and datasets](../guides/assets.md).
 
 ## Advanced diagnostics
 

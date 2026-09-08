@@ -73,22 +73,18 @@ def _warn_if_it_cannot_bootstrap(image: str) -> None:
         return
     warnings.warn(
         f"image {image!r} ships no curl, wget or python3, so the Nodus runner cannot "
-        "install itself onto the host: the workload is billed without ever starting. "
+        "install itself onto the host. Capacity may incur costs before your command starts. "
         f"Use an image carrying one of them, such as the default {DEFAULT_IMAGE!r}.",
         stacklevel=_caller_stacklevel(),
     )
 
 
 def _warn_if_it_is_uncapped(outcome: dict[str, Any]) -> None:
-    """Warn while the brief is still free, for a submission with no cost ceiling.
-
-    An omitted budget is not a small budget: the run is admitted against the
-    account cap alone and bills whatever it takes to finish.
-    """
+    """Explain an omitted workload budget without assuming account limits."""
     if "max_cost_usd" in outcome:
         return
     if sys.stderr.isatty():
-        print("Using your account spending limit. Add budget=<usd> to limit this run.", file=sys.stderr)
+        print("No per-run budget set. Add budget=<usd> to limit this run.", file=sys.stderr)
 
 
 def _as_command(command: list[str] | str | None) -> list[str]:
@@ -373,7 +369,7 @@ def _merge_extra(payload: dict[str, Any], extra: dict[str, Any] | None) -> None:
             + ", which this brief already built"
             + (", including the cost ceiling in 'outcome'" if "outcome" in clashes else "")
             + ". Pass the value through the keyword that builds it, or drop it "
-            "from extra=; extra is for fields the control plane models and this "
+            "from extra=. The extra argument is for fields the control plane models and this "
             "SDK version does not."
         )
     payload.update(extra)

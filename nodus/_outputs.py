@@ -52,7 +52,7 @@ def download_path(workload_id: str, name: str) -> str:
 def verified_file(destination: str | os.PathLike[str], headers: Mapping[str, str], *, overwrite: bool = True) -> Iterator[Callable[[bytes], None]]:
     digest = headers.get("X-Nodus-SHA256", "")
     if not re.fullmatch(r"[a-fA-F0-9]{64}", digest):
-        raise NodusError("Output response has no valid SHA-256; download was not saved.")
+        raise NodusError("Output response has no valid SHA-256. Download was not saved.")
     length = headers.get("Content-Length")
     if length is not None and not re.fullmatch(r"[0-9]+", length):
         raise NodusError("Output response has an invalid Content-Length.")
@@ -79,9 +79,9 @@ def verified_file(destination: str | os.PathLike[str], headers: Mapping[str, str
                 stream.write(chunk)
             yield write
             if expected is not None and count != expected:
-                raise NodusError("Output length mismatch; download was not saved.")
+                raise NodusError("Output length mismatch. Download was not saved.")
             if hasher.hexdigest() != digest.lower():
-                raise NodusError("Output SHA-256 mismatch; download was not saved.")
+                raise NodusError("Output SHA-256 mismatch. Download was not saved.")
         if overwrite:
             os.replace(temporary, destination)
         else:

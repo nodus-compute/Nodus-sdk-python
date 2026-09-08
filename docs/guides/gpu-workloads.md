@@ -50,7 +50,7 @@ with nodus.Client() as client:
 This is a template: `/app/train.py` and `--epochs` belong to your application.
 `model` is a sizing hint, not a model download. Choose enough GPU memory for your program.
 
-Declare final model files as stage outputs when you need SDK downloads. See
+Declare final model files with `outputs` when you need SDK downloads. See
 [multi-stage workloads](multi-stage-workloads.md). Nodus handles placement and
 execution. Advanced application integrations are documented separately in the
 [parameter reference](../reference/parameters/index.md).

@@ -95,6 +95,14 @@ def test_local_markdown_links_resolve():
     assert not failures, "broken relative links:\n" + "\n".join(failures)
 
 
+def test_readme_links_work_outside_github():
+    if not README.exists():
+        pytest.skip('README is not included in this environment')
+    destinations = re.findall(r'\]\(([^\s)]+)\)', README.read_text(encoding='utf-8'))
+    relative = [target for target in destinations if not target.startswith(('https://', '#'))]
+    assert not relative, f'PyPI cannot resolve repository-relative links: {relative}'
+
+
 def test_marked_first_workload_examples(monkeypatch):
     examples = []
     for path in _documents():
