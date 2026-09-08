@@ -14,7 +14,7 @@ try:
 except ModuleNotFoundError:  # Python 3.10
     import tomli as tomllib
 
-from ._brief import _validate_outputs
+from ._brief import _validate_outputs, validate_requirements, UNSUPPORTED
 from .requests import ContinuitySpec, Policy, Requirements, Source, StageInput, StageSpec
 
 _TEMPLATE = '''# Edit the image and command for your workload.
@@ -24,7 +24,7 @@ command = ["python", "-c", "print(__import__('torch').cuda.get_device_name(0))"]
 budget = 5
 '''
 _FIELDS = {
-    'command', 'image', 'model', 'peak_memory_gb', 'expected_runtime_hours',
+    'command', 'image', 'model', 'peak_memory_gb', 'optimization', 'gpu',
     'budget', 'compute_class', 'continuity', 'finish_by', 'data_regions',
     'stages', 'framework', 'policy', 'requirements', 'idempotency_key',
     'source_asset_id', 'inputs', 'outputs',
@@ -86,12 +86,14 @@ def _command(value: Any, name: str, allow_string: bool = True) -> None:
 
 
 def _requirements(value: Any, name: str) -> None:
+    normalized = validate_requirements(value)
     _table(value, name, set(Requirements.__annotations__))
+    value.update(normalized)
     for key, item in value.items():
         field = f'{name}.{key}'
         if key == 'dataset_bytes':
             _number(item, field, integer=True, zero=True)
-        elif key in {'peak_memory_gb', 'expected_runtime_hours'}:
+        elif key == 'peak_memory_gb':
             _number(item, field)
         elif key == 'compute_class':
             if item not in ('vm', 'accelerator'):
@@ -188,9 +190,11 @@ def load_workload_file(path: str | Path = 'nodus.toml') -> dict[str, Any]:
             values = tomllib.load(stream)
         except tomllib.TOMLDecodeError as exc:
             raise ValueError(f'{path}: invalid TOML: {exc}') from exc
+    if 'expected_runtime_hours' in values:
+        _fail(str(path), UNSUPPORTED['expected_runtime_hours'])
     _table(values, str(path), _FIELDS)
     for key, value in values.items():
-        if key in {'budget', 'peak_memory_gb', 'expected_runtime_hours'}:
+        if key in {'budget', 'peak_memory_gb'}:
             _number(value, key)
         elif key == 'command':
             _command(value, key)
@@ -241,8 +245,10 @@ def load_workload_file(path: str | Path = 'nodus.toml') -> dict[str, Any]:
                 _fail(key, 'expected an RFC3339 timestamp with a timezone')
             if deadline.tzinfo is None:
                 _fail(key, 'include the timezone in the deadline')
-        elif key == 'compute_class':
-            _requirements({key: value}, 'requirements')
+        elif key in {'compute_class', 'optimization', 'gpu'}:
+            choice = {key: value}
+            _requirements(choice, 'requirements')
+            values[key] = choice[key]
         else:
             _text(value, key)
     if 'stages' in values:
@@ -250,7 +256,7 @@ def load_workload_file(path: str | Path = 'nodus.toml') -> dict[str, Any]:
             _fail('stages', 'put image and command inside each stage source')
     elif 'command' not in values:
         _fail('command', 'provide the command to run')
-    for key in {'model', 'compute_class', 'peak_memory_gb', 'expected_runtime_hours'}:
+    for key in {'model', 'compute_class', 'peak_memory_gb', 'optimization', 'gpu'}:
         if key in values and key in values.get('requirements', {}):
             _fail(key, 'set this once, at the top level or in requirements')
     if 'data_regions' in values and 'data_regions' in values.get('policy', {}):

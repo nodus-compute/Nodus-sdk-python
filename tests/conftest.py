@@ -27,6 +27,8 @@ def nodus_config(tmp_path, monkeypatch):
     still cannot reach the operator's real home through the other.
     """
     home = tmp_path / "home"
+    monkeypatch.delenv("NODUS_API_KEY", raising=False)
+    monkeypatch.delenv("NODUS_BASE_URL", raising=False)
     path = home / ".nodus" / "config.toml"
     path.parent.mkdir(parents=True)
     monkeypatch.setattr(_config, "config_path", lambda: path)

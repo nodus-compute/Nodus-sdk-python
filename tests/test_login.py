@@ -407,7 +407,7 @@ def test_the_written_file_is_readable_only_by_its_owner(nodus_config):
 @pytest.mark.skipif(os.name == "posix", reason="POSIX has a mode bit meaning this")
 def test_a_platform_with_no_file_mode_says_what_is_true_instead(nodus_config):
     """Not "anyone can read it" -- it inherits the profile directory's ACL."""
-    with pytest.warns(UserWarning, match="inherits the permissions"):
+    with pytest.warns(UserWarning, match="Keep this file private"):
         config.save_credentials("nk_live_written", "https://written.example")
 
 
@@ -419,7 +419,7 @@ def test_a_login_states_the_file_mode_caveat_as_a_sentence(console, nodus_config
     the suite still green.
     """
     assert _login(console) == 0
-    assert "inherits the permissions" in capsys.readouterr().err
+    assert "Keep this file private" in capsys.readouterr().err
 
 
 def test_a_failed_write_leaves_no_temporary_file_holding_the_key(nodus_config, monkeypatch):
@@ -544,7 +544,7 @@ def test_an_unwritable_config_refuses_before_a_key_is_ever_minted(
     assert _login(console) == 2
     assert console.start_calls == [], "a key was minted for a config that cannot hold it"
     assert console.token_calls == []
-    assert "error:" in capsys.readouterr().err
+    assert "Error:" in capsys.readouterr().err
 
 
 def test_a_probe_that_cannot_be_tidied_away_does_not_fail_the_login(
@@ -663,7 +663,7 @@ def test_login_writes_a_config_the_client_then_resolves_from(console, nodus_conf
     printed = _both_streams(capsys)
     assert "WXYZ-4823" in printed
     assert str(nodus_config) in printed
-    assert "acme" in printed
+    assert "Welcome to Nodus" in printed
     assert APPROVED["api_key"] not in printed, "the key itself must not be printed"
 
     with nodus.Client() as c:
@@ -978,7 +978,7 @@ def test_login_says_when_the_environment_outranks_what_it_just_wrote(
 ):
     """"Signed in" is a lie if an env var is what the next call will use."""
     monkeypatch.setenv(name, "nk_live_env" if name.endswith("KEY") else "https://env.example")
-    assert _login(console) == 0
+    assert _login(console, "--force") == 0
     err = capsys.readouterr().err
     assert name in err and "outranks" in err
 

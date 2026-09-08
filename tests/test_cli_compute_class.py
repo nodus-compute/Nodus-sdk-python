@@ -30,7 +30,7 @@ def test_file_submission_and_observation(command, monkeypatch, tmp_path, capsys)
     assert methods == (['POST', 'GET'] if command == 'run' else ['POST'])
     output = capsys.readouterr().out
     assert output.startswith('wl_test\n')
-    assert ('completed' in output) == (command == 'run')
+    assert ('Completed' in output) == (command == 'run')
 
 
 @pytest.mark.parametrize('content', [None, 'image = ', 'budget = -1\n', 'unknown = true\n'])
@@ -43,7 +43,7 @@ def test_invalid_config_fails_before_client(content, monkeypatch, tmp_path, caps
     monkeypatch.setattr(cli, 'Client', forbidden)
     assert cli.main(['run']) == 2
     output = capsys.readouterr()
-    assert 'error:' in output.err
+    assert 'Error:' in output.err
     assert 'Traceback' not in output.err
 
 
@@ -55,7 +55,7 @@ def test_init_never_overwrites(monkeypatch, tmp_path, capsys):
     assert 'image' in content and 'budget' in content
     assert cli.main(['init']) == 2
     assert path.read_text() == content
-    assert 'error:' in capsys.readouterr().err
+    assert 'Error:' in capsys.readouterr().err
 
 
 @pytest.mark.parametrize('argv', [['get', 'wl_test'], ['run', '--image', 'image'], ['run', '--', 'python', 'train.py'], ['list', '--status', 'active']])
@@ -104,7 +104,7 @@ def test_upload_streams_file_and_assets_sanitizes_rows(monkeypatch, tmp_path, ca
     assert capsys.readouterr().out == "asset_data\n"
     assert cli.main(["assets"]) == 0
     output = capsys.readouterr().out
-    assert len(output.splitlines()) == 1
+    assert len(output.splitlines()) == 2
     assert "\x1b" not in output
     assert len(requests) == 3
 

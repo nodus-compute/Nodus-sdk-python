@@ -70,7 +70,8 @@ BRIEF_PARAMETERS = {
     "image",
     "model",
     "peak_memory_gb",
-    "expected_runtime_hours",
+    "optimization",
+    "gpu",
     "budget",
     "compute_class",
     "continuity",
@@ -175,7 +176,7 @@ def test_the_command_answers_a_missing_log_with_a_sentence(monkeypatch, capsys):
     monkeypatch.setattr(cli, "Client", _Fake)
     assert cli.main(["logs", "wl_abc"]) == 1
     out = capsys.readouterr()
-    assert "committed artifact" in out.out
+    assert "No logs have been recorded" in out.out
     assert "Traceback" not in out.err
 
 
@@ -352,7 +353,7 @@ def test_a_server_value_cannot_add_a_row_to_any_listing(argv, monkeypatch, capsy
         # The manifest line, its output row, and both file rows. Zero means
         # the fixture missed the endpoint's nesting and the sites went
         # untested; three means the numeric-digest row crashed or vanished.
-        assert clean == 4, "the forged artifact must render all four rows"
+        assert clean == 5, "the artifact header and all four data rows must render"
 
     monkeypatch.setattr(cli, "Client", _row_printing_client(FORGING))
     cli.main(list(argv))
@@ -460,4 +461,4 @@ def test_explain_still_reads_the_route_out_of_the_control_plane(monkeypatch, cap
     assert cli.main(["explain", "wl_abc"]) == 0
     out = capsys.readouterr().out
     assert "nodus:a100-80-us-east" in out
-    assert "cost to completion" in out
+    assert "spending limit" in out

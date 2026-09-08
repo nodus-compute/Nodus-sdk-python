@@ -49,7 +49,7 @@ PROFILE = "default"
 
 #: Written by a login, cleared by a logout. ``api_key`` is the credential; the
 #: rest identifies it for the person who has to revoke it.
-CREDENTIAL_FIELDS = ("api_key", "key_id", "tenant", "expires_at")
+CREDENTIAL_FIELDS = ("api_key", "key_id", "tenant", "expires_at", "email")
 
 # A key TOML lets stand without quotes. Anything else is quoted on the way out,
 # because a parsed key is written back verbatim and "my key" is not a bare key.
@@ -263,7 +263,7 @@ def read_metadata() -> dict[str, str]:
     path = config_path()
     section = _profile(path)
     found = {}
-    for name in ("key_id", "tenant", "expires_at"):
+    for name in ("key_id", "tenant", "expires_at", "email"):
         value = _string(path, section, name)
         if value:
             found[name] = value
@@ -490,6 +490,7 @@ def save_credentials(
     key_id: str = "",
     tenant: str = "",
     expires_at: str = "",
+    email: str = "",
 ) -> Path:
     """Store the key and what names it, and return the path written.
 
@@ -506,7 +507,7 @@ def save_credentials(
             "sent is worse than no key, so it is refused rather than stored."
         )
     path = config_path()
-    fields = {"key_id": key_id, "tenant": tenant, "expires_at": expires_at}
+    fields = {"key_id": key_id, "tenant": tenant, "expires_at": expires_at, "email": email}
 
     def edit(section: dict[str, Any]) -> None:
         section["api_key"] = api_key
@@ -520,9 +521,7 @@ def save_credentials(
     _rewrite(path, edit)
     if os.name != "posix":
         warnings.warn(
-            f"{path} holds your API key. This platform has no 0600, so the "
-            "file inherits the permissions of your profile directory rather "
-            "than being narrowed further.",
+            "Your API key is saved in your user profile. Keep this file private and do not share it.",
             stacklevel=2,
         )
     return path

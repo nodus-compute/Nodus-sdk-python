@@ -229,6 +229,9 @@ class StageRun:
     last_loss: float | None = None
     metric_rate: float | None = None
     metric_step: int | None = None
+    metric_total_steps: int | None = None
+    metric_epoch: float | None = None
+    metric_total_epochs: float | None = None
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "StageRun":
@@ -245,6 +248,10 @@ class StageRun:
             metric_rate=_num(d.get("metric_rate"), None),
             metric_step=(int(d["metric_step"]) if isinstance(d.get("metric_step"), int)
                          and not isinstance(d["metric_step"], bool) else None),
+            metric_total_steps=(d["metric_total_steps"] if isinstance(d.get("metric_total_steps"), int)
+                                and not isinstance(d["metric_total_steps"], bool) else None),
+            metric_epoch=_num(d.get("metric_epoch"), None),
+            metric_total_epochs=_num(d.get("metric_total_epochs"), None),
         )
 
 

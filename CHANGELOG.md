@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.3.2
+
+- Make README links usable from PyPI and align CLI documentation with SDK 0.3.x.
+- Explain optional budgets, account limits, and pending cost accounting accurately.
+- Clarify log pagination, status refresh, cancellation, and output download behavior.
+- Remove an asset lookup entry that the hosted API does not serve.
+
+## 0.3.1
+
+- Show finished stage status when training metrics are unavailable.
+- Label missing compute details without implying that a finished run is pending.
+- Explain unavailable sign-in verification without referring to a missing run.
+
+## 0.3.0
+
+- Add optional optimization preferences and a strict GPU model requirement.
+- Remove customer runtime estimates. Existing callers should remove that argument.
+- Add Rich terminal tables, status summaries, live logs, and reported training progress.
+- Reuse valid logins, show email, and add `login --force` for a fresh sign-in.
+- Replace noisy budget warnings and raw CLI failures with concise guidance.
+- Add `wait(progress=...)` and cursor-based `live_logs()` for sync and async clients.
+- Support hard workload and account caps with the compatible backend release.
+
+
 ## 0.2.1
 
 - Update the default hosted API endpoint.

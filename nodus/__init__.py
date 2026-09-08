@@ -1,29 +1,21 @@
-"""Nodus Python SDK.
+r"""Run GPU workloads, observe progress, and download declared outputs.
 
-Submit workload requirements and outcomes. Nodus matches infrastructure,
-manages cost to completion, and recovers through reclaim. You describe the work
-and its constraints, never a machine, an instance type, or a supplier.
-
-Sign in once and the client finds its own settings:
-
-    nodus login
-
-That approves a code in your browser and writes ~/.nodus/config.toml. Or set
-an API key for automation:
-    export NODUS_API_KEY=nk_live_…
+Sign in with ``nodus login`` or configure ``NODUS_API_KEY`` for automation.
+Upload local code explicitly or include it in the selected container image.
 
     import nodus
 
     with nodus.Client() as client:
-        wl = client.run(
-            model="LoRA-fine-tune",
-            command=["python", "train.py"],
-            peak_memory_gb=80,
-            expected_runtime_hours=18,
-            budget=400,
+        workload = client.run(
+            image="pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime",
+            command=["python", "-c", "import torch\nprint(torch.cuda.get_device_name(0))"],
+            budget=5,
         )
-        done = client.wait(wl.id)
-        print(done.status, done.route.sku, done.cost_now_usd)
+        print(workload.id)
+        done = workload.wait()
+        if not done.succeeded:
+            raise RuntimeError(f"Workload ended: {done.status}")
+        print(done.logs())
 """
 
 from __future__ import annotations
@@ -48,6 +40,7 @@ from ._assets import Asset, Assets, AsyncAssets
 
 import httpx
 
+from ._terminal import RunProgress
 from ._brief import build_payload, status_filter
 from .requests import Source, Requirements, Policy, ContinuitySpec, StageInput, StageSpec
 from .config import _is_header_safe, read_credentials
@@ -642,8 +635,12 @@ class Client(_Transport):
         text: bool = False,
         headers_out: dict[str, str] | None = None,
         max_bytes: int | None = None,
+        timeout: float | None = None,
+        max_retries: int | None = None,
     ) -> Any:
         headers = {"Idempotency-Key": _valid_idempotency_key(idempotency_key)} if idempotency_key else {}
+        retries = self.max_retries if max_retries is None else max_retries
+        request_options = {"timeout": timeout} if timeout is not None else {}
         attempt = 0
         # One waiting budget for the whole call, spent across every retry.
         slept = 0.0
@@ -653,11 +650,11 @@ class Client(_Transport):
             try:
                 if max_bytes is None:
                     resp = self._http.request(
-                        method, path, json=json, headers=headers, params=params
+                        method, path, json=json, headers=headers, params=params, **request_options
                     )
                 else:
                     with self._http.stream(
-                        method, path, json=json, headers=headers, params=params
+                        method, path, json=json, headers=headers, params=params, **request_options
                     ) as resp:
                         if resp.status_code < 400:
                             chunks, total = [], 0
@@ -670,7 +667,7 @@ class Client(_Transport):
                         else:
                             resp.read()
             except httpx.TimeoutException as exc:
-                if attempt < self.max_retries:
+                if attempt < retries:
                     delay = self._hold(attempt, None, slept)
                 if delay is not None:
                     time.sleep(delay)
@@ -681,7 +678,7 @@ class Client(_Transport):
                     APITimeoutError, f"{method} {path} timed out", idempotency_key
                 ) from exc
             except httpx.HTTPError as exc:
-                if attempt < self.max_retries:
+                if attempt < retries:
                     delay = self._hold(attempt, None, slept)
                 if delay is not None:
                     time.sleep(delay)
@@ -695,7 +692,7 @@ class Client(_Transport):
                 ) from exc
 
             if resp.status_code >= 400:
-                if self._should_retry(method, resp.status_code, attempt):
+                if attempt < retries and self._should_retry(method, resp.status_code, attempt):
                     delay = self._hold(attempt, resp, slept)
                     if delay is not None:
                         time.sleep(delay)
@@ -726,7 +723,8 @@ class Client(_Transport):
         outputs: dict[str, str] | None = None,
         model: str | None = None,
         peak_memory_gb: float | None = None,
-        expected_runtime_hours: float | None = None,
+        optimization: str = "balanced",
+        gpu: str | None = None,
         budget: float | None = None,
         compute_class: ComputeClass | str | None = None,
         continuity: ContinuityMode | str | ContinuitySpec | dict[str, Any] | None = None,
@@ -768,7 +766,8 @@ class Client(_Transport):
             outputs=outputs,
             model=model,
             peak_memory_gb=peak_memory_gb,
-            expected_runtime_hours=expected_runtime_hours,
+            optimization=optimization,
+            gpu=gpu,
             budget=budget,
             compute_class=compute_class,
             continuity=continuity,
@@ -936,9 +935,9 @@ class Client(_Transport):
                     for chunk in resp.iter_bytes(chunk_size=1024 * 1024):
                         write(chunk)
         except httpx.TimeoutException as exc:
-            raise APITimeoutError("Output download timed out; retry to restart.") from exc
+            raise APITimeoutError("Output download timed out. Retry to restart.") from exc
         except httpx.HTTPError as exc:
-            raise APIConnectionError("Output download interrupted; retry to restart.") from exc
+            raise APIConnectionError("Output download interrupted. Retry to restart.") from exc
         return Path(destination)
 
     def ledger(self, workload_id: str) -> Ledger:
@@ -974,29 +973,59 @@ class Client(_Transport):
         ) or ""
 
     def wait(
-        self,
-        workload_id: str,
-        *,
-        poll_seconds: float = 2.0,
-        timeout_seconds: float | None = None,
+        self, workload_id: str, *, poll_seconds: float = 2.0,
+        timeout_seconds: float | None = None, progress: bool | None = None,
     ) -> "Workload":
-        """Poll until terminal. Ctrl+C requests remote cancellation.
+        """Wait for completion with optional live output on stderr.
 
-        Transient failures are retried while waiting. A timeout ends local
-        observation without cancellation. See :class:`_WaitPolicy`.
+        Progress is automatic in a terminal. Ctrl+C requests cancellation.
+        A timeout ends observation and leaves the remote workload running.
         """
-        with _cancel_wait_on_interrupt(self, workload_id):
-            policy = _WaitPolicy(poll_seconds, timeout_seconds)
+        _valid_id(workload_id)
+        policy = _WaitPolicy(poll_seconds, timeout_seconds)
+        with _cancel_wait_on_interrupt(self, workload_id), RunProgress(workload_id, progress) as display:
             while True:
                 try:
                     wl = self.get(workload_id)
                 except NodusError as exc:
                     delay = policy.failed(exc)
                 else:
+                    display.update(wl)
+                    for kind, path, params in display.requests():
+                        if kind == "saved_logs" and display.live_available and not display.live_empty:
+                            continue
+                        while True:
+                            try:
+                                timeout = 2.0 if policy.deadline is None else min(2.0, policy.deadline - time.monotonic())
+                                if timeout <= 0:
+                                    break
+                                headers = {}
+                                body = self._request(
+                                    "GET", path, params=params, timeout=timeout, max_retries=0,
+                                    text=kind == "saved_logs", headers_out=headers,
+                                    max_bytes=_LOG_MAX_BYTES if kind == "saved_logs" else None,
+                                )
+                                if kind == "saved_logs":
+                                    display.accept_saved_logs(body, headers.get("x-nodus-stage-id", ""), headers.get("x-nodus-generation", ""))
+                                else:
+                                    advanced = display.accept(kind, body)
+                                    if wl.is_terminal and advanced:
+                                        params = {"after": display.event_after if kind == "events" else display.log_after}
+                                        continue
+                            except NodusError as exc:
+                                display.unavailable(kind, exc.status_code)
+                            except ValueError:
+                                display.unavailable(kind, None)
+                            break
                     if wl.is_terminal:
                         return wl
                     delay = policy.polled()
                 time.sleep(policy.hold(delay, workload_id))
+
+    def live_logs(self, workload_id: str, *, after: str = "") -> dict[str, Any]:
+        """Read new live output chunks using the previous next_cursor."""
+        path = f"/v1/workloads/{_valid_id(workload_id)}/logs/live"
+        return self._one(self._request("GET", path, params={"after": after}), "GET", path)
 
     def stream_events(self, workload_id: str, *, poll_seconds: float = 2.0) -> Iterator[Event]:
         """Yield events as they occur, stopping at the terminal event.
@@ -1086,26 +1115,13 @@ class Workload(_WorkloadState):
         self._absorb(self._client._one(self._client._request("GET", path), "GET", path))
         return self
 
-    def wait(self, *, poll_seconds: float = 2.0, timeout_seconds: float | None = None) -> "Workload":
-        """Poll until terminal. Ctrl+C requests remote cancellation.
-
-        Raises :class:`APITimeoutError` if ``timeout_seconds`` elapses first.
-        the workload keeps running, because a client-side deadline is not a
-        cancellation. Transient poll failures are retried for the life of the
-        wait, permanent ones raised at once. See :class:`_WaitPolicy`.
-        """
-        with _cancel_wait_on_interrupt(self._client, self.id):
-            policy = _WaitPolicy(poll_seconds, timeout_seconds)
-            while True:
-                try:
-                    self.refresh()
-                except NodusError as exc:
-                    delay = policy.failed(exc)
-                else:
-                    if self.is_terminal:
-                        return self
-                    delay = policy.polled()
-                time.sleep(policy.hold(delay, self.id))
+    def wait(self, *, poll_seconds: float = 2.0, timeout_seconds: float | None = None,
+             progress: bool | None = None) -> "Workload":
+        """Wait in place. A timeout leaves the remote workload running."""
+        done = self._client.wait(self.id, poll_seconds=poll_seconds,
+                                 timeout_seconds=timeout_seconds, progress=progress)
+        self._absorb(done.raw)
+        return self
 
     def events(self, *, after: int = 0) -> list[Event]:
         return self._client.events(self.id, after=after)
@@ -1197,8 +1213,12 @@ class AsyncClient(_Transport):
         text: bool = False,
         headers_out: dict[str, str] | None = None,
         max_bytes: int | None = None,
+        timeout: float | None = None,
+        max_retries: int | None = None,
     ) -> Any:
         headers = {"Idempotency-Key": _valid_idempotency_key(idempotency_key)} if idempotency_key else {}
+        retries = self.max_retries if max_retries is None else max_retries
+        request_options = {"timeout": timeout} if timeout is not None else {}
         attempt = 0
         # One waiting budget for the whole call, spent across every retry.
         slept = 0.0
@@ -1208,11 +1228,11 @@ class AsyncClient(_Transport):
             try:
                 if max_bytes is None:
                     resp = await self._http.request(
-                        method, path, json=json, headers=headers, params=params
+                        method, path, json=json, headers=headers, params=params, **request_options
                     )
                 else:
                     async with self._http.stream(
-                        method, path, json=json, headers=headers, params=params
+                        method, path, json=json, headers=headers, params=params, **request_options
                     ) as resp:
                         if resp.status_code < 400:
                             chunks, total = [], 0
@@ -1225,7 +1245,7 @@ class AsyncClient(_Transport):
                         else:
                             await resp.aread()
             except httpx.TimeoutException as exc:
-                if attempt < self.max_retries:
+                if attempt < retries:
                     delay = self._hold(attempt, None, slept)
                 if delay is not None:
                     await asyncio.sleep(delay)
@@ -1236,7 +1256,7 @@ class AsyncClient(_Transport):
                     APITimeoutError, f"{method} {path} timed out", idempotency_key
                 ) from exc
             except httpx.HTTPError as exc:
-                if attempt < self.max_retries:
+                if attempt < retries:
                     delay = self._hold(attempt, None, slept)
                 if delay is not None:
                     await asyncio.sleep(delay)
@@ -1250,7 +1270,7 @@ class AsyncClient(_Transport):
                 ) from exc
 
             if resp.status_code >= 400:
-                if self._should_retry(method, resp.status_code, attempt):
+                if attempt < retries and self._should_retry(method, resp.status_code, attempt):
                     delay = self._hold(attempt, resp, slept)
                     if delay is not None:
                         await asyncio.sleep(delay)
@@ -1279,7 +1299,8 @@ class AsyncClient(_Transport):
         outputs: dict[str, str] | None = None,
         model: str | None = None,
         peak_memory_gb: float | None = None,
-        expected_runtime_hours: float | None = None,
+        optimization: str = "balanced",
+        gpu: str | None = None,
         budget: float | None = None,
         compute_class: ComputeClass | str | None = None,
         continuity: ContinuityMode | str | ContinuitySpec | dict[str, Any] | None = None,
@@ -1302,7 +1323,8 @@ class AsyncClient(_Transport):
             outputs=outputs,
             model=model,
             peak_memory_gb=peak_memory_gb,
-            expected_runtime_hours=expected_runtime_hours,
+            optimization=optimization,
+            gpu=gpu,
             budget=budget,
             compute_class=compute_class,
             continuity=continuity,
@@ -1472,9 +1494,9 @@ class AsyncClient(_Transport):
                     async for chunk in resp.aiter_bytes(chunk_size=1024 * 1024):
                         write(chunk)
         except httpx.TimeoutException as exc:
-            raise APITimeoutError("Output download timed out; retry to restart.") from exc
+            raise APITimeoutError("Output download timed out. Retry to restart.") from exc
         except httpx.HTTPError as exc:
-            raise APIConnectionError("Output download interrupted; retry to restart.") from exc
+            raise APIConnectionError("Output download interrupted. Retry to restart.") from exc
         return Path(destination)
 
     async def ledger(self, workload_id: str) -> Ledger:
@@ -1498,24 +1520,63 @@ class AsyncClient(_Transport):
         ) or ""
 
     async def wait(
-        self,
-        workload_id: str,
-        *,
-        poll_seconds: float = 2.0,
-        timeout_seconds: float | None = None,
+        self, workload_id: str, *, poll_seconds: float = 2.0,
+        timeout_seconds: float | None = None, progress: bool | None = None,
     ) -> "AsyncWorkload":
-        """Poll until the workload is terminal. Same policy as :meth:`Client.wait`."""
+        """Wait with live output. Task cancellation requests remote cancellation."""
+        _valid_id(workload_id)
         policy = _WaitPolicy(poll_seconds, timeout_seconds)
-        while True:
+        try:
+            with RunProgress(workload_id, progress) as display:
+                while True:
+                    try:
+                        wl = await self.get(workload_id)
+                    except NodusError as exc:
+                        delay = policy.failed(exc)
+                    else:
+                        display.update(wl)
+                        for kind, path, params in display.requests():
+                            if kind == "saved_logs" and display.live_available and not display.live_empty:
+                                continue
+                            while True:
+                                try:
+                                    timeout = 2.0 if policy.deadline is None else min(2.0, policy.deadline - time.monotonic())
+                                    if timeout <= 0:
+                                        break
+                                    headers = {}
+                                    body = await self._request(
+                                        "GET", path, params=params, timeout=timeout, max_retries=0,
+                                        text=kind == "saved_logs", headers_out=headers,
+                                        max_bytes=_LOG_MAX_BYTES if kind == "saved_logs" else None,
+                                    )
+                                    if kind == "saved_logs":
+                                        display.accept_saved_logs(body, headers.get("x-nodus-stage-id", ""), headers.get("x-nodus-generation", ""))
+                                    else:
+                                        advanced = display.accept(kind, body)
+                                        if wl.is_terminal and advanced:
+                                            params = {"after": display.event_after if kind == "events" else display.log_after}
+                                            continue
+                                except NodusError as exc:
+                                    display.unavailable(kind, exc.status_code)
+                                except ValueError:
+                                    display.unavailable(kind, None)
+                                break
+                        if wl.is_terminal:
+                            return wl
+                        delay = policy.polled()
+                    await asyncio.sleep(policy.hold(delay, workload_id))
+        except (asyncio.CancelledError, KeyboardInterrupt) as interrupt:
             try:
-                wl = await self.get(workload_id)
-            except NodusError as exc:
-                delay = policy.failed(exc)
-            else:
-                if wl.is_terminal:
-                    return wl
-                delay = policy.polled()
-            await asyncio.sleep(policy.hold(delay, workload_id))
+                await asyncio.shield(self.cancel(workload_id))
+            except (NodusError, asyncio.CancelledError):
+                if hasattr(interrupt, "add_note"):
+                    interrupt.add_note(f"Cancellation not confirmed for {workload_id!r}. Call client.cancel(workload_id) against the same deployment.")
+            raise
+
+    async def live_logs(self, workload_id: str, *, after: str = "") -> dict[str, Any]:
+        """Read new live output chunks using the previous next_cursor."""
+        path = f"/v1/workloads/{_valid_id(workload_id)}/logs/live"
+        return self._one(await self._request("GET", path, params={"after": after}), "GET", path)
 
     async def stream_events(
         self, workload_id: str, *, poll_seconds: float = 2.0
@@ -1569,21 +1630,13 @@ class AsyncWorkload(_WorkloadState):
         self._absorb(self._client._one(await self._client._request("GET", path), "GET", path))
         return self
 
-    async def wait(
-        self, *, poll_seconds: float = 2.0, timeout_seconds: float | None = None
-    ) -> "AsyncWorkload":
-        """Poll until terminal. Same policy as :meth:`Workload.wait`."""
-        policy = _WaitPolicy(poll_seconds, timeout_seconds)
-        while True:
-            try:
-                await self.refresh()
-            except NodusError as exc:
-                delay = policy.failed(exc)
-            else:
-                if self.is_terminal:
-                    return self
-                delay = policy.polled()
-            await asyncio.sleep(policy.hold(delay, self.id))
+    async def wait(self, *, poll_seconds: float = 2.0, timeout_seconds: float | None = None,
+                   progress: bool | None = None) -> "AsyncWorkload":
+        """Wait in place with the same behavior as AsyncClient.wait."""
+        done = await self._client.wait(self.id, poll_seconds=poll_seconds,
+                                       timeout_seconds=timeout_seconds, progress=progress)
+        self._absorb(done.raw)
+        return self
 
     async def events(self, *, after: int = 0) -> list[Event]:
         return await self._client.events(self.id, after=after)

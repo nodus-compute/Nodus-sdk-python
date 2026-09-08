@@ -10,7 +10,9 @@ nodus login
 Your browser opens the Nodus sign-in page. Sign in, check that the device code
 matches your terminal, and approve. Close the tab once approved. Your terminal
 updates automatically and saves the login for both the CLI and Python SDK.
-There is no API URL or key to copy.
+There is no API URL or key to copy. Running `nodus login` again verifies and
+reuses your login. It welcomes you by email when available. Use `nodus login --force` to start a fresh browser sign-in. A connection failure preserves your
+saved credentials so you can retry.
 
 Existing users can upgrade with `pip install --upgrade nodus-compute`.
 The hosted default requires SDK 0.1.3 or newer.
@@ -60,7 +62,8 @@ Use the API origin without `/v1`. `NODUS_BASE_URL` and
 
 Each setting resolves independently. An environment variable overrides the saved
 login, so keep custom deployment credentials and addresses paired.
-Credentials are stored in `~/.nodus/config.toml`.
+Credentials are stored in `~/.nodus/config.toml`. Keep this file private. On
+Windows it inherits your profile directory's permissions.
 
 ## Sign out
 

@@ -18,8 +18,8 @@ with nodus.Client() as client:
 ```
 
 `wait()` returns when the workload finishes, fails, or is cancelled. Check
-`succeeded` before using its results. Logs become available when the runner
-commits them, so they may not be available while the workload is still running.
+`succeeded` before using its results. Interactive waits show elapsed time, lifecycle events, live program output,
+and available training progress. Saved logs remain accessible with `logs()`.
 
 ## Download files
 
@@ -39,11 +39,15 @@ files you want to download.
 
 ## Progress and cancellation
 
-`workload.status` gives the last fetched status. Use `client.get(workload.id)`
-to refresh it. For lifecycle updates, iterate over `workload.stream_events()`.
+`workload.status` gives the last fetched status. Use `workload.refresh()`
+to update that handle or `client.get(workload.id)` to get a new one.
+For lifecycle updates, iterate over `workload.stream_events()`.
 These events describe execution progress, not your program's stdout.
 
-Ctrl+C while waiting requests cancellation and remote resource cleanup.
+Ctrl+C during a synchronous wait requests cancellation and remote resource cleanup.
+Cancelling an async `wait()` task also requests remote cancellation before re-raising
+the interruption. If cancellation cannot be confirmed, check the run and retry with
+`await workload.cancel()`.
 To cancel explicitly, call `client.cancel(workload.id)`. A wait timeout ends
 local observation without cancelling the run.
 
@@ -58,3 +62,34 @@ nodus download WORKLOAD_ID
 Check a workload without waiting with `nodus status WORKLOAD_ID`. Stop it with
 `nodus cancel WORKLOAD_ID`. Downloads include declared output files, not the
 entire container filesystem.
+
+## Live display
+
+`wait(progress=None)` automatically enables a Rich display in an interactive
+terminal on Windows, macOS, and Linux. Use `progress=True` to enable output
+explicitly or `progress=False` for silent waiting. Progress goes to stderr and
+does not capture your program's stdout. Redirected output has no animations.
+
+Elapsed time refreshes every second. Server updates are polled every two
+seconds by default. Recognized training output can show steps, epochs, loss,
+and throughput. Percentages appear only when a matching total is reported.
+For other programs, stage updates, elapsed time, and logs remain visible.
+
+For a custom display, call `client.live_logs(workload.id, after=cursor)`. It
+returns `chunks`, `next_cursor`, and `truncated`. Each chunk has a numeric ID,
+stage ID, generation, and text. Each response contains at most 16 chunks.
+Pass the returned cursor on the next request and keep reading until a page is
+empty. An empty page means there is no new output yet, not that the run has finished.
+Live capture is limited to 8 MiB per attempt, with explicit truncation. The live
+view is retained for 24 hours after termination. Saved logs retain their normal
+retention. Older runners show saved logs as they become available.
+
+Live output combines stdout and stderr. Buffered programs may delay their own
+output. Python output is unbuffered unless explicitly overridden.
+
+## Existing local files
+
+`download()` creates its destination directories and refuses to overwrite files.
+Choose a fresh directory if a previous download already exists. The lower-level
+`download_output()` requires an existing parent directory and replaces its target
+only after the complete download passes its integrity checks.

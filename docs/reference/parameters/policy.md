@@ -14,6 +14,7 @@ Inside a `with nodus.Client() as client:` block:
 ```python
 # allowed_regions is your account's supported region list.
 workload = client.run(
+    image="pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime",
     command=["python", "-c", "print('regional workload')"],
     data_regions=allowed_regions,
     budget=5,
