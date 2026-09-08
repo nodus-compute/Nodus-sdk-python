@@ -42,3 +42,21 @@ See [idempotency](../guides/ci-and-idempotency.md) and
 An omitted budget prints a short notice only in an interactive terminal. It
 does not emit `UserWarning`. A known image without a bootstrap fetch tool can
 still emit `UserWarning` before submission.
+
+## Backend compatibility
+
+The SDK and backend must support the same features. Upgrading the Python package
+does not deploy backend changes. Login verification requires `GET /v1/me`, and
+live log streaming requires `GET /v1/workloads/{id}/logs/live`. A 404 from these
+routes can mean the deployment lacks the feature, even when saved credentials,
+workload history, and committed logs still work.
+
+GPU enforcement and spending limits also require their matching backend support.
+An older server may ignore fields it does not recognize. Successful submission
+alone does not prove those constraints were applied. Confirm support with the
+deployment operator before relying on a specific GPU or a hard spending cap.
+
+If login verification is unavailable, preserve the saved credentials and retry
+after the backend is updated. Use committed logs to inspect output when live
+streaming is unavailable. Optimization preferences are accepted by the SDK, but
+preference-specific routing is not active yet.

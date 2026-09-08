@@ -55,9 +55,17 @@ def status_label(value: Any) -> str:
     return clean(getattr(value, "value", value), line=True).replace("_", " ").capitalize()
 
 
+def format_cost(value: float) -> str:
+    if 0 < value < 0.000001:
+        return "<$0.000001"
+    if 0 < value < 0.01:
+        return f"${value:.6f}".rstrip("0")
+    return f"${value:.2f}"
+
+
 def workload_rows(workload: Any) -> list[tuple[str, str]]:
     rows = [("Run", clean(workload.id, line=True)), ("Status", status_label(workload.status)),
-            ("Cost", f"${workload.cost_now_usd:.2f}")]
+            ("Cost", format_cost(workload.cost_now_usd))]
     if workload.route:
         rows.append(("Compute", clean(workload.route.sku, line=True)))
     for stage in workload.stages:
@@ -125,7 +133,12 @@ class RunProgress:
         self.live = None
         self.last_summary = ""
         self.notice = ""
-        self.spinner = Spinner("dots")
+        try:
+            "⠋".encode(self.console.encoding)
+            spinner = "dots"
+        except (UnicodeEncodeError, LookupError):
+            spinner = "line"
+        self.spinner = Spinner(spinner)
 
     def __enter__(self):
         if self.enabled and self.terminal:

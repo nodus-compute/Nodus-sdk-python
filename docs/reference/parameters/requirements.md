@@ -21,9 +21,12 @@ the existing routing behavior. Preference-specific routing is not active yet.
 
 ## GPU model
 
-`gpu` is a hard requirement. Nodus never substitutes another model, including
+On a compatible backend, `gpu` is a hard requirement. Nodus never substitutes another model, including
 when retrying a run. If matching capacity is unavailable, the run reports that
 condition. Omit `gpu` to let Nodus choose compatible capacity.
+An older backend may ignore this field. Confirm
+[backend compatibility](../../operations/errors.md#backend-compatibility)
+before relying on GPU enforcement.
 
 Supported names are `A100`, `H100`, `H200`, `B200`, `A10`, `A10G`, `L4`, `L40`,
 `L40S`, `T4`, `V100`, `RTX A6000`, `RTX 3090`, `RTX 4090`, and `RTX 5090`.

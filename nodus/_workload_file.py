@@ -6,6 +6,7 @@ import math
 import re
 import shlex
 from datetime import datetime
+from graphlib import CycleError, TopologicalSorter
 from pathlib import Path
 from typing import Any
 
@@ -156,15 +157,8 @@ def _stages(stages: Any) -> None:
                 _table(item, name + '.inputs', set(StageInput.__annotations__))
                 for key in StageInput.__annotations__:
                     _text(item.get(key), name + '.inputs.' + key)
-    visiting, visited = set(), set()
-
-    def visit(stage_id: str) -> None:
-        if stage_id in visiting:
-            _fail('stages', 'dependencies contain a cycle')
-        if stage_id in visited:
-            return
-        visiting.add(stage_id)
-        stage = by_id[stage_id]
+    graph = {}
+    for stage_id, stage in by_id.items():
         dependencies = set(stage.get('depends_on', []))
         for item in stage.get('inputs', []):
             upstream = by_id.get(item['from_stage'])
@@ -175,12 +169,11 @@ def _stages(stages: Any) -> None:
         for dependency in dependencies:
             if dependency not in by_id:
                 _fail('stages.depends_on', f'unknown stage {dependency!r}')
-            visit(dependency)
-        visiting.remove(stage_id)
-        visited.add(stage_id)
-
-    for stage_id in by_id:
-        visit(stage_id)
+        graph[stage_id] = dependencies
+    try:
+        TopologicalSorter(graph).prepare()
+    except CycleError:
+        _fail('stages', 'dependencies contain a cycle')
 
 
 def load_workload_file(path: str | Path = 'nodus.toml') -> dict[str, Any]:

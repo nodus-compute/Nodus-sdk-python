@@ -105,6 +105,10 @@ preference-specific routing coming later.
 Set `gpu="H100"` to require a GPU model, or omit it to let Nodus choose.
 No runtime estimate is needed. See [resource options](https://nodus-compute.ai/docs/reference/parameters/requirements/).
 
+GPU enforcement, live logs, login verification, and spending limits require a
+compatible Nodus backend. Installing the SDK alone does not enable these server
+features. See [backend compatibility](https://github.com/nodus-compute/Nodus-sdk-python/blob/main/docs/operations/errors.md#backend-compatibility) before relying on them with a custom or older deployment.
+
 ## Run your own code
 
 Upload your script with `client.assets.upload()` or package it in a container.

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import difflib
 import inspect
+import math
 import os
 import re
 from pathlib import PurePosixPath
@@ -213,7 +214,13 @@ def build_payload(
 
     outcome: dict[str, Any] = {}
     if budget is not None:
-        outcome["max_cost_usd"] = float(budget)
+        try:
+            amount = float(budget)
+        except (TypeError, ValueError, OverflowError):
+            raise ValueError("budget must be a finite positive amount in USD. Omit it for no per-run limit.") from None
+        if isinstance(budget, bool) or not math.isfinite(amount) or amount <= 0:
+            raise ValueError("budget must be a finite positive amount in USD. Omit it for no per-run limit.")
+        outcome["max_cost_usd"] = amount
     deadline = _as_timestamp(finish_by)
     if deadline:
         outcome["complete_by"] = deadline

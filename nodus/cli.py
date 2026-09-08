@@ -21,7 +21,7 @@ import webbrowser
 from typing import Any
 
 from . import Client, __version__, _is_header_safe, _redact, _resolve_base_url, _current_hosted_url, config, login
-from ._terminal import clean, show_table, show_workload, status_label
+from ._terminal import clean, format_cost, show_table, show_workload, status_label
 from ._brief import STATUS_FILTERS
 from .errors import NodusError, NotFoundError, AuthenticationError, APIConnectionError, APITimeoutError
 from .types import _num
@@ -54,6 +54,30 @@ def _positive_seconds(value: str) -> float:
     return seconds
 
 
+def _nonnegative_integer(value: str) -> int:
+    try:
+        number = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("expected a nonnegative integer") from exc
+    if number < 0:
+        raise argparse.ArgumentTypeError("expected a nonnegative integer")
+    return number
+
+
+def _page_limit(value: str) -> int:
+    number = _nonnegative_integer(value)
+    if not 1 <= number <= 100:
+        raise argparse.ArgumentTypeError("expected an integer from 1 to 100")
+    return number
+
+
+def _positive_integer(value: str) -> int:
+    number = _nonnegative_integer(value)
+    if number == 0:
+        raise argparse.ArgumentTypeError("expected a positive integer")
+    return number
+
+
 def _safe(text: Any) -> str:
     """Many-line text from elsewhere, with what a terminal acts on removed."""
     return clean(text)
@@ -69,7 +93,7 @@ def _fmt_workload(wl: Any) -> str:
     # while a lease is open, and the meter counts only this billing period.
     route = _safe_line(wl.route.sku) if wl.route else "-"
     status = _safe_line(getattr(wl.status, "value", wl.status))
-    return f"{_safe_line(wl.id)}  {status:<13} {route:<28} ${wl.cost_now_usd:.2f}"
+    return f"{_safe_line(wl.id)}  {status:<13} {route:<28} {format_cost(wl.cost_now_usd)}"
 
 
 @contextmanager
@@ -144,14 +168,15 @@ def _cmd_run(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
         try:
             wl = client.run(**settings)
-        except KeyboardInterrupt:
-            print(
-                "Submission outcome unknown. A workload may still be running. "
-                "Before retrying, set the following top-level value in the same workload file: "
-                f"idempotency_key = {json.dumps(submission_key)}. "
-                "Retry with nodus submit, then cancel the returned workload if needed.",
-                file=sys.stderr,
-            )
+        except (KeyboardInterrupt, NodusError) as exc:
+            if isinstance(exc, KeyboardInterrupt) or exc.status_code is None or exc.status_code >= 500:
+                print(
+                    "Submission outcome unknown. A workload may still be running. "
+                    "Before retrying, set the following top-level value in the same workload file: "
+                    f"idempotency_key = {json.dumps(submission_key)}. "
+                    "Retry with nodus submit, then cancel the returned workload if needed.",
+                    file=sys.stderr,
+                )
             raise
         print(_safe_line(wl.id), flush=True)
         if args.cmd == "submit":
@@ -200,7 +225,7 @@ def _cmd_list(args: argparse.Namespace) -> int:
             print(json.dumps([wl.raw for wl in workloads], indent=2, default=str))
         else:
             show_table(["Run", "Status", "Compute", "Cost"],
-                       [[wl.id, status_label(wl.status), wl.route.sku if wl.route else "Not reported", f"${wl.cost_now_usd:.2f}"] for wl in workloads],
+                       [[wl.id, status_label(wl.status), wl.route.sku if wl.route else "Not reported", format_cost(wl.cost_now_usd)] for wl in workloads],
                        empty="No runs yet. Start with nodus init, then nodus run.", plain=args.plain)
     return 0
 
@@ -550,7 +575,7 @@ Use nodus COMMAND --help for command options.""",
 
     l = sub.add_parser("list", help="list workloads")
     l.add_argument("status", nargs="?", default=None, choices=(*STATUS_FILTERS, "mine", "team"))
-    l.add_argument("--limit", type=int, default=50)
+    l.add_argument("--limit", type=_page_limit, default=50, help="number of runs, from 1 to 100")
     l.add_argument("--json", action="store_true")
 
     for name, help_text in (
@@ -589,8 +614,8 @@ Use nodus COMMAND --help for command options.""",
     lg = sub.add_parser("logs", help="what the program printed")
     lg.add_argument("workload_id")
     lg.add_argument("--stage", default=None)
-    lg.add_argument("--generation", type=int, default=None, help="which attempt, after a reclaim")
-    lg.add_argument("--tail", type=int, default=0, help="last N lines only")
+    lg.add_argument("--generation", type=_positive_integer, default=None, help="attempt number, starting at 1")
+    lg.add_argument("--tail", type=_nonnegative_integer, default=0, help="last N lines only, or 0 for all lines")
 
     x = sub.add_parser("explain", help="why this route")
     x.add_argument("workload_id")

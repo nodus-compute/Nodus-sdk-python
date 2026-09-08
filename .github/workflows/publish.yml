@@ -60,3 +60,24 @@ jobs:
           user: __token__
           password: ${{ secrets.PYPI_API_TOKEN }}
           attestations: false
+
+  verify:
+    needs: pypi
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: refs/tags/${{ inputs.release_tag || github.ref_name }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Verify the published package
+        run: python scripts/verify-release.py --version "$RELEASE_TAG" --report release-verification.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: published-release-verification
+          path: release-verification.json
