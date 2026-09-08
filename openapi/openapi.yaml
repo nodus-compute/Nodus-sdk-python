@@ -1038,6 +1038,40 @@
       }
     },
     "/v1/assets/{id}": {
+      "get": {
+        "operationId": "getAsset",
+        "summary": "Read an asset owned by the authenticated team",
+        "tags": ["Assets"],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "string"},
+            "description": "Asset identifier returned by an import, upload or list."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Asset metadata. This endpoint does not download file contents.",
+            "content": {
+              "application/json": {"schema": {"$ref": "#/components/schemas/Asset"}}
+            }
+          },
+          "404": {
+            "description": "Asset not found in the authenticated team",
+            "content": {
+              "application/json": {"schema": {"$ref": "#/components/schemas/Error"}}
+            }
+          },
+          "default": {
+            "description": "Authentication, rate limits and transient failures apply.",
+            "content": {
+              "application/json": {"schema": {"$ref": "#/components/schemas/Error"}}
+            }
+          }
+        }
+      },
       "delete": {
         "operationId": "deleteAsset",
         "summary": "Delete an unused asset",
