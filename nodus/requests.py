@@ -38,6 +38,9 @@ class Requirements(TypedDict, total=False):
     dataset_bytes: int
     expected_runtime_hours: float
     peak_memory_gb: float
+    optimization: Literal["", "lowest_cost", "lower_cost", "balanced", "faster", "fastest"]
+    disk_gb: float
+    vcpus: float
     notes: str
 
 
