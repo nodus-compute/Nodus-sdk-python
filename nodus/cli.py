@@ -200,7 +200,7 @@ def _cmd_list(args: argparse.Namespace) -> int:
             print(json.dumps([wl.raw for wl in workloads], indent=2, default=str))
         else:
             show_table(["Run", "Status", "Compute", "Cost"],
-                       [[wl.id, status_label(wl.status), wl.route.sku if wl.route else "Pending", f"${wl.cost_now_usd:.2f}"] for wl in workloads],
+                       [[wl.id, status_label(wl.status), wl.route.sku if wl.route else "Not reported", f"${wl.cost_now_usd:.2f}"] for wl in workloads],
                        empty="No runs yet. Start with nodus init, then nodus run.", plain=args.plain)
     return 0
 
@@ -634,7 +634,12 @@ def main(argv: list[str] | None = None) -> int:
         elif isinstance(exc, NodusError) and not args.debug and exc.status_code and exc.status_code >= 500:
             message = "Nodus is temporarily unable to complete this request. Please try again shortly."
         elif isinstance(exc, NodusError) and not args.debug and exc.status_code == 404:
-            message = "That run was not found. Check the ID with nodus list and try again."
+            if args.cmd == "login":
+                message = "This server does not support sign-in verification. Contact Nodus support. Your saved sign-in is unchanged."
+            elif hasattr(args, "workload_id"):
+                message = "That run was not found. Check the ID with nodus list and try again."
+            else:
+                message = "This endpoint is unavailable on the Nodus server. Contact Nodus support."
         elif isinstance(exc, NodusError) and not args.debug and exc.status_code in (401, 403):
             message = "Your sign-in was not accepted. Run nodus login --force to sign in again."
         elif isinstance(exc, NodusError) and not args.debug and exc.status_code == 402:

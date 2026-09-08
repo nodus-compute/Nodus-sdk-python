@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1
+
+- Show finished stage status when training metrics are unavailable.
+- Label missing compute details without implying that a finished run is pending.
+- Explain unavailable sign-in verification without referring to a missing run.
+
 ## 0.3.0
 
 - Add optional optimization preferences and a strict GPU model requirement.

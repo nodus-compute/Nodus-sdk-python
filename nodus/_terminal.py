@@ -46,6 +46,8 @@ def stage_progress(stage: Any) -> tuple[str, float | None]:
             return f"{label} {completed:g}", None
     if stage.total_units > 0 and 0 <= stage.completed_units <= stage.total_units:
         return f"Progress {stage.completed_units}/{stage.total_units}", stage.completed_units / stage.total_units
+    if status_label(stage.status) in ("Completed", "Failed", "Cancelled"):
+        return status_label(stage.status), None
     return "Progress not reported yet", None
 
 

@@ -92,6 +92,37 @@ def test_progress_metrics_and_sanitization():
     assert clean('\x1b[31mhello\x1b[0m\x1b]0;bad\x07') == 'hello'
 
 
+@pytest.mark.parametrize('status', ['completed', 'failed', 'cancelled'])
+def test_finished_stage_without_metrics_reports_status(status):
+    from nodus._terminal import stage_progress
+    from nodus.types import StageRun
+    assert stage_progress(StageRun.from_dict({'status': status})) == (status.capitalize(), None)
+
+
+def test_finished_list_does_not_promise_compute(monkeypatch, capsys):
+    client = nodus.Client(api_key='test_key', base_url='https://example.test')
+    workload = nodus.Workload(client)
+    workload._absorb({'id': 'wl_test', 'status': 'cancelled'})
+    monkeypatch.setattr(cli, 'Client', lambda **kwargs: client)
+    monkeypatch.setattr(client, 'list', lambda **kwargs: [workload])
+    assert cli.main(['list']) == 0
+    output = capsys.readouterr().out
+    assert 'Not reported' in output
+    assert 'Pending' not in output
+
+
+def test_login_missing_identity_endpoint_is_actionable(monkeypatch, capsys):
+    monkeypatch.setattr(config, 'read_credentials', lambda: ('test_key', 'https://example.test'))
+    monkeypatch.setattr(nodus, 'read_credentials', config.read_credentials)
+    def request(*args, **kwargs):
+        raise nodus.NotFoundError('not found', status_code=404)
+    monkeypatch.setattr(nodus.Client, '_request', request)
+    assert cli.main(['login']) == 2
+    message = capsys.readouterr().err
+    assert 'sign-in verification' in message
+    assert 'saved sign-in is unchanged' in message
+
+
 def test_login_reuses_valid_key(monkeypatch, capsys):
     monkeypatch.setattr(config, 'read_credentials', lambda: ('test_key', 'https://example.test'))
     monkeypatch.setattr(nodus, 'read_credentials', config.read_credentials)
