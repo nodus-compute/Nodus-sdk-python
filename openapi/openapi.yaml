@@ -1142,6 +1142,12 @@
           "requirements": {
             "$ref": "#/components/schemas/Requirements"
           },
+          "optimization": {
+            "type": "string",
+            "enum": ["", "lowest_cost", "lower_cost", "balanced", "faster", "fastest"],
+            "deprecated": true,
+            "description": "Compatibility alias for requirements.optimization. If both are nonempty they must match."
+          },
           "outcome": {
             "$ref": "#/components/schemas/Outcome"
           },
@@ -1236,6 +1242,21 @@
       "Requirements": {
         "type": "object",
         "properties": {
+          "optimization": {
+            "type": "string",
+            "enum": ["", "lowest_cost", "lower_cost", "balanced", "faster", "fastest"],
+            "description": "Routing preference. An omitted or empty workload preference defaults to balanced. An omitted or empty stage preference inherits the workload preference. Cost preferences use hourly price signals and speed preferences use GPU performance signals. They do not guarantee total cost or runtime."
+          },
+          "disk_gb": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Finite nonnegative disk capacity requirement in GB. An omitted or zero stage value inherits the workload requirement."
+          },
+          "vcpus": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Finite nonnegative CPU capacity requirement. An omitted or zero stage value inherits the workload requirement."
+          },
           "model": {
             "type": "string"
           },
@@ -1484,10 +1505,12 @@
             "type": "string"
           },
           "expected_cost_usd": {
-            "type": "number"
+            "type": ["number", "null"],
+            "description": "Estimated total cost, or null when a trustworthy total estimate is unavailable."
           },
           "expected_hours": {
-            "type": "number"
+            "type": ["number", "null"],
+            "description": "Estimated completion time in hours, or null when a trustworthy runtime estimate is unavailable."
           },
           "remaining_budget_usd": {
             "type": "number"
@@ -1627,7 +1650,8 @@
             "type": "number"
           },
           "expected_cost_usd": {
-            "type": "number"
+            "type": ["number", "null"],
+            "description": "Estimated fallback cost, or null when a trustworthy total estimate is unavailable."
           }
         },
         "x-go-source": "internal/models/models.go",
