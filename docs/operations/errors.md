@@ -58,5 +58,5 @@ deployment operator before relying on a specific GPU or a hard spending cap.
 
 If login verification is unavailable, preserve the saved credentials and retry
 after the backend is updated. Use committed logs to inspect output when live
-streaming is unavailable. Optimization preferences are accepted by the SDK, but
-preference-specific routing is not active yet.
+streaming is unavailable. Optimization preferences require a compatible
+deployment to affect placement. Older deployments may only record them.

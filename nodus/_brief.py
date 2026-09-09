@@ -201,7 +201,10 @@ def build_payload(
         req.setdefault("compute_class", _enum_value(compute_class))
     if peak_memory_gb is not None:
         req.setdefault("peak_memory_gb", peak_memory_gb)
-    req.setdefault("optimization", optimization)
+    if "optimization" not in req:
+        if optimization == "":
+            raise ValueError("optimization must be one of: " + ", ".join(OPTIMIZATIONS))
+        req["optimization"] = optimization
     if gpu is not None:
         req.setdefault("gpu", gpu)
     req = validate_requirements(req)
@@ -308,7 +311,7 @@ def validate_requirements(requirements: dict[str, Any]) -> dict[str, Any]:
     result = dict(requirements)
     if "expected_runtime_hours" in result:
         raise ValueError(UNSUPPORTED["expected_runtime_hours"])
-    if "optimization" in result and result["optimization"] not in OPTIMIZATIONS:
+    if "optimization" in result and result["optimization"] not in ("", *OPTIMIZATIONS):
         raise ValueError("optimization must be one of: " + ", ".join(OPTIMIZATIONS))
     if "gpu" in result:
         value = result["gpu"]

@@ -2,6 +2,8 @@
 
 ## 0.3.3
 
+- Preserve unavailable route cost and runtime estimates as `None`.
+- Accept typed disk and CPU requirements and inherited stage preferences in workload files.
 - Preserve the CLI recovery key when a submission response is lost or uncertain.
 - Reject invalid budgets and numeric CLI flags with actionable errors.
 - Show small nonzero costs without rounding them to a free run.

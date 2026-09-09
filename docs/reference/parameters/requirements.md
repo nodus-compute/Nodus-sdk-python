@@ -16,8 +16,14 @@ long your program will run. Provide memory only when you know the requirement.
 ## Optimization
 
 Choose the preference closest to your goal. The five choices run from lowest
-cost to fastest. Nodus currently records this preference, while all choices use
-the existing routing behavior. Preference-specific routing is not active yet.
+cost to fastest. Compatible deployments use the preference during placement.
+It does not guarantee total cost or runtime. Older deployments may record the
+value without changing placement.
+
+An omitted or empty preference in a stage's requirements inherits the workload
+preference. An empty value in the workload requirements lets the API use its
+balanced default. The flat `optimization` shortcut requires one of the five
+named choices.
 
 ## GPU model
 
@@ -51,8 +57,10 @@ An explicit dictionary key wins over the matching flat shortcut:
 `requirements={"peak_memory_gb": 48}, peak_memory_gb=24` sends 48.
 Workload files reject duplicate flat and nested settings so the choice is clear.
 
-The requirements dictionary also accepts `dataset_bytes` (nonnegative integer)
-and `notes` (text). These are hints and do not transfer data or install dependencies.
+The requirements dictionary also accepts `disk_gb` and `vcpus` as finite
+nonnegative numbers, `dataset_bytes` as a nonnegative integer, and `notes` as text.
+Omitted or zero disk and CPU values in a stage inherit the workload requirements.
+These fields do not transfer data or install dependencies.
 `nodus.Requirements(...)` provides optional static typing. The SDK validates GPU
 names and optimization choices for both typed and ordinary dictionaries. The
 API validates the remaining resource hints when you submit the workload.

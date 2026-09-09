@@ -96,6 +96,10 @@ def _requirements(value: Any, name: str) -> None:
             _number(item, field, integer=True, zero=True)
         elif key == 'peak_memory_gb':
             _number(item, field)
+        elif key in {'disk_gb', 'vcpus'}:
+            _number(item, field, zero=True)
+        elif key == 'optimization':
+            continue
         elif key == 'compute_class':
             if item not in ('vm', 'accelerator'):
                 _fail(field, 'expected accelerator or vm')
