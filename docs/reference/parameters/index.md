@@ -19,9 +19,10 @@ except the default image, continuity policy, and balanced optimization.
 | `idempotency_key` | `Idempotency-Key` header | [Safe retries](../../guides/ci-and-idempotency.md) |
 | `extra` | Additional top-level fields | [Extensions](#extensions-and-validation) |
 
-Do not pass `env` or `interrupt_tolerance`: they are explicitly unsupported. Unknown Python keywords raise `TypeError` before submission.
-Raw dictionaries are advanced interfaces: use the deployed API schema, not
-plausible-looking field names. See each page for precedence and defaults.
+Do not pass `env`, `interrupt_tolerance`, or `expected_runtime_hours`: they are
+explicitly unsupported. Nodus estimates runtime automatically. Unknown Python
+keywords raise `TypeError` before submission. Use the dictionary fields listed
+in these references. Each page defines their accepted values and defaults.
 
 ## Extensions and validation
 
@@ -35,6 +36,6 @@ A non-colliding name is not proof that a server supports it. Unknown server
 fields may be ignored on older deployments. Verify support in the deployed
 contract before using extensions. Do not send secrets in arbitrary metadata.
 
-Unsupported top-level arguments are `env` and `interrupt_tolerance`.
+`expected_runtime_hours` is also rejected inside requirements and stage dictionaries.
 Stage inputs have a separate supported shape. See [stages](stages.md).
 Python typos raise `TypeError`, distinct from a server `nodus.ValidationError`.
