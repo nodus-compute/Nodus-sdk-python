@@ -248,6 +248,10 @@ _REMEDIES: dict[str, str] = {
     "invalid_complete_by": (
         'finish_by must be a datetime, or RFC3339 text such as "2026-01-02T15:04:05Z".'
     ),
+    "payment_method_required": (
+        "Add a payment method in Billing before running workloads, including "
+        "runs using starter credits: https://console.nodus-compute.ai/?view=billing"
+    ),
     "budget_exceeded": (
         "Review your account spending limit in the console. "
         "Use budget=<usd> to set a separate limit for this run."

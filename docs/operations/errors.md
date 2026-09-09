@@ -12,7 +12,7 @@ issue. Python argument mistakes (`TypeError` / `ValueError`) are separate.
 | `ValidationError` | Correct the rejected request field |
 | `IdempotencyConflictError` | Reuse the original payload or assign a new logical key |
 | `NotFoundError` | Check workload ownership/ID. Logs may not yet be committed |
-| `BudgetExceededError` | Inspect headroom and adjust actual work or account limit |
+| `BudgetExceededError` | For `payment_method_required`, add a card in Billing. Otherwise inspect headroom and account limits |
 | `SpendCheckUnavailableError` | Spending authorization is temporarily unavailable. Retry using the same submission key |
 | `RateLimitError` | Pace requests. SDK honors bounded retry-after delays |
 | `CapacityUnavailableError` | Retry later or relax feasible workload constraints |
@@ -26,6 +26,11 @@ See [idempotency](../guides/ci-and-idempotency.md) and
 [retry policy](../concepts/reliability.md).
 
 ## Common first-run problems
+
+- **Payment method required:** add a card in [Billing](https://console.nodus-compute.ai/?view=billing).
+  This applies even when starter credits remain. Shared workspace members should
+  ask their administrator. HTTP 402 with code `payment_method_required` uses the
+  existing `BudgetExceededError` exception type.
 
 - **Script not found:** put it in the container image and use an absolute path.
 - **No bootstrap tool:** include `curl`, `wget`, or `python3` in the image.
