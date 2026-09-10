@@ -21,7 +21,7 @@ import webbrowser
 from typing import Any
 
 from . import Client, __version__, _is_header_safe, _redact, _resolve_base_url, _current_hosted_url, config, login
-from ._terminal import clean, format_cost, show_table, show_workload, status_label
+from ._terminal import clean, compute_label, format_cost, show_table, show_workload, status_label
 from ._brief import STATUS_FILTERS
 from .errors import NodusError, NotFoundError, AuthenticationError, APIConnectionError, APITimeoutError
 from .types import _num
@@ -238,7 +238,7 @@ def _cmd_list(args: argparse.Namespace) -> int:
                     "team": "No runs for this team.",
                 }.get(args.status, f"No runs with status {_safe_line(args.status)}.")
             show_table(["Run", "Status", "Compute", "Cost"],
-                       [[wl.id, status_label(wl.status), wl.route.sku if wl.route else "Not reported", format_cost(wl.cost_now_usd)] for wl in workloads],
+                       [[wl.id, status_label(wl.status), compute_label(wl.route), format_cost(wl.cost_now_usd)] for wl in workloads],
                        empty=empty, plain=args.plain)
     return 0
 

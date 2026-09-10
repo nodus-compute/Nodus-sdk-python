@@ -63,11 +63,34 @@ def format_cost(value: float) -> str:
     return f"${value:.2f}"
 
 
+def compute_label(route: Any) -> str:
+    if route is None:
+        return "Not reported"
+    resources = route.resources if isinstance(route.resources, dict) else {}
+    label = ""
+    accelerator = False
+    for value in (resources.get("accelerator"), route.fit_class):
+        if not isinstance(value, str):
+            continue
+        candidate = clean(value, line=True).strip()
+        if candidate and candidate.lower() not in ("compute", "gpu", "accelerator", "unknown", "none", "not reported"):
+            label = candidate
+            accelerator = value == resources.get("accelerator")
+            break
+    if not label:
+        return "Not reported"
+    memory = resources.get("device_memory_gb")
+    if not _number(memory) or memory <= 0:
+        memory = route.memory_gb if accelerator or route.compute_class == "accelerator" else 0
+    if _number(memory) and memory > 0:
+        label += f" ({memory:g} GB)"
+    return label
+
+
 def workload_rows(workload: Any) -> list[tuple[str, str]]:
     rows = [("Run", clean(workload.id, line=True)), ("Status", status_label(workload.status)),
             ("Cost", format_cost(workload.cost_now_usd))]
-    if workload.route:
-        rows.append(("Compute", clean(workload.route.sku, line=True)))
+    rows.append(("Compute", compute_label(workload.route)))
     for stage in workload.stages:
         label, fraction = stage_progress(stage)
         if fraction is not None:

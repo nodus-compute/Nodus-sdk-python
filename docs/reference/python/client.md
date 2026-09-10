@@ -85,13 +85,20 @@ to overwrite existing files. Use a new destination directory for another copy.
 | `Artifact` | `manifest_id`, `stage_id`, `generation`, `sequence`, `final`, `files`, `outputs` |
 | `ManifestFile` | `uri`, `sha256`, `bytes`, `media`, `is_tar` |
 | `Output` | `name`, `stage_id`, `sha256`, `bytes`, `download` |
-| `Route` | `sku`, `compute_class`, `fit_class`, `region`, `memory_gb`, prices and estimated cost |
+| `Route` | `sku`, `compute_class`, `fit_class`, `region`, `memory_gb`, `resources`, prices and estimated cost |
 | `Meter` | `settled_usd`, `accruing_usd`, `total_now_usd`, `accruing_rate_usd_hour`, `as_of` |
 | `Ledger` | `entries`, `charged_usd`, `settlement` |
 
 `Event` has `type` and `payload`, not a `message` attribute. Output download
 helpers use the authenticated API endpoint. Treat returned `download` as
 server metadata rather than a URL to which you should forward credentials.
+
+`Route.sku` is a catalog identifier, not a GPU model. When available,
+`route.resources.get("accelerator")` reports the device model and
+`route.resources.get("device_memory_gb")` reports its memory in GB. Missing
+metadata does not prove that no GPU was used. The terminal shows `Not reported`
+when it cannot identify the compute from the response. List responses may omit
+the route, so use `client.get(ID)` or `workload.refresh()` for current details.
 
 ## Optional typed request dictionaries
 

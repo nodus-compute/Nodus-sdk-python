@@ -4,6 +4,7 @@
 
 - Show the correct next command after creating a custom workload file.
 - Distinguish empty filtered workload lists from an empty account history.
+- Display reported GPU metadata instead of internal catalog placeholders.
 
 ## 0.3.3
 

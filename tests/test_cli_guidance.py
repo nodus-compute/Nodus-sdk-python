@@ -50,3 +50,24 @@ def test_empty_list_guidance_matches_filter(status, message, monkeypatch, capsys
         assert "Start with" not in output
     filters = {"scope": status} if status in ("mine", "team") else {"status": status}
     client.list.assert_called_once_with(limit=20, **filters)
+@pytest.mark.parametrize('data,expected', [
+    ({'offer_id': 'nodus:compute-0-any', 'fit_class': 'compute'}, 'Not reported'),
+    ({'resources': {'accelerator': '\x1b[31mRTX\n4090', 'device_memory_gb': 24}}, 'RTX 4090 (24 GB)'),
+])
+def test_status_and_list_use_same_reported_compute(data, expected, monkeypatch, capsys):
+    from nodus._terminal import workload_rows
+    from nodus.types import Route
+    workload = SimpleNamespace(id='wl_fixture', status='completed', route=Route.from_dict(data),
+                               cost_now_usd=0, stages=[], raw={})
+    assert dict(workload_rows(workload))['Compute'] == expected
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.list.return_value = [workload]
+    monkeypatch.setattr(cli, 'Client', lambda **kwargs: client)
+    args = SimpleNamespace(base_url=None, status=None, limit=20, json=False, plain=True)
+    assert cli._cmd_list(args) == 0
+    output = capsys.readouterr().out
+    assert expected in output
+    assert 'nodus:compute' not in output
+    assert '\x1b' not in output
+    client.get.assert_not_called()
