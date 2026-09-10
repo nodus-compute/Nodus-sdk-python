@@ -125,8 +125,10 @@ class Estimate:
         if expiry is not None:
             if not isinstance(expiry, str) or not _RFC3339.fullmatch(expiry):
                 raise _invalid()
+            # Python 3.10 requires fractional seconds at millisecond or microsecond precision.
+            normalized = re.sub(r'\.([0-9]+)', lambda match: '.' + match[1][:6].ljust(6, '0'), expiry)
             try:
-                expiry = datetime.fromisoformat(expiry.replace('Z', '+00:00'))
+                expiry = datetime.fromisoformat(normalized.replace('Z', '+00:00'))
             except ValueError:
                 raise _invalid() from None
             if expiry.tzinfo is None:

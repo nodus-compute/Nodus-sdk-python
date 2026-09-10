@@ -1,7 +1,7 @@
 import copy
 import inspect
 import json
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import httpx
 import pytest
@@ -324,14 +324,18 @@ def test_cli_estimate_strips_direction_controls(tmp_path, monkeypatch, capsys, d
     assert json.loads(capsys.readouterr().out) == body
 
 
-@pytest.mark.parametrize('expiry', ['2020-01-01T00:00:00Z', '2030-01-01T00:00:00.123456789Z',
-                                    '2030-01-01T00:00:00.123456789+05:30',
-                                    '2030-01-01T00:00:00-07:00'])
-def test_rfc3339_expiry_preserves_valid_wire_value(expiry):
+@pytest.mark.parametrize('expiry,expected', [
+    ('2020-01-01T00:00:00Z', datetime(2020, 1, 1, tzinfo=timezone.utc)),
+    ('2030-01-01T00:00:00.123456789Z', datetime(2030, 1, 1, microsecond=123456, tzinfo=timezone.utc)),
+    ('2030-01-01T00:00:00.123456789+05:30',
+     datetime(2030, 1, 1, microsecond=123456, tzinfo=timezone(timedelta(hours=5, minutes=30)))),
+    ('2030-01-01T00:00:00-07:00', datetime(2030, 1, 1, tzinfo=timezone(timedelta(hours=-7)))),
+])
+def test_rfc3339_expiry_preserves_valid_wire_value(expiry, expected):
     client, _ = wire_client(response(valid_until=expiry))
     with client:
         result = client.estimate(command=['python'])
-    assert result.valid_until == datetime.fromisoformat(expiry.replace('Z', '+00:00'))
+    assert result.valid_until == expected
     assert result.raw['valid_until'] == expiry
 
 
@@ -347,3 +351,24 @@ def test_partial_aggregate_preserves_known_ranges_without_synthesizing_totals():
     assert result.completion_seconds is None
     assert result.compute_cost_usd is None
     assert result.raw == body
+
+
+@pytest.mark.parametrize('digits', range(1, 10))
+@pytest.mark.parametrize('offset,zone', [('Z', timezone.utc),
+                                       ('+05:30', timezone(timedelta(hours=5, minutes=30))),
+                                       ('-07:00', timezone(timedelta(hours=-7)))])
+@pytest.mark.parametrize('asynchronous', [False, True])
+@pytest.mark.asyncio
+async def test_rfc3339_fraction_lengths_preserve_raw_and_datetime(digits, offset, zone, asynchronous):
+    fraction = '123456789'[:digits]
+    expiry = f'2030-01-01T00:00:00.{fraction}{offset}'
+    client, _ = wire_client(response(valid_until=expiry), asynchronous)
+    if asynchronous:
+        result = await client.estimate(command=['python'])
+        await client.aclose()
+    else:
+        with client:
+            result = client.estimate(command=['python'])
+    expected = datetime(2030, 1, 1, microsecond=int(fraction[:6].ljust(6, '0')), tzinfo=zone)
+    assert result.valid_until == expected
+    assert result.raw['valid_until'] == expiry
