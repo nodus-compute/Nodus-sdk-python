@@ -17,6 +17,7 @@ Install the SDK, sign in, and run your code from Python. Nodus handles execution
 
 ## Go further
 
+- [Preview runtime and cost](guides/estimates.md)
 - [Concurrent experiments](guides/async-sweeps.md)
 - [Stages and downloadable files](guides/multi-stage-workloads.md)
 - [CI and safe retries](guides/ci-and-idempotency.md)

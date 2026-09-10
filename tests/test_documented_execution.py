@@ -100,6 +100,13 @@ def docs_api(monkeypatch):
                 return self.reply({"api_key": "nk_docs", "base_url": address, "tenant": "docs-test"})
             if self.headers.get("Authorization") != "Bearer nk_docs":
                 return self.reply({"error": "unauthorized"}, 401)
+            if path == "/v1/estimation/estimate":
+                return self.reply({"status": "unavailable", "scope": "stage" if payload.get("stage_id") else "workload",
+                    **({"stage_id": payload["stage_id"]} if payload.get("stage_id") else {}),
+                    "execution_seconds": None, "completion_seconds": None, "compute_cost_usd": None,
+                    "valid_until": None, "reasons": ["estimate_service_unavailable"], "diagnostics": [{
+                        "code": "estimate_service_unavailable", "message": "Estimates are not enabled for this account.",
+                        "action": "You can submit with a spending limit, or contact Nodus to enable estimates."}]})
             if path == "/v1/workloads":
                 submissions.append(payload)
                 if not self.headers.get("Idempotency-Key") or not payload.get("outcome", {}).get("max_cost_usd"):
@@ -173,6 +180,8 @@ def test_complete_example_programs(script, args, docs_api, tmp_path):
 
 @pytest.mark.parametrize("args", [
     ["--version"], ["--help"], ["run", "--help"], ["login", "--help"],
+    ["estimate"], ["estimate", "train.toml"], ["estimate", "train.toml", "--stage", "main"],
+    ["estimate", "train.toml", "--json"],
     ["init"], ["run"], ["submit"], ["list", "active"],
     ["status", "wl_docs"], ["wait", "wl_docs"],
     ["events", "wl_docs"], ["logs", "wl_docs"],
@@ -183,6 +192,7 @@ def test_installed_terminal_commands(args, docs_api, tmp_path):
     from nodus._workload_file import write_workload_file
     if args[0] != "init":
         write_workload_file(tmp_path / "nodus.toml")
+    write_workload_file(tmp_path / "train.toml")
     (tmp_path / "hello.py").write_text("print('ready')")
     executable = Path(sysconfig.get_path("scripts")) / ("nodus.exe" if os.name == "nt" else "nodus")
     result = subprocess.run([str(executable), *args], cwd=tmp_path, capture_output=True, text=True, timeout=20)

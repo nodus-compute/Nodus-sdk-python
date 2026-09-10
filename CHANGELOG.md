@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Preview workload runtime and cost with sync and async estimate methods and `nodus estimate`.
+- Preserve unavailable ranges and expose typed stage estimates, expiry, and actionable diagnostics.
+
 ## 0.3.4
 
 - Show the correct next command after creating a custom workload file.
