@@ -444,3 +444,26 @@ def test_saved_log_observation_stops_reading_at_byte_limit(asynchronous, monkeyp
             client._http = httpx.Client(base_url='https://example.test', transport=httpx.MockTransport(handler))
             client.wait('wl_test', progress=True)
     assert len(read) == 2
+@pytest.mark.parametrize('data,expected', [
+    ({'offer_id': 'nodus:compute-0-any', 'fit_class': 'compute'}, 'Not reported'),
+    ({'offer_id': 'nodus:H100-80-any'}, 'Not reported'),
+    ({'resources': {'accelerator': 'RTX 4090', 'device_memory_gb': 24}}, 'RTX 4090 (24 GB)'),
+    ({'fit_class': 'H100', 'compute_class': 'accelerator', 'memory_gb': 80}, 'H100 (80 GB)'),
+    ({'fit_class': 'H100', 'memory_gb': 80}, 'H100'),
+    ({'resources': {'accelerator': 'RTX 4090', 'device_memory_gb': 24}, 'memory_gb': 80}, 'RTX 4090 (24 GB)'),
+    ({'resources': {'accelerator': '\x1b[31mRTX\n4090\x1b[0m', 'device_memory_gb': 24}}, 'RTX 4090 (24 GB)'),
+    ({'resources': {'accelerator': 'compute', 'device_memory_gb': 24}}, 'Not reported'),
+    ({'resources': {'accelerator': 'RTX 4090', 'device_memory_gb': float('nan')}}, 'RTX 4090'),
+])
+def test_compute_label_reports_only_observed_metadata(data, expected):
+    from nodus._terminal import compute_label
+    from nodus.types import Route
+    route = Route.from_dict(data)
+    original_sku = route.sku
+    assert compute_label(route) == expected
+    assert route.sku == original_sku
+
+
+def test_compute_label_absent_route():
+    from nodus._terminal import compute_label
+    assert compute_label(None) == 'Not reported'
