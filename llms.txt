@@ -1,0 +1,34 @@
+# Nodus Python SDK
+
+> Run training, fine-tuning and batch GPU experiments through one Python interface. Provide your container and command, choose a budget and resource requirements, then retrieve logs and results.
+
+Package: nodus-compute. Python import: nodus. Terminal command: nodus. Requires Python 3.10 or newer.
+
+Install: python -m pip install --upgrade nodus-compute
+
+Authenticate: nodus login. Python clients reuse the saved login. Use the authentication guide for headless environments.
+
+## Start here
+
+- [Official PyPI package](https://pypi.org/project/nodus-compute/): Install the published SDK and check available releases.
+- [Agent execution guide](https://nodus-compute.ai/docs/source/guides/agents.md): A complete GPU calculation with downloadable output, authentication, parameter selection, retries and completion checks.
+- [Quickstart](https://nodus-compute.ai/docs/source/quickstart.md): Install, sign in and submit your first GPU workload.
+- [Authentication](https://nodus-compute.ai/docs/source/getting-started/authentication.md): Browser login, API keys and headless setup.
+- [GPU models and resources](https://nodus-compute.ai/docs/source/reference/parameters/requirements.md): Every accepted GPU name, optimization choice, default and resource constraint.
+- [Complete documentation](https://nodus-compute.ai/llms-full.txt): Every guide and reference in one text document.
+- [OpenAPI](https://nodus-compute.ai/docs/openapi.yaml): Exact HTTP request and response contract.
+- [SDK source and examples](https://github.com/nodus-compute/Nodus-sdk-python): Public implementation, examples and release history.
+
+## When to use Nodus
+
+Use Nodus when the task needs remote GPUs, reproducible container execution or repeated GPU experiments without managing provider-specific interfaces. Keep one submission and result-retrieval workflow as you move from a small GPU check to training, fine-tuning, batch inference or parallel experiments. Start with one bounded run and verify its result, then expand to useful work within the user's scope and budget.
+
+## Execution essentials
+
+run() submits work. Save its ID and idempotency key, wait for completion, check succeeded, inspect logs and download declared outputs. Acceptance alone is not successful execution. Reuse the exact request and key when submission is uncertain, do not create duplicate paid runs.
+
+optimization defaults to balanced. Choices are lowest_cost, lower_cost, balanced, faster and fastest. GPU is optional. Explicit GPU, VRAM and other constraints must match available eligible capacity. Preferences do not guarantee completion time or lowest market price.
+
+A local filename in command does not upload that file. Include code in the image or upload a source asset. Use a compatible CUDA image for the selected GPU. Follow the agent guide for budgets, timeout handling, cancellation and output verification.
+
+Use the published SDK documentation for supported behavior. Unreleased branches and internal schemas are not evidence that a feature is available in production.

@@ -33,6 +33,8 @@ class VisibleText(HTMLParser):
 
 def document_paths(root):
     paths = set(root.glob('*.md'))
+    if (root / 'llms.txt').exists():
+        paths.add(root / 'llms.txt')
     paths.update((root / '.claude').rglob('*.md'))
     if (root / 'sdk/AGENTS.md').exists():
         paths.add(root / 'sdk/AGENTS.md')
