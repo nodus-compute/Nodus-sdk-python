@@ -43,10 +43,9 @@ jobs:
       # to the installed wheel — the artifact customers download.
       - name: test the installed wheel
         run: |
-          python -m venv "$RUNNER_TEMP/wheel-venv"
-          "$RUNNER_TEMP/wheel-venv/bin/pip" install dist/*.whl pytest pytest-asyncio
-          mkdir "$RUNNER_TEMP/wheel-run"
-          # Include documentation fixtures without copying the importable SDK.
-          cp -r tests docs examples openapi README.md LICENSE RELEASING.md pyproject.toml "$RUNNER_TEMP/wheel-run/"
-          cd "$RUNNER_TEMP/wheel-run"
-          "$RUNNER_TEMP/wheel-venv/bin/python" -m pytest -q tests
+          python scripts/verify-release.py --wheel dist/*.whl --report "$RUNNER_TEMP/release-verification.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-verification
+          path: ${{ runner.temp }}/release-verification.json

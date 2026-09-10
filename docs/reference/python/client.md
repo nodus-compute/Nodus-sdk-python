@@ -30,8 +30,13 @@ Prefer a `with` block. Otherwise call `close()`.
 | `get_webhook()` / `delete_webhook()` | Read configuration / remove it |
 | `healthz()` / `readyz()` | Deployment health/readiness dictionaries |
 
-Options after resource IDs are keyword-only. Status filters accept enum values,
-strings, comma-separated strings, lists, `active`, or `terminal` in Python.
+Optional settings after resource IDs are keyword-only. For `download_output`,
+`name` and `destination` can also be positional. Status filters accept
+`nodus.WorkloadStatus` members, strings, comma-separated strings, or lists.
+Accepted status strings are `accepted`, `planning`, `reserving`, `provisioning`,
+`running`, `recovering`, `completed`, `failed`, and `cancelled`. The `active`
+preset selects nonterminal states and `terminal` selects `completed`, `failed`,
+and `cancelled`. Omit `status` for no status filter.
 Unknown statuses raise `ValueError`. Pagination uses offsets. Concurrent new
 submissions can shift pages. It is not a consistent historical snapshot.
 
@@ -45,6 +50,31 @@ Unknown server enum values remain strings for forward compatibility.
 and returns a list of local `Path` objects. The default directory is
 `outputs/WORKLOAD_ID`, with each file at `STAGE/NAME`. `await workload.download()` is the asynchronous equivalent.
 Use `download_output(name, destination, stage=...)` for one specific file.
+
+## Method arguments
+
+| Argument | Meaning and default |
+|---|---|
+| `timeout` | HTTP request timeout in seconds, default `30.0`. Separate from a workload deadline or wait timeout. [Retry behavior](../../concepts/reliability.md#retry-behavior) |
+| `max_retries` | Additional request attempts, default `2`, giving up to three total attempts. Downloads do not retry automatically |
+| `limit`, `page_size` | Workloads requested per page, default `50` |
+| `offset` | Number of workloads to skip, default `0`. `list_page()` returns the next offset, or `None` at the end |
+| `poll_seconds` | Seconds between successful polls, default `2.0` |
+| `timeout_seconds` | Local wait duration in seconds, default `None` for no deadline. A timeout leaves the workload running |
+| `progress` | `None` detects an interactive terminal, `True` enables output, `False` waits silently. [Live display](../../guides/monitoring-and-outputs.md#live-display) |
+| `events(after)`, `iter_events(after)` | Numeric sequence of the last event seen, default `0`. Returns events with later `seq` values, oldest first. `events()` returns at most 100 per page |
+| `live_logs(after)` | Opaque `next_cursor` string from the previous response, default `""` for the first page. This is not an event sequence. [Live log response](../../guides/monitoring-and-outputs.md#live-display) |
+| `logs(stage)` | Stage ID to select, default `None` for no stage filter |
+| `logs(generation)` | Stage attempt number to select, default `None` for no generation filter. Use a positive generation from the returned artifacts or live logs |
+| `download_output(name)` | Declared output name, not its path in the container |
+| `download_output(destination)` | Local file path with an existing parent directory |
+| `download_output(stage)` | Stage ID to disambiguate an output name published by multiple stages, default `None` |
+| `download_output(overwrite)` | `True` replaces the destination only after integrity verification. `False` refuses an existing target |
+| `idempotency_key` | Stable key for a logical submission or cancellation. Omission creates a fresh key per call. [Character rules and retries](../../guides/ci-and-idempotency.md) |
+| `scope` | `"mine"` or `"team"`. Omission sends no scope filter. [Personal and team history](#personal-and-team-history) |
+
+For all declared files, `workload.download()` creates directories and refuses
+to overwrite existing files. Use a new destination directory for another copy.
 
 ## Models
 

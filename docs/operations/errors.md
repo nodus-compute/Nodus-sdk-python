@@ -12,7 +12,7 @@ issue. Python argument mistakes (`TypeError` / `ValueError`) are separate.
 | `ValidationError` | Correct the rejected request field |
 | `IdempotencyConflictError` | Reuse the original payload or assign a new logical key |
 | `NotFoundError` | Check workload ownership/ID. Logs may not yet be committed |
-| `BudgetExceededError` | Inspect headroom and adjust actual work or account limit |
+| `BudgetExceededError` | For `payment_method_required`, add a card in Billing. Otherwise inspect headroom and account limits |
 | `SpendCheckUnavailableError` | Spending authorization is temporarily unavailable. Retry using the same submission key |
 | `RateLimitError` | Pace requests. SDK honors bounded retry-after delays |
 | `CapacityUnavailableError` | Retry later or relax feasible workload constraints |
@@ -26,6 +26,11 @@ See [idempotency](../guides/ci-and-idempotency.md) and
 [retry policy](../concepts/reliability.md).
 
 ## Common first-run problems
+
+- **Payment method required:** add a card in [Billing](https://console.nodus-compute.ai/?view=billing).
+  This applies even when starter credits remain. Shared workspace members should
+  ask their administrator. HTTP 402 with code `payment_method_required` uses the
+  existing `BudgetExceededError` exception type.
 
 - **Script not found:** put it in the container image and use an absolute path.
 - **No bootstrap tool:** include `curl`, `wget`, or `python3` in the image.
@@ -42,3 +47,21 @@ See [idempotency](../guides/ci-and-idempotency.md) and
 An omitted budget prints a short notice only in an interactive terminal. It
 does not emit `UserWarning`. A known image without a bootstrap fetch tool can
 still emit `UserWarning` before submission.
+
+## Backend compatibility
+
+The SDK and backend must support the same features. Upgrading the Python package
+does not deploy backend changes. Login verification requires `GET /v1/me`, and
+live log streaming requires `GET /v1/workloads/{id}/logs/live`. A 404 from these
+routes can mean the deployment lacks the feature, even when saved credentials,
+workload history, and committed logs still work.
+
+GPU enforcement and spending limits also require their matching backend support.
+An older server may ignore fields it does not recognize. Successful submission
+alone does not prove those constraints were applied. Confirm support with the
+deployment operator before relying on a specific GPU or a hard spending cap.
+
+If login verification is unavailable, preserve the saved credentials and retry
+after the backend is updated. Use committed logs to inspect output when live
+streaming is unavailable. Optimization preferences require a compatible
+deployment to affect placement. Older deployments may only record them.

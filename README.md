@@ -37,6 +37,11 @@ For a machine without a browser, use `nodus login --no-browser`.
 See [authentication](https://nodus-compute.ai/docs/getting-started/authentication/) for API keys and
 custom deployments.
 
+Before starting a workload, open [Billing](https://console.nodus-compute.ai/?view=billing)
+and add a payment method. New accounts start with $30 in credits, but a card is
+required to use them. Adding a card does not purchase credits. If you joined
+a shared workspace, its administrator manages the payment method.
+
 ## 2. Run your first workload
 
 This GPU smoke test prints the available GPU name. No local script is uploaded.
@@ -104,6 +109,10 @@ preference-specific routing coming later.
 
 Set `gpu="H100"` to require a GPU model, or omit it to let Nodus choose.
 No runtime estimate is needed. See [resource options](https://nodus-compute.ai/docs/reference/parameters/requirements/).
+
+GPU enforcement, live logs, login verification, and spending limits require a
+compatible Nodus backend. Installing the SDK alone does not enable these server
+features. See [backend compatibility](https://github.com/nodus-compute/Nodus-sdk-python/blob/main/docs/operations/errors.md#backend-compatibility) before relying on them with a custom or older deployment.
 
 ## Run your own code
 

@@ -29,6 +29,7 @@ For headless machines and automation, see [authentication](../getting-started/au
 Personal history requires a member-associated login. Shared keys can use team history.
 
 `submit` also defaults to `nodus.toml` when no path is given.
+`list --limit N` accepts 1 through 100.
 Set your image, command, budget, and advanced options in a
 [workload file](../getting-started/workload-files.md).
 
@@ -45,11 +46,17 @@ Set your image, command, budget, and advanced options in a
 Interactive waits show lifecycle events, live logs, elapsed time, and reported
 training progress. Redirected output has no animation. `nodus logs` retrieves
 saved log snapshots. Declare files as outputs to download them.
+`logs --tail N` selects the last N lines, with 0 meaning all lines.
+`logs --generation N` selects an attempt number starting at 1.
 
 Ctrl+C during `run`, `wait`, or `events --follow` requests cancellation. Cleanup
 happens remotely after acceptance. If the request fails, the CLI reports that
 cancellation is unconfirmed and prints `nodus cancel ID`. A second Ctrl+C stops
 the cancellation attempt. A wait timeout ends observation without cancelling.
+
+If submission ends with an uncertain outcome, the CLI prints a recovery key.
+Add that `idempotency_key` to the same workload file before retrying. Keep its
+other settings unchanged to avoid submitting duplicate work.
 
 ## Code and datasets
 

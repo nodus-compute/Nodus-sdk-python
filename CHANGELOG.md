@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.3
+
+- Validate resource quantities and stage progress counts before submission.
+- Accept hyphenated and underscored GPU aliases and document every GPU choice.
+- Explain GPU and optimization compatibility and container execution clearly.
+- Explain required payment methods before the first workload.
+- Preserve unavailable route cost and runtime estimates as `None`.
+- Accept typed disk and CPU requirements and inherited stage preferences in workload files.
+- Preserve the CLI recovery key when a submission response is lost or uncertain.
+- Reject invalid budgets and numeric CLI flags with actionable errors.
+- Show small nonzero costs without rounding them to a free run.
+- Use a compatible progress spinner in legacy Windows terminal encodings.
+- Validate deeply nested stage dependencies without exhausting the Python stack.
+- Clarify backend compatibility, CLI ranges, and submission recovery in the docs.
+- Verify installed release artifacts with one isolated command and after PyPI publication.
+
 ## 0.3.2
 
 - Make README links usable from PyPI and align CLI documentation with SDK 0.3.x.

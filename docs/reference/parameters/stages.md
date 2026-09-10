@@ -11,10 +11,10 @@ framework takes precedence in the current compiler.
 | `source` | `{image: str, command: list[str], asset_id?: str}` | Give explicit executable argv and image. Missing image defaults to Python image server-side |
 | `depends_on` | List of stage IDs | Empty. Dependency edges must be acyclic |
 | `inputs` | List of input references below | Empty |
-| `outputs` | Mapping from logical name to relative output path | Empty. Files must actually be produced |
+| `outputs` | Mapping from logical name to relative output path. [Name and path constraints](source.md#file-declaration-constraints) | Empty. Files must actually be produced |
 | `requirements` | Requirements dictionary | Zero/empty fields inherit workload-level values |
 | `continuity` | `{mode: str, resume_on_interruption: bool}` | Missing/empty mode inherits the whole workload continuity object |
-| `total_units` | Integer progress-unit count | Zero. Describes units for compatible restartable work |
+| `total_units` | Nonnegative integer progress-unit count | `0`. Describes units for compatible restartable work, not GPUs or replicas |
 
 A stage-specific nonempty `continuity.mode` does not receive the SDK top-level
 resume default: provide `resume_on_interruption` explicitly. Setting only that
@@ -32,6 +32,6 @@ directory. Runtime integrations expose resolved inputs through `NODUS_INPUT_<nam
 The value is a local file path, not the original storage URI.
 
 Stage requirements support `model`, `compute_class`, `dataset_bytes`,
-`peak_memory_gb`, `optimization`, `gpu`, and `notes`. Omitted stage preferences
+`peak_memory_gb`, `disk_gb`, `vcpus`, `optimization`, `gpu`, and `notes`. Omitted stage preferences
 inherit from the workload. See [resources](requirements.md) and the complete
 [multi-stage example](../../guides/multi-stage-workloads.md).

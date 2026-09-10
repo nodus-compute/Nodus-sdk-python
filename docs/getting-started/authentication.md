@@ -17,6 +17,11 @@ saved credentials so you can retry.
 Existing users can upgrade with `pip install --upgrade nodus-compute`.
 The hosted default requires SDK 0.1.3 or newer.
 
+Before starting a workload, open [Billing](https://console.nodus-compute.ai/?view=billing)
+and add a payment method. New accounts start with $30 in credits, but a card is
+required to use them. Adding a card does not purchase credits. If you joined
+a shared workspace, its administrator manages the payment method.
+
 ## Use your login in Python
 
 ```python
