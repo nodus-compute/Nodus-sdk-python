@@ -157,7 +157,13 @@ def _cancel_on_interrupt(client: Client, workload_id: str):
 
 def _cmd_init(args: argparse.Namespace) -> int:
     path = write_workload_file(args.file)
-    print(f"Created {_safe_line(path)}. Edit it, then run nodus run.")
+    filename = str(path)
+    if filename == "nodus.toml":
+        print(f"Created {_safe_line(path)}. Edit it, then run nodus run.")
+    elif re.fullmatch(r"[\w .:/-]+", filename) and not filename.startswith("-"):
+        print(f'Created {_safe_line(path)}. Edit it, then run:\nnodus run "{filename}"')
+    else:
+        print(f"Created {_safe_line(path)}. Edit it, then pass its filename to nodus run using your shell's quoting rules.")
     return 0
 
 
@@ -224,9 +230,16 @@ def _cmd_list(args: argparse.Namespace) -> int:
         if args.json:
             print(json.dumps([wl.raw for wl in workloads], indent=2, default=str))
         else:
+            empty = "No runs yet. Start with nodus init, then nodus run."
+            if args.status:
+                empty = {
+                    "active": "No active runs.",
+                    "mine": "No runs submitted by you.",
+                    "team": "No runs for this team.",
+                }.get(args.status, f"No runs with status {_safe_line(args.status)}.")
             show_table(["Run", "Status", "Compute", "Cost"],
                        [[wl.id, status_label(wl.status), wl.route.sku if wl.route else "Not reported", format_cost(wl.cost_now_usd)] for wl in workloads],
-                       empty="No runs yet. Start with nodus init, then nodus run.", plain=args.plain)
+                       empty=empty, plain=args.plain)
     return 0
 
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.4
+
+- Show the correct next command after creating a custom workload file.
+- Distinguish empty filtered workload lists from an empty account history.
+
 ## 0.3.3
 
 - Validate resource quantities and stage progress counts before submission.
