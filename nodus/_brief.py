@@ -292,6 +292,10 @@ def build_payload(
     if "expected_runtime_hours" in payload:
         raise ValueError(UNSUPPORTED["expected_runtime_hours"])
     for stage in payload.get("stages", []):
+        if "total_units" in stage:
+            total_units = stage["total_units"]
+            if isinstance(total_units, bool) or not isinstance(total_units, int) or total_units < 0:
+                raise ValueError("stage total_units must be a nonnegative integer")
         if "expected_runtime_hours" in stage:
             raise ValueError(UNSUPPORTED["expected_runtime_hours"])
         if "requirements" in stage:
@@ -313,9 +317,25 @@ def validate_requirements(requirements: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(UNSUPPORTED["expected_runtime_hours"])
     if "optimization" in result and result["optimization"] not in ("", *OPTIMIZATIONS):
         raise ValueError("optimization must be one of: " + ", ".join(OPTIMIZATIONS))
+    for field in ("peak_memory_gb", "disk_gb", "vcpus", "dataset_bytes"):
+        if field not in result:
+            continue
+        value = result[field]
+        allowed = (int,) if field == "dataset_bytes" else (int, float)
+        bound = "positive" if field == "peak_memory_gb" else "nonnegative"
+        kind = "integer" if field == "dataset_bytes" else "number"
+        message = f"{field} must be a finite {bound} {kind}"
+        if isinstance(value, bool) or not isinstance(value, allowed):
+            raise ValueError(message)
+        try:
+            finite = math.isfinite(value)
+        except OverflowError:
+            finite = False
+        if not finite or (value <= 0 if field == "peak_memory_gb" else value < 0):
+            raise ValueError(message)
     if "gpu" in result:
         value = result["gpu"]
-        compact = re.sub(r"\s+", "", value.upper()) if isinstance(value, str) else ""
+        compact = re.sub(r"[\s_-]+", "", value.upper()) if isinstance(value, str) else ""
         compact = compact.removeprefix("NVIDIA")
         if compact == "A6000":
             compact = "RTXA6000"

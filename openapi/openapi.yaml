@@ -1350,7 +1350,7 @@
           "optimization": {
             "type": "string",
             "enum": ["", "lowest_cost", "lower_cost", "balanced", "faster", "fastest"],
-            "description": "Routing preference. An omitted or empty workload preference defaults to balanced. An omitted or empty stage preference inherits the workload preference. Cost preferences use hourly price signals and speed preferences use GPU performance signals. They do not guarantee total cost or runtime."
+            "description": "Routing preference. An omitted or empty workload preference defaults to balanced. An omitted or empty stage preference inherits the workload preference. Balances expected completion cost and completion time when qualified estimates are available, using price and GPU performance signals otherwise. It does not guarantee total cost or runtime."
           },
           "disk_gb": {
             "type": "number",
@@ -1375,11 +1375,13 @@
             "description": "Empty or omitted defaults to accelerator. Customer workloads currently use GPU infrastructure. The vm value remains accepted for compatibility and does not establish an available customer offering."
           },
           "dataset_bytes": {
-            "type": "integer"
+            "type": "integer",
+            "minimum": 0
           },
           "peak_memory_gb": {
             "type": "number",
-            "description": "Peak memory fit hint in GB. Placement derives infrastructure. This is not an instance SKU."
+            "minimum": 0,
+            "description": "Finite nonnegative device memory requirement in GB for GPU workloads. Zero or omission lets Nodus infer memory. The Python SDK requires a positive value when explicitly supplied."
           },
           "notes": {
             "type": "string"
@@ -1486,7 +1488,8 @@
             }
           },
           "total_units": {
-            "type": "integer"
+            "type": "integer",
+            "minimum": 0
           },
           "outputs": {
             "type": [

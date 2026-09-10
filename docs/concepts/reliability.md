@@ -21,8 +21,9 @@ fresh handle. Do not share a mutable workload handle between threads.
 Synchronous Python wait methods request cancellation when interrupted with
 Ctrl+C. The CLI does the same during wait/follow commands. Cancellation requests
 can fail if the API is unreachable. Confirm status with the saved workload ID.
-Cancelling an async task alone does not cancel its remote workload. The async
-example handles this explicitly.
+Cancelling an async `wait()` task also requests remote cancellation before
+re-raising the interruption. If cancellation cannot be confirmed, check the
+workload and retry with `await workload.cancel()`.
 
 ## Retry behavior
 

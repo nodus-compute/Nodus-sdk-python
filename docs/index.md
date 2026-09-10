@@ -26,6 +26,7 @@ Install the SDK, sign in, and run your code from Python. Nodus handles execution
 - [Python client](reference/python/client.md)
 - [Terminal commands](reference/cli.md)
 - [Workload parameters](reference/parameters/index.md)
+- [GPU models and resources](reference/parameters/requirements.md#gpu-model)
 - [Troubleshooting](operations/errors.md)
 
 ## For coding agents
