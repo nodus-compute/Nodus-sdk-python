@@ -5,6 +5,13 @@
 - Preview workload runtime and cost with sync and async estimate methods and `nodus estimate`.
 - Preserve unavailable ranges and expose typed stage estimates, expiry, and actionable diagnostics.
 
+## 0.3.5
+
+- Link the official PyPI package and coding agent guide from installation docs.
+- Add a complete agent workflow with saved retry keys and verified output files.
+- Publish agent documentation links in package metadata and clarify routing preferences.
+- Keep runtime API and CLI behavior unchanged from 0.3.4.
+
 ## 0.3.4
 
 - Show the correct next command after creating a custom workload file.

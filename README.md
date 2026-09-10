@@ -12,9 +12,11 @@
 
 </div>
 
-Provide a container image and a command. Add a budget if you want a workload spending limit. Nodus finds GPU capacity and
-runs your workload. Use the same Python client for training, fine-tuning, or a
-batch of experiments.
+Run training, fine-tuning, and batch experiments when your local machine lacks
+the GPU memory or capacity they need. Provide your container image and command,
+then use one Python client to submit work, follow progress, and retrieve results.
+Nodus matches the workload to available GPU capacity. Add a budget to set a
+workload spending limit.
 
 ## 1. Install and sign in
 
@@ -23,6 +25,7 @@ pip install nodus-compute
 nodus login
 ```
 
+Get [nodus-compute on PyPI](https://pypi.org/project/nodus-compute/).
 Requires Python 3.10 or newer. Upgrading an existing installation? Use
 `pip install --upgrade nodus-compute`. These docs cover SDK 0.3.x.
 
@@ -56,7 +59,7 @@ import nodus
 
 with nodus.Client() as client:
     workload = client.run(
-        image="pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime",
+        image="pytorch/pytorch:2.8.0-cuda12.9-cudnn9-runtime",
         command=[
             "python", "-c",
             "import torch\n"
@@ -104,8 +107,10 @@ nodus cancel WORKLOAD_ID
 ## Choose an optional preference
 
 Set `optimization="lowest_cost"`, `"lower_cost"`, `"balanced"`, `"faster"`, or
-`"fastest"`. The default is balanced. These preferences are recorded, with
-preference-specific routing coming later.
+`"fastest"`. The default is balanced. Nodus balances expected completion cost
+and completion time when qualified estimates are available, using price and
+GPU performance signals otherwise. Preferences do not guarantee total cost or
+runtime. Older deployments may record the preference without applying it.
 
 Set `gpu="H100"` to require a GPU model, or omit it to let Nodus choose.
 No runtime estimate is needed. See [resource options](https://nodus-compute.ai/docs/reference/parameters/requirements/).
@@ -123,6 +128,7 @@ Choose an image with your dependencies and pass its command to `client.run()`.
 - [Attach code and datasets](https://nodus-compute.ai/docs/guides/assets/)
 - [Train or fine-tune a model](https://nodus-compute.ai/docs/guides/gpu-workloads/)
 - [Read logs and download results](https://nodus-compute.ai/docs/guides/monitoring-and-outputs/)
+- [Use Nodus with a coding agent](https://nodus-compute.ai/docs/guides/agents/)
 
 For individual options, use the [Python reference](https://nodus-compute.ai/docs/reference/python/client/)
 and [parameter reference](https://nodus-compute.ai/docs/reference/parameters/).

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nodus_compute"
-version = "0.3.4"
+version = "0.3.5"
 description = "Python client for the Nodus workload execution API"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -35,6 +35,8 @@ nodus = "nodus.cli:main"
 [project.urls]
 Homepage = "https://nodus-compute.ai"
 Documentation = "https://nodus-compute.ai/docs/"
+"Agent guide" = "https://nodus-compute.ai/docs/guides/agents/"
+"Agent documentation" = "https://nodus-compute.ai/llms.txt"
 Source = "https://github.com/Nodus-compute/Nodus-sdk-python"
 Issues = "https://github.com/Nodus-compute/Nodus-sdk-python/issues"
 

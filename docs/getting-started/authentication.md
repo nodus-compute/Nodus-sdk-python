@@ -1,6 +1,7 @@
 # Install and sign in
 
-Install with Python 3.10 or newer:
+Install [nodus-compute from PyPI](https://pypi.org/project/nodus-compute/)
+with Python 3.10 or newer:
 
 ```bash
 pip install nodus-compute
@@ -15,7 +16,9 @@ reuses your login. It welcomes you by email when available. Use `nodus login --f
 saved credentials so you can retry.
 
 Existing users can upgrade with `pip install --upgrade nodus-compute`.
-The hosted default requires SDK 0.1.3 or newer.
+Use the current package for the documented commands and workload experience.
+Custom or older servers may not support every feature. See
+[backend compatibility](../operations/errors.md#backend-compatibility).
 
 Before starting a workload, open [Billing](https://console.nodus-compute.ai/?view=billing)
 and add a payment method. New accounts start with $30 in credits, but a card is
@@ -48,6 +51,8 @@ The original terminal saves the login automatically.
 
 Set `NODUS_API_KEY` through your secret manager. `nodus.Client()` reads it
 automatically and connects to the hosted service. Never commit an API key.
+For an assistant preparing or running GPU work, follow the
+[coding agent guide](../guides/agents.md).
 
 ## Custom deployments
 
