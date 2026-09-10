@@ -15,8 +15,8 @@ then build and check the package. Commit those changes before tagging.
 python -m pytest -q
 python -m build
 python -m twine check dist/*
-git tag v0.3.4
-git push origin v0.3.4
+git tag v0.3.5
+git push origin v0.3.5
 ```
 
 Use the actual release version in the tag. The workflow verifies it matches
@@ -26,7 +26,7 @@ Creating and pushing the tag starts publishing automatically. The manual
 Run workflow button only retries an existing tag. Entering a new version there
 does not create its tag.
 
-If checkout reports `couldn't find remote ref refs/tags/v0.3.4`, create and push
+If checkout reports `couldn't find remote ref refs/tags/v0.3.5`, create and push
 the tag from the tested release commit using the commands above. Do not move an
 existing release tag.
 
@@ -61,7 +61,7 @@ Keep README links absolute so they work on PyPI as well as GitHub.
 Run the same isolated verification used by CI:
 
 ```bash
-python scripts/verify-release.py --version 0.3.4 --report release-verification.json
+python scripts/verify-release.py --version 0.3.5 --report release-verification.json
 ```
 
 For an unpublished wheel, replace `--version` with `--wheel PATH_TO_WHEEL`.
