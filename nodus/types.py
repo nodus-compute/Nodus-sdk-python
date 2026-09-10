@@ -175,10 +175,8 @@ def _dt(value: Any) -> datetime | None:
 class Route:
     """The Nodus catalog route chosen for a workload.
 
-    ``expected_cost_usd`` is cost to completion: the run plus the recovery the
-    router expects to pay for on this route. That is why it can exceed
-    ``price_usd_hour * expected_hours``, and it is the number the budget is
-    checked against.
+    Cost and runtime estimates are ``None`` when the API has no trustworthy
+    total. Estimates do not guarantee completion within a spending limit.
     """
 
     sku: str = ""
@@ -187,8 +185,8 @@ class Route:
     region: str = ""
     memory_gb: float = 0.0
     price_usd_hour: float = 0.0
-    expected_cost_usd: float = 0.0
-    expected_hours: float = 0.0
+    expected_cost_usd: float | None = None
+    expected_hours: float | None = None
     remaining_budget_usd: float = 0.0
     interruptible: bool = False
     resources: dict[str, Any] = field(default_factory=dict)
@@ -205,8 +203,8 @@ class Route:
             region=_text(d.get("region")),
             memory_gb=_num(d.get("memory_gb")),
             price_usd_hour=_num(d.get("price_usd_hour")),
-            expected_cost_usd=_num(d.get("expected_cost_usd")),
-            expected_hours=_num(d.get("expected_hours")),
+            expected_cost_usd=_num(d.get("expected_cost_usd"), None),
+            expected_hours=_num(d.get("expected_hours"), None),
             remaining_budget_usd=_num(d.get("remaining_budget_usd")),
             interruptible=bool(d.get("interruptible")),
             resources=_obj(d.get("resources")),

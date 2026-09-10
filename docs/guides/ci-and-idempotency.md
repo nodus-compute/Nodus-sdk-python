@@ -15,6 +15,11 @@ only retries inside that call. Application retries and restarted CI jobs need
 the same explicit key and exactly the same brief to avoid duplicate paid work.
 A different payload under the same key raises `IdempotencyConflictError`.
 
+An explicit `idempotency_key` must be a nonempty string containing printable
+ASCII characters without spaces or line breaks, such as `"training-run-123"`.
+The same character rules apply to `client.cancel(..., idempotency_key=...)`.
+Cancellation generates a fresh key for each call when you omit it.
+
 `run()` returns an accepted handle. Log its ID before waiting. `wait()` returns
 on all terminal states. A CI job must inspect `done.succeeded`, as the example
 does, to fail on a failed or cancelled workload.

@@ -86,7 +86,7 @@
             }
           }
         },
-        "description": "202 means accepted, not running. 402 budget_exceeded means available credits or a configured spending limit prevent submission. 409 is an idempotency conflict. 503 spend_check_unavailable may be retried using the same key."
+        "description": "202 means accepted, not running. 402 payment_method_required means an administrator must add a payment method in console Billing before running workloads, including runs using starter credits. 402 budget_exceeded means available credits or a configured spending limit prevent submission. 409 is an idempotency conflict. 503 spend_check_unavailable may be retried using the same key."
       },
       "get": {
         "operationId": "listWorkloads",
@@ -1038,6 +1038,40 @@
       }
     },
     "/v1/assets/{id}": {
+      "get": {
+        "operationId": "getAsset",
+        "summary": "Read an asset owned by the authenticated team",
+        "tags": ["Assets"],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "string"},
+            "description": "Asset identifier returned by an import, upload or list."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Asset metadata. This endpoint does not download file contents.",
+            "content": {
+              "application/json": {"schema": {"$ref": "#/components/schemas/Asset"}}
+            }
+          },
+          "404": {
+            "description": "Asset not found in the authenticated team",
+            "content": {
+              "application/json": {"schema": {"$ref": "#/components/schemas/Error"}}
+            }
+          },
+          "default": {
+            "description": "Authentication, rate limits and transient failures apply.",
+            "content": {
+              "application/json": {"schema": {"$ref": "#/components/schemas/Error"}}
+            }
+          }
+        }
+      },
       "delete": {
         "operationId": "deleteAsset",
         "summary": "Delete an unused asset",
@@ -1213,6 +1247,12 @@
           "requirements": {
             "$ref": "#/components/schemas/Requirements"
           },
+          "optimization": {
+            "type": "string",
+            "enum": ["", "lowest_cost", "lower_cost", "balanced", "faster", "fastest"],
+            "deprecated": true,
+            "description": "Compatibility alias for requirements.optimization. If both are nonempty they must match."
+          },
           "outcome": {
             "$ref": "#/components/schemas/Outcome"
           },
@@ -1307,6 +1347,21 @@
       "Requirements": {
         "type": "object",
         "properties": {
+          "optimization": {
+            "type": "string",
+            "enum": ["", "lowest_cost", "lower_cost", "balanced", "faster", "fastest"],
+            "description": "Routing preference. An omitted or empty workload preference defaults to balanced. An omitted or empty stage preference inherits the workload preference. Balances expected completion cost and completion time when qualified estimates are available, using price and GPU performance signals otherwise. It does not guarantee total cost or runtime."
+          },
+          "disk_gb": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Finite nonnegative disk capacity requirement in GB. An omitted or zero stage value inherits the workload requirement."
+          },
+          "vcpus": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Finite nonnegative CPU capacity requirement. An omitted or zero stage value inherits the workload requirement."
+          },
           "model": {
             "type": "string"
           },
@@ -1320,26 +1375,16 @@
             "description": "Empty or omitted defaults to accelerator. Customer workloads currently use GPU infrastructure. The vm value remains accepted for compatibility and does not establish an available customer offering."
           },
           "dataset_bytes": {
-            "type": "integer"
+            "type": "integer",
+            "minimum": 0
           },
           "peak_memory_gb": {
             "type": "number",
-            "description": "Peak memory fit hint in GB. Placement derives infrastructure. This is not an instance SKU."
+            "minimum": 0,
+            "description": "Finite nonnegative device memory requirement in GB for GPU workloads. Zero or omission lets Nodus infer memory. The Python SDK requires a positive value when explicitly supplied."
           },
           "notes": {
             "type": "string"
-          },
-          "optimization": {
-            "type": "string",
-            "enum": [
-              "lowest_cost",
-              "lower_cost",
-              "balanced",
-              "faster",
-              "fastest"
-            ],
-            "default": "balanced",
-            "description": "Optional routing preference. Recorded now, preference-specific routing is not active yet."
           },
           "gpu": {
             "type": "string",
@@ -1443,7 +1488,8 @@
             }
           },
           "total_units": {
-            "type": "integer"
+            "type": "integer",
+            "minimum": 0
           },
           "outputs": {
             "type": [
@@ -1572,10 +1618,12 @@
             "type": "string"
           },
           "expected_cost_usd": {
-            "type": "number"
+            "type": ["number", "null"],
+            "description": "Estimated total cost, or null when a trustworthy total estimate is unavailable."
           },
           "expected_hours": {
-            "type": "number"
+            "type": ["number", "null"],
+            "description": "Estimated completion time in hours, or null when a trustworthy runtime estimate is unavailable."
           },
           "remaining_budget_usd": {
             "type": "number"
@@ -1715,7 +1763,8 @@
             "type": "number"
           },
           "expected_cost_usd": {
-            "type": "number"
+            "type": ["number", "null"],
+            "description": "Estimated fallback cost, or null when a trustworthy total estimate is unavailable."
           }
         },
         "x-go-source": "internal/models/models.go",

@@ -16,6 +16,31 @@ def test_template_is_runnable_and_never_overwritten(tmp_path):
         write_workload_file(path)
 
 
+@pytest.mark.parametrize('stage', [False, True])
+@pytest.mark.parametrize('field', ['disk_gb', 'vcpus'])
+@pytest.mark.parametrize('value', [0, 32.5])
+def test_resource_requirements_preserve_numbers(tmp_path, stage, field, value):
+    prefix = ('[[stages]]\nid="train"\nsource={command=["python", "train.py"]}\n'
+              '[stages.requirements]\n' if stage else
+              'command=["python", "train.py"]\n[requirements]\n')
+    path = tmp_path / 'nodus.toml'
+    path.write_text(prefix + f'{field}={value}\noptimization=""\n')
+    values = load_workload_file(path)
+    req = values['stages'][0]['requirements'] if stage else values['requirements']
+    assert req[field] == value
+    assert req['optimization'] == ''
+
+
+@pytest.mark.parametrize('field', ['disk_gb', 'vcpus'])
+@pytest.mark.parametrize('value', ['-1', 'nan', 'inf', 'true', '"4"'])
+def test_resource_requirements_reject_invalid_numbers(tmp_path, field, value):
+    path = tmp_path / 'nodus.toml'
+    path.write_text('command=["python", "train.py"]\n'
+                    f'[requirements]\n{field}={value}\n')
+    with pytest.raises(ValueError, match=field):
+        load_workload_file(path)
+
+
 @pytest.mark.parametrize('body', [
     'command = ["python"]\nbudget = 0',
     'command = ["python"]\nbudget = nan',
