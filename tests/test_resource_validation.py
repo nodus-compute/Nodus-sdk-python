@@ -57,3 +57,15 @@ def test_gpu_aliases_serialize_canonical_family(alias, stage):
     payload = build_payload(budget=1, **arguments)
     actual = payload["stages"][0]["requirements"] if stage else payload["requirements"]
     assert actual["gpu"] == "RTX 4090"
+
+
+@pytest.mark.parametrize("value", [True, False, -1, 0.5, "1", None, [], {}, float("inf"), float("nan")])
+def test_stage_total_units_rejects_invalid_counts(value):
+    with pytest.raises(ValueError, match="total_units"):
+        build_payload(stages=[{"id": "main", "total_units": value}], budget=1)
+
+
+@pytest.mark.parametrize("stage", [{"id": "main"}, {"id": "main", "total_units": 0}, {"id": "main", "total_units": 10}])
+def test_stage_total_units_preserves_optional_nonnegative_counts(stage):
+    payload = build_payload(stages=[stage], budget=1)
+    assert payload["stages"][0] == stage

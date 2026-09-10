@@ -1488,7 +1488,8 @@
             }
           },
           "total_units": {
-            "type": "integer"
+            "type": "integer",
+            "minimum": 0
           },
           "outputs": {
             "type": [

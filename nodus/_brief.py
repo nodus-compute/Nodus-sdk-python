@@ -292,6 +292,10 @@ def build_payload(
     if "expected_runtime_hours" in payload:
         raise ValueError(UNSUPPORTED["expected_runtime_hours"])
     for stage in payload.get("stages", []):
+        if "total_units" in stage:
+            total_units = stage["total_units"]
+            if isinstance(total_units, bool) or not isinstance(total_units, int) or total_units < 0:
+                raise ValueError("stage total_units must be a nonnegative integer")
         if "expected_runtime_hours" in stage:
             raise ValueError(UNSUPPORTED["expected_runtime_hours"])
         if "requirements" in stage:
