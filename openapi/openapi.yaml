@@ -25,6 +25,9 @@
     },
     {
       "name": "Assets"
+    },
+    {
+      "name": "Estimates"
     }
   ],
   "paths": {
@@ -135,7 +138,7 @@
             "schema": {
               "type": "integer"
             },
-            "description": "Page size. 1–100. Omitted, nonpositive, or over 100 defaults to 50."
+            "description": "Page size. 1\u2013100. Omitted, nonpositive, or over 100 defaults to 50."
           },
           {
             "name": "offset",
@@ -1041,13 +1044,17 @@
       "get": {
         "operationId": "getAsset",
         "summary": "Read an asset owned by the authenticated team",
-        "tags": ["Assets"],
+        "tags": [
+          "Assets"
+        ],
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "schema": {"type": "string"},
+            "schema": {
+              "type": "string"
+            },
             "description": "Asset identifier returned by an import, upload or list."
           }
         ],
@@ -1055,19 +1062,31 @@
           "200": {
             "description": "Asset metadata. This endpoint does not download file contents.",
             "content": {
-              "application/json": {"schema": {"$ref": "#/components/schemas/Asset"}}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Asset"
+                }
+              }
             }
           },
           "404": {
             "description": "Asset not found in the authenticated team",
             "content": {
-              "application/json": {"schema": {"$ref": "#/components/schemas/Error"}}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
             }
           },
           "default": {
             "description": "Authentication, rate limits and transient failures apply.",
             "content": {
-              "application/json": {"schema": {"$ref": "#/components/schemas/Error"}}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
             }
           }
         }
@@ -1216,6 +1235,99 @@
           }
         }
       }
+    },
+    "/v1/estimation/estimate": {
+      "post": {
+        "operationId": "estimateWorkload",
+        "summary": "Preview workload time and customer compute cost",
+        "tags": [
+          "Estimates"
+        ],
+        "description": "Send the same workload payload as submission. Omit stage_id to preview the whole workload, or select one compiled stage. This read-only operation creates no workload, reserves no capacity, and runs no paid profiling. It needs no Idempotency-Key. Unknown fields are rejected. Missing measurements produce null values and actionable diagnostics, not zero. Estimates depend on qualified runtime and customer pricing evidence and can be unavailable for runnable commands. A preview is not a reservation, spending authorization, or completion guarantee. Submit separately with your spending limit. The response is marked Cache-Control: no-store. The request body limit is 1 MiB.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EstimateRequest"
+              },
+              "example": {
+                "workload": {
+                  "source": {
+                    "image": "pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime",
+                    "command": [
+                      "python",
+                      "train.py"
+                    ]
+                  },
+                  "outcome": {
+                    "max_cost_usd": 5
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "An estimated, partial, or unavailable preview. Unavailable is a successful lookup with no qualified numerical estimate. Inspect diagnostics for the reason and next action.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EstimatePreview"
+                },
+                "example": {
+                  "status": "unavailable",
+                  "scope": "workload",
+                  "execution_seconds": null,
+                  "completion_seconds": null,
+                  "compute_cost_usd": null,
+                  "reasons": [
+                    "qualified_resolution_unavailable"
+                  ],
+                  "valid_until": null,
+                  "estimator_version": "estimation-v1",
+                  "diagnostics": [
+                    {
+                      "code": "qualified_resolution_unavailable",
+                      "message": "Nodus does not have validated measurements for this workload and runtime.",
+                      "action": "You can submit with a spending limit. Contact Nodus to qualify estimates for this workload."
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid JSON, unknown fields, malformed workload constraints, or unknown stage_id. Correct the request using the error and message fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1249,7 +1361,14 @@
           },
           "optimization": {
             "type": "string",
-            "enum": ["", "lowest_cost", "lower_cost", "balanced", "faster", "fastest"],
+            "enum": [
+              "",
+              "lowest_cost",
+              "lower_cost",
+              "balanced",
+              "faster",
+              "fastest"
+            ],
             "deprecated": true,
             "description": "Compatibility alias for requirements.optimization. If both are nonempty they must match."
           },
@@ -1349,7 +1468,14 @@
         "properties": {
           "optimization": {
             "type": "string",
-            "enum": ["", "lowest_cost", "lower_cost", "balanced", "faster", "fastest"],
+            "enum": [
+              "",
+              "lowest_cost",
+              "lower_cost",
+              "balanced",
+              "faster",
+              "fastest"
+            ],
             "description": "Routing preference. An omitted or empty workload preference defaults to balanced. An omitted or empty stage preference inherits the workload preference. Balances expected completion cost and completion time when qualified estimates are available, using price and GPU performance signals otherwise. It does not guarantee total cost or runtime."
           },
           "disk_gb": {
@@ -1618,11 +1744,17 @@
             "type": "string"
           },
           "expected_cost_usd": {
-            "type": ["number", "null"],
+            "type": [
+              "number",
+              "null"
+            ],
             "description": "Estimated total cost, or null when a trustworthy total estimate is unavailable."
           },
           "expected_hours": {
-            "type": ["number", "null"],
+            "type": [
+              "number",
+              "null"
+            ],
             "description": "Estimated completion time in hours, or null when a trustworthy runtime estimate is unavailable."
           },
           "remaining_budget_usd": {
@@ -1763,7 +1895,10 @@
             "type": "number"
           },
           "expected_cost_usd": {
-            "type": ["number", "null"],
+            "type": [
+              "number",
+              "null"
+            ],
             "description": "Estimated fallback cost, or null when a trustworthy total estimate is unavailable."
           }
         },
@@ -2470,6 +2605,188 @@
           },
           "truncated": {
             "type": "boolean"
+          }
+        }
+      },
+      "EstimateRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "workload"
+        ],
+        "x-go-source": "internal/api/estimates.go",
+        "x-go-type": "estimatePreviewRequest",
+        "properties": {
+          "workload": {
+            "$ref": "#/components/schemas/WorkloadPayload"
+          },
+          "stage_id": {
+            "type": "string",
+            "description": "Optional ID of a compiled stage. Omit to estimate the whole workload. For a single implicit stage, the ID is main.",
+            "pattern": "^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$"
+          }
+        }
+      },
+      "EstimateRange": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "low",
+          "high"
+        ],
+        "x-go-source": "internal/estimation/estimate.go",
+        "x-go-type": "Range",
+        "description": "Finite nonnegative evidence bounds. high is greater than or equal to low. These are estimates, not guaranteed limits. The surrounding field specifies seconds or USD.",
+        "properties": {
+          "low": {
+            "type": "number",
+            "minimum": 0
+          },
+          "high": {
+            "type": "number",
+            "minimum": 0
+          }
+        }
+      },
+      "EstimateDiagnostic": {
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "action"
+        ],
+        "x-go-source": "internal/api/estimate_diagnostics.go",
+        "x-go-type": "EstimateDiagnostic",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Stable machine-readable reason. Unknown internal reasons become estimate_unavailable."
+          },
+          "message": {
+            "type": "string",
+            "description": "Explanation suitable for a customer or coding agent."
+          },
+          "action": {
+            "type": "string",
+            "description": "Suggested next step. No automatic submission or paid profiling occurs."
+          }
+        }
+      },
+      "EstimatePreview": {
+        "type": "object",
+        "required": [
+          "status",
+          "scope",
+          "execution_seconds",
+          "completion_seconds",
+          "compute_cost_usd",
+          "reasons",
+          "valid_until",
+          "diagnostics"
+        ],
+        "x-go-source": "internal/api/estimates.go",
+        "x-go-type": "EstimatePreview",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "estimated",
+              "partial",
+              "unavailable"
+            ],
+            "description": "estimated means all three totals are known. partial means some numerical evidence exists in this result or its stages. unavailable means no numerical evidence exists."
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "workload",
+              "stage"
+            ],
+            "description": "Whether amounts cover the whole workload or only the selected stage."
+          },
+          "stage_id": {
+            "type": "string",
+            "description": "Present only for a stage-scoped result."
+          },
+          "execution_seconds": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EstimateRange"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Occupied execution time. For multiple stages, the sum across every stage, including stages that can run concurrently. Null if any stage lacks execution evidence."
+          },
+          "completion_seconds": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EstimateRange"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Elapsed time including measured capacity wait. For multiple stages, the lower bound follows the longest dependency path and the upper bound sums all stage upper bounds to allow serial scheduling. Null if any stage lacks completion evidence. Capacity changes and retries can exceed these estimates."
+          },
+          "compute_cost_usd": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EstimateRange"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Customer compute cost in USD, for the selected stage or all stages. Null if any stage lacks qualified customer pricing. Excludes external model APIs, storage, network and unmeasured retry costs. It is not the spending limit or final settled charge."
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Stable reason codes. An empty array means no missing-evidence reason was reported."
+          },
+          "valid_until": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Earliest evidence expiry for reported numbers. Null when all evidence is unavailable. Refresh before submitting if expired."
+          },
+          "estimator_version": {
+            "type": "string"
+          },
+          "catalog_version": {
+            "type": "string"
+          },
+          "profile_version": {
+            "type": "string"
+          },
+          "router_version": {
+            "type": "string"
+          },
+          "provenance": {
+            "type": "string"
+          },
+          "customer_price_version": {
+            "type": "string",
+            "description": "Customer pricing evidence version. The value per-stage means each stage records its own version. Present whenever compute_cost_usd is non-null."
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EstimateDiagnostic"
+            }
+          },
+          "stages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EstimatePreview"
+            },
+            "description": "Present when the whole workload has multiple stages, ordered by dependencies and then stage ID. Each child has scope stage and its stage_id. Children do not contain further stages."
           }
         }
       }

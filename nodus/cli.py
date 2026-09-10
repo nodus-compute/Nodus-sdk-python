@@ -167,6 +167,36 @@ def _cmd_init(args: argparse.Namespace) -> int:
     return 0
 
 
+def _safe_estimate_line(text: Any) -> str:
+    """Remove terminal and direction controls from one preview display line."""
+    return re.sub(r"[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]", "", _safe_line(text))
+
+
+def _cmd_estimate(args: argparse.Namespace) -> int:
+    with Client(base_url=args.base_url) as client:
+        estimate = client.estimate_file(args.file, stage_id=args.stage)
+    if args.json:
+        print(json.dumps(estimate.raw, indent=2))
+        return 0
+    for result in [estimate, *estimate.stages]:
+        label = f"stage {result.stage_id}" if result.scope == "stage" else "workload"
+        print(f"Estimate ({_safe_estimate_line(label)}): {result.status}")
+        for field, title, unit in (("execution_seconds", "Execution", "seconds"),
+                                   ("completion_seconds", "Completion", "seconds"),
+                                   ("compute_cost_usd", "Compute cost", "USD")):
+            value = getattr(result, field)
+            rendered = "unavailable" if value is None else f"{value.low:g} to {value.high:g} {unit}"
+            print(f"  {title}: {rendered}")
+        if result.valid_until is not None:
+            print(f"  Valid until: {result.valid_until.isoformat()}")
+        for reason in result.reasons:
+            print(f"  Reason: {_safe_estimate_line(reason)}")
+        for diagnostic in result.diagnostics:
+            print(f"  {_safe_estimate_line(diagnostic.code)}: {_safe_estimate_line(diagnostic.message)}")
+            print(f"  Action: {_safe_estimate_line(diagnostic.action)}")
+    return 0
+
+
 def _cmd_run(args: argparse.Namespace) -> int:
     settings = load_workload_file(args.file)
     submission_key = settings.get("idempotency_key") or str(uuid.uuid4())
@@ -538,7 +568,7 @@ class _CommandHelpFormatter(argparse.RawDescriptionHelpFormatter):
                 ("Run", ("run", "submit")),
                 ("Monitor", ("list", "status", "wait", "logs", "cancel")),
                 ("Results", ("download",)),
-                ("Advanced", ("upload", "assets", "events", "artifacts", "ledger", "explain")),
+                ("Advanced", ("estimate", "upload", "assets", "events", "artifacts", "ledger", "explain")),
             )
             return "\n".join(
                 f"  {title}:\n" + "".join(
@@ -585,6 +615,11 @@ Use nodus COMMAND --help for command options.""",
         if name == "run":
             r.add_argument("--timeout", type=_positive_seconds, default=None, help="observation timeout in seconds")
             r.add_argument("--poll", type=_positive_seconds, default=2.0)
+
+    preview = sub.add_parser("estimate", help="preview workload runtime and cost")
+    preview.add_argument("file", nargs="?", default="nodus.toml")
+    preview.add_argument("--stage", default=None, help="preview one declared stage ID")
+    preview.add_argument("--json", action="store_true")
 
     l = sub.add_parser("list", help="list workloads")
     l.add_argument("status", nargs="?", default=None, choices=(*STATUS_FILTERS, "mine", "team"))
@@ -650,6 +685,7 @@ def main(argv: list[str] | None = None) -> int:
         "init": lambda: _cmd_init(args),
         "run": lambda: _cmd_run(args),
         "submit": lambda: _cmd_run(args),
+        "estimate": lambda: _cmd_estimate(args),
         "download": lambda: _cmd_download(args),
         "upload": lambda: _cmd_upload(args),
         "assets": lambda: _cmd_assets(args),

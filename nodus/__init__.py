@@ -37,6 +37,7 @@ from pathlib import Path
 
 from ._outputs import download_path, verified_file, output_destinations
 from ._assets import Asset, Assets, AsyncAssets
+from ._estimates import Estimate, EstimateRange, EstimateDiagnostic, validate_stage_id
 
 import httpx
 
@@ -92,6 +93,9 @@ except PackageNotFoundError:
 
 __all__ = [
     "Asset",
+    "Estimate",
+    "EstimateRange",
+    "EstimateDiagnostic",
     "Client",
     "AsyncClient",
     "Workload",
@@ -713,6 +717,70 @@ class Client(_Transport):
 
     # -- workloads ---------------------------------------------------------
 
+    def estimate(
+        self,
+        *,
+        command: list[str] | str | None = None,
+        image: str | None = None,
+        source_asset_id: str | None = None,
+        inputs: list[dict[str, str]] | None = None,
+        outputs: dict[str, str] | None = None,
+        model: str | None = None,
+        peak_memory_gb: float | None = None,
+        optimization: str = "balanced",
+        gpu: str | None = None,
+        budget: float | None = None,
+        compute_class: ComputeClass | str | None = None,
+        continuity: ContinuityMode | str | ContinuitySpec | dict[str, Any] | None = None,
+        finish_by: datetime | str | None = None,
+        data_regions: list[str] | None = None,
+        stages: list[StageSpec] | list[dict[str, Any]] | None = None,
+        framework: str | None = None,
+        policy: Policy | dict[str, Any] | None = None,
+        requirements: Requirements | dict[str, Any] | None = None,
+        stage_id: str | None = None,
+        extra: dict[str, Any] | None = None,
+        **unknown: Any,
+    ) -> Estimate:
+        """Preview runtime and cost without creating a workload."""
+        validate_stage_id(stage_id)
+        payload = build_payload(
+            command=command,
+            image=image,
+            source_asset_id=source_asset_id,
+            inputs=inputs,
+            outputs=outputs,
+            model=model,
+            peak_memory_gb=peak_memory_gb,
+            optimization=optimization,
+            gpu=gpu,
+            budget=budget,
+            compute_class=compute_class,
+            continuity=continuity,
+            finish_by=finish_by,
+            data_regions=data_regions,
+            stages=stages,
+            framework=framework,
+            policy=policy,
+            requirements=requirements,
+            extra=extra,
+            **unknown,
+        )
+        body: dict[str, Any] = {"workload": payload}
+        if stage_id is not None:
+            body["stage_id"] = stage_id
+        return Estimate.from_dict(self._request(
+            "POST", "/v1/estimation/estimate", json=body,
+        ))
+
+    def estimate_file(self, path: str | Path = "nodus.toml", *, stage_id: str | None = None) -> Estimate:
+        """Preview a workload file, ignoring its submission idempotency key."""
+        from ._workload_file import load_workload_file
+
+        values = load_workload_file(path)
+        values.pop("idempotency_key", None)
+        return self.estimate(**values, stage_id=stage_id)
+
     def run(
         self,
         *,
@@ -1288,6 +1356,70 @@ class AsyncClient(_Transport):
             # The log endpoint answers text/plain, because its whole purpose is
             # to be read. Everything else is JSON.
             return resp.text if text else resp.json()
+
+    async def estimate(
+        self,
+        *,
+        command: list[str] | str | None = None,
+        image: str | None = None,
+        source_asset_id: str | None = None,
+        inputs: list[dict[str, str]] | None = None,
+        outputs: dict[str, str] | None = None,
+        model: str | None = None,
+        peak_memory_gb: float | None = None,
+        optimization: str = "balanced",
+        gpu: str | None = None,
+        budget: float | None = None,
+        compute_class: ComputeClass | str | None = None,
+        continuity: ContinuityMode | str | ContinuitySpec | dict[str, Any] | None = None,
+        finish_by: datetime | str | None = None,
+        data_regions: list[str] | None = None,
+        stages: list[StageSpec] | list[dict[str, Any]] | None = None,
+        framework: str | None = None,
+        policy: Policy | dict[str, Any] | None = None,
+        requirements: Requirements | dict[str, Any] | None = None,
+        stage_id: str | None = None,
+        extra: dict[str, Any] | None = None,
+        **unknown: Any,
+    ) -> Estimate:
+        """Preview runtime and cost without creating a workload."""
+        validate_stage_id(stage_id)
+        payload = build_payload(
+            command=command,
+            image=image,
+            source_asset_id=source_asset_id,
+            inputs=inputs,
+            outputs=outputs,
+            model=model,
+            peak_memory_gb=peak_memory_gb,
+            optimization=optimization,
+            gpu=gpu,
+            budget=budget,
+            compute_class=compute_class,
+            continuity=continuity,
+            finish_by=finish_by,
+            data_regions=data_regions,
+            stages=stages,
+            framework=framework,
+            policy=policy,
+            requirements=requirements,
+            extra=extra,
+            **unknown,
+        )
+        body: dict[str, Any] = {"workload": payload}
+        if stage_id is not None:
+            body["stage_id"] = stage_id
+        return Estimate.from_dict(await self._request(
+            "POST", "/v1/estimation/estimate", json=body,
+        ))
+
+    async def estimate_file(self, path: str | Path = "nodus.toml", *, stage_id: str | None = None) -> Estimate:
+        """Preview a workload file, ignoring its submission idempotency key."""
+        from ._workload_file import load_workload_file
+
+        values = load_workload_file(path)
+        values.pop("idempotency_key", None)
+        return await self.estimate(**values, stage_id=stage_id)
 
     async def run(
         self,

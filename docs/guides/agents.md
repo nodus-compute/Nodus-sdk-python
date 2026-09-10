@@ -147,6 +147,9 @@ newer GPUs, so use an image that supports the selected hardware.
 | Processing pipelines | [Explicit stages](multi-stage-workloads.md) and file handoffs | Express dependencies and collect named outputs from each step |
 | Repeatable automation | [Workload files](../getting-started/workload-files.md) and [CI retry keys](ci-and-idempotency.md) | Keep the reviewed request reproducible across agents and job restarts |
 
+See [runtime and cost previews](estimates.md) for optional read-only estimates.
+Missing ranges remain `None`, and a preview does not submit work or reserve capacity.
+
 Use the [parameter reference](../reference/parameters/index.md) for accepted
 inputs and the [Python client reference](../reference/python/client.md) for
 method signatures. Report failures and missing outputs as failures, with the

@@ -24,6 +24,7 @@ with Python 3.10 or newer, then sign in to get started.
 
 ## Go further
 
+- [Preview runtime and cost](guides/estimates.md)
 - [Concurrent experiments](guides/async-sweeps.md)
 - [Stages and downloadable files](guides/multi-stage-workloads.md)
 - [CI and safe retries](guides/ci-and-idempotency.md)

@@ -67,6 +67,17 @@ other settings unchanged to avoid submitting duplicate work.
 
 See [code and datasets](../guides/assets.md) for imports and attaching assets to work.
 
+## Estimate before submission
+
+| Command | What it does |
+|---|---|
+| `nodus estimate` | Preview `nodus.toml` without creating a workload |
+| `nodus estimate train.toml --stage main` | Preview one declared stage |
+| `nodus estimate train.toml --json` | Print the server response, preserving null ranges |
+
+See [estimate results](../guides/estimates.md) for statuses, expiry, and diagnostics.
+An unavailable preview returns exit code 0 and reports why evidence is missing.
+
 ## Advanced diagnostics
 
 | Command | What it does |

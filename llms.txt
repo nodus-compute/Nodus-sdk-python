@@ -15,6 +15,7 @@ Authenticate: nodus login. Python clients reuse the saved login. Use the authent
 - [Quickstart](https://nodus-compute.ai/docs/source/quickstart.md): Install, sign in and submit your first GPU workload.
 - [Authentication](https://nodus-compute.ai/docs/source/getting-started/authentication.md): Browser login, API keys and headless setup.
 - [GPU models and resources](https://nodus-compute.ai/docs/source/reference/parameters/requirements.md): Every accepted GPU name, optimization choice, default and resource constraint.
+- [Runtime and cost previews](https://nodus-compute.ai/docs/source/guides/estimates.md): Optional read-only previews without submission or capacity reservation. Missing ranges remain null.
 - [Complete documentation](https://nodus-compute.ai/llms-full.txt): Every guide and reference in one text document.
 - [OpenAPI](https://nodus-compute.ai/docs/openapi.yaml): Exact HTTP request and response contract.
 - [SDK source and examples](https://github.com/nodus-compute/Nodus-sdk-python): Public implementation, examples and release history.

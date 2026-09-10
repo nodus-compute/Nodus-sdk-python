@@ -9,6 +9,8 @@ Prefer a `with` block. Otherwise call `close()`.
 |---|---|
 | `run(**brief)` | Accepted `Workload`. [all parameters](../parameters/index.md) |
 | `run_file(path="nodus.toml")` | Accepted `Workload` from a [workload file](../../getting-started/workload-files.md) |
+| `estimate(**brief, stage_id=None)` | Typed `Estimate` without submitting. Uses `run` workload arguments except `idempotency_key` |
+| `estimate_file(path="nodus.toml", stage_id=None)` | Preview the same workload file, ignoring its submission key |
 | `assets` | [Upload, import, list, and delete code or dataset assets](../../guides/assets.md) |
 | `get(id)` | Refreshed `Workload` |
 | `list(limit=50, offset=0, status=None, scope=None)` | One page of workloads |
@@ -80,6 +82,9 @@ to overwrite existing files. Use a new destination directory for another copy.
 
 | Type | Useful fields |
 |---|---|
+| `Estimate` | `status`, `scope`, `stage_id`, three nullable ranges, `reasons`, `valid_until`, `diagnostics`, `stages`, optional versions, `provenance`, `raw` |
+| `EstimateRange` | `low`, `high`. Finite, nonnegative, ordered bounds |
+| `EstimateDiagnostic` | `code`, `message`, `action` |
 | `Event` | `seq`, `id`, `type`, `payload`, `created_at` |
 | `StageRun` | `id`, `status`, `completed_units`, `total_units`, optional `last_loss`, `metric_rate`, `metric_step`, `metric_total_steps`, `metric_epoch`, `metric_total_epochs` |
 | `Artifact` | `manifest_id`, `stage_id`, `generation`, `sequence`, `final`, `files`, `outputs` |
@@ -88,6 +93,11 @@ to overwrite existing files. Use a new destination directory for another copy.
 | `Route` | `sku`, `compute_class`, `fit_class`, `region`, `memory_gb`, `resources`, prices and estimated cost |
 | `Meter` | `settled_usd`, `accruing_usd`, `total_now_usd`, `accruing_rate_usd_hour`, `as_of` |
 | `Ledger` | `entries`, `charged_usd`, `settlement` |
+
+See [preview runtime and cost](../../guides/estimates.md) for estimate states,
+expiry, partial stage evidence, and framework-independent agent functions.
+Malformed estimate response fields raise `NodusError`. Missing numeric ranges
+remain `None`.
 
 `Event` has `type` and `payload`, not a `message` attribute. Output download
 helpers use the authenticated API endpoint. Treat returned `download` as

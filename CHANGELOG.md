@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Preview workload runtime and cost with sync and async estimate methods and `nodus estimate`.
+- Preserve unavailable ranges and expose typed stage estimates, expiry, and actionable diagnostics.
+
 ## 0.3.5
 
 - Link the official PyPI package and coding agent guide from installation docs.
