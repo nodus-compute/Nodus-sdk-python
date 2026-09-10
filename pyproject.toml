@@ -35,6 +35,8 @@ nodus = "nodus.cli:main"
 [project.urls]
 Homepage = "https://nodus-compute.ai"
 Documentation = "https://nodus-compute.ai/docs/"
+"Agent guide" = "https://nodus-compute.ai/docs/guides/agents/"
+"Agent documentation" = "https://nodus-compute.ai/llms.txt"
 Source = "https://github.com/Nodus-compute/Nodus-sdk-python"
 Issues = "https://github.com/Nodus-compute/Nodus-sdk-python/issues"
 

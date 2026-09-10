@@ -21,7 +21,7 @@ import nodus
 import pytest
 
 ROOT = Path(__file__).parents[1]
-DATA = b'{"sum": 6}\n'
+DATA = b'{"sum": 6, "sum_of_squares": 385, "gpu": "Synthetic GPU"}\n'
 DIGEST = hashlib.sha256(DATA).hexdigest()
 
 
@@ -152,8 +152,8 @@ def test_python_documentation_executes(path, number, body, docs_api, tmp_path, m
         sources = [payload.get("source", {})] + [s.get("source", {}) for s in payload.get("stages", [])]
         for source in sources:
             command = source.get("command", [])
-            if len(command) >= 3 and command[0] == "python" and command[1] == "-c":
-                ast.parse(command[2])
+            if command and command[0] == "python" and "-c" in command:
+                ast.parse(command[command.index("-c") + 1])
 
 
 @pytest.mark.parametrize("script,args", [
