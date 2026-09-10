@@ -668,7 +668,10 @@ def main(argv: list[str] | None = None) -> int:
         elif isinstance(exc, NodusError) and not args.debug and exc.status_code in (401, 403):
             message = "Your sign-in was not accepted. Run nodus login --force to sign in again."
         elif isinstance(exc, NodusError) and not args.debug and exc.status_code == 402:
-            message = "This run cannot start within your current spending limit. Review your account limit and available credits in the console."
+            if exc.code == "payment_method_required":
+                message = "Add a payment method at https://console.nodus-compute.ai/?view=billing before running workloads, including runs using starter credits."
+            else:
+                message = "This run cannot start within your current spending limit. Review your account limit and available credits in the console."
         print(f"Error: {message}", file=sys.stderr)
         return 2
     except KeyboardInterrupt:

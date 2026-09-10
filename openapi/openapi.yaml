@@ -86,7 +86,7 @@
             }
           }
         },
-        "description": "202 means accepted, not running. 402 budget_exceeded means available credits or a configured spending limit prevent submission. 409 is an idempotency conflict. 503 spend_check_unavailable may be retried using the same key."
+        "description": "202 means accepted, not running. 402 payment_method_required means an administrator must add a payment method in console Billing before running workloads, including runs using starter credits. 402 budget_exceeded means available credits or a configured spending limit prevent submission. 409 is an idempotency conflict. 503 spend_check_unavailable may be retried using the same key."
       },
       "get": {
         "operationId": "listWorkloads",
