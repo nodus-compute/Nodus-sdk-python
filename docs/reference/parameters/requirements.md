@@ -16,9 +16,9 @@ long your program will run. Provide memory only when you know the requirement.
 ## Optimization
 
 Choose the preference closest to your goal. The five choices run from lowest
-cost to fastest. Compatible deployments use the preference during placement.
-It does not guarantee total cost or runtime. Older deployments may record the
-value without changing placement.
+cost to fastest. Nodus balances expected completion cost and completion time when qualified
+estimates are available, using price and GPU performance signals otherwise.
+The preference does not guarantee total cost or runtime.
 
 An omitted or empty preference in a stage's requirements inherits the workload
 preference. An empty value in the workload requirements lets the API use its
@@ -27,12 +27,11 @@ named choices.
 
 ## GPU model
 
-On a compatible backend, `gpu` is a hard requirement. Nodus never substitutes another model, including
+`gpu` is a hard requirement. Nodus never substitutes another model, including
 when retrying a run. If matching capacity is unavailable, the run reports that
 condition. Omit `gpu` to let Nodus choose compatible capacity.
-An older backend may ignore this field. Confirm
-[backend compatibility](../../operations/errors.md#backend-compatibility)
-before relying on GPU enforcement.
+An accepted model name does not guarantee matching capacity. GPU, memory,
+and other resource requirements must all fit an available machine.
 
 These are all accepted canonical model names. Use the Python argument shown in
 `client.run()`, or the same quoted value for `gpu` in a workload file.
@@ -55,7 +54,7 @@ These are all accepted canonical model names. Use the Python argument shown in
 | RTX 4090 | `gpu="RTX 4090"` |
 | RTX 5090 | `gpu="RTX 5090"` |
 
-Names are case-insensitive and whitespace is ignored. An optional `NVIDIA`
+Names are case-insensitive. Whitespace, hyphens, and underscores are ignored. An optional `NVIDIA`
 prefix and compact RTX names are accepted, such as `"nvidia h100"` and
 `"RTX4090"`. `"A6000"` is an alias for `"RTX A6000"`.
 These names describe models, not a guarantee of current capacity.
@@ -93,5 +92,6 @@ in a workload file. They are not flat `run()` arguments.
 Omitted or zero disk and CPU values in a stage inherit the workload requirements.
 These fields do not transfer data or install dependencies.
 `nodus.Requirements(...)` provides optional static typing. The SDK validates GPU
-names and optimization choices for both typed and ordinary dictionaries. The
-API validates the remaining resource hints when you submit the workload.
+names, optimization choices, and numeric resource bounds for both typed and
+ordinary dictionaries before submission. Booleans and nonfinite numbers are
+not valid resource quantities. Explicit `peak_memory_gb` must be positive.

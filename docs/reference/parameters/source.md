@@ -1,4 +1,24 @@
-# Source: image and command
+# Container image and command
+
+`image` chooses the container environment where your code runs. A container
+image packages the runtime, system libraries, and installed dependencies. For example,
+`pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime` selects an environment with
+PyTorch and CUDA libraries. Choose an image containing the packages your program needs.
+
+`command` tells that environment which program to start and which arguments to
+pass. In `command=["python", "train.py"]`, the first item starts Python and the
+second names the script. This list is also called an argument vector, or argv.
+The script must already be in the image or attached as uploaded code. Naming a
+local file in `command` does not upload it.
+
+To attach your code, upload it with `client.assets.upload()` and pass the
+returned asset ID as `source_asset_id`. Nodus extracts that code into the workload
+working directory. See [run your own Python script](../../guides/containers-and-scripts.md)
+for a complete upload-and-run example.
+
+In the HTTP API, `source` groups the image, command, and optional code asset.
+Python callers pass `image`, `command`, and `source_asset_id` directly to
+`client.run()`. The SDK builds the `source` object for you.
 
 | Argument | Type | Default / omission | Workload file |
 |---|---|---|---|
