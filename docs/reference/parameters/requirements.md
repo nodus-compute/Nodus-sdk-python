@@ -20,6 +20,33 @@ cost to fastest. Nodus balances expected completion cost and completion time whe
 estimates are available, using price and GPU performance signals otherwise.
 The preference does not guarantee total cost or runtime.
 
+### Combining optimization and an explicit GPU
+
+When a run does not have qualified completion estimates, Nodus uses the
+following GPU eligibility groups. An explicit `gpu` must fit the selected group
+as well as your memory, CPU, disk, and location requirements.
+
+| Optimization | Explicit GPU families eligible without completion estimates |
+|---|---|
+| `lowest_cost` | `RTX 3090`, `RTX 4090`, `RTX A6000` |
+| `lower_cost` | `RTX 3090`, `RTX 4090`, `RTX A6000`, `A100`, `L40S` |
+| `balanced` | `RTX 4090`, `L40S`, `A100` with 80 GB, `H100` |
+| `faster` | `B200`, `H200`, `H100` |
+| `fastest` | `B200`, `H200`, `H100` with SXM form factor |
+
+For example, use `gpu="RTX 3090", optimization="lower_cost"` or
+`gpu="RTX 4090", optimization="balanced"`. `RTX 4090` with `fastest` does
+not fit the last group. Nodus reports no eligible capacity instead of changing
+your GPU. The SDK selects model families, not form factors. Nodus applies any
+memory or form-factor restriction shown above when choosing the machine.
+
+When qualified estimates are available, optimization can rank the broader
+compatible GPU pool by expected completion cost and time. Explicit GPU and
+resource requirements still apply. Accepted model names such as `A10`, `A10G`,
+`L4`, `L40`, `T4`, `V100`, and `RTX 5090` are not in the current eligibility
+groups. Accepting their spelling does not establish routable capacity.
+Omit `gpu` for the widest available choice within your optimization preference.
+
 An omitted or empty preference in a stage's requirements inherits the workload
 preference. An empty value in the workload requirements lets the API use its
 balanced default. The flat `optimization` shortcut requires one of the five
