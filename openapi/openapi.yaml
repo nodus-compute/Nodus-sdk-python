@@ -1461,12 +1461,22 @@
               "restartable",
               "ephemeral"
             ],
-            "description": "Top-level empty/omitted defaults to checkpointed. A stage with omitted mode inherits the whole workload continuity object."
+            "description": "Top-level empty/omitted defaults to checkpointed. A stage with omitted mode inherits workload mode and resume behavior. Checkpoint paths inherit separately."
           },
           "resume_on_interruption": {
             "type": "boolean",
             "default": true,
-            "description": "Omission defaults to true. Explicit false disables resumption. Per-stage mode omission inherits workload continuity."
+            "description": "Omission defaults to true. Explicit false disables resumption. Per-stage mode omission inherits workload mode and resume behavior."
+          },
+          "checkpoint_paths": {
+            "type": "array",
+            "maxItems": 64,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "description": "Literal normalized paths relative to the code folder, with at most 512 UTF-8 bytes per path. Select files or folders containing recovery state. Empty or omitted at workload level preserves the whole code folder except runner-private files. Empty or omitted at stage level inherits workload paths, a nonempty list overrides them, and [\".\"] explicitly selects the whole folder. Absolute paths, traversal, backslashes, colons, control characters and the .nodus subtree are rejected. Missing paths are skipped without widening the selection. Dependencies outside selected paths must be recreated by the image or command. Final result files are independent. Framework shortcuts do not support explicit checkpoint paths, use explicit stages instead."
           }
         },
         "x-go-source": "internal/models/models.go",

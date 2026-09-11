@@ -115,6 +115,19 @@ def _continuity(value: Any, name: str, allow_string: bool = True) -> None:
         _fail(name + '.mode', 'expected checkpointed, restartable, or ephemeral')
     if 'resume_on_interruption' in value and not isinstance(value['resume_on_interruption'], bool):
         _fail(name + '.resume_on_interruption', 'expected true or false')
+    if 'checkpoint_paths' in value:
+        field = name + '.checkpoint_paths'
+        paths = value['checkpoint_paths']
+        if not isinstance(paths, list):
+            _fail(field, 'expected a list of paths')
+        if len(paths) > 64:
+            _fail(field, 'provide no more than 64 paths')
+        for item in paths:
+            if (not isinstance(item, str) or not item or len(item.encode('utf-8')) > 512 or
+                    re.search(r'[\\:\x00-\x1f\x7f-\x9f]', item) or
+                    item == '.nodus' or item.startswith('.nodus/') or
+                    (item != '.' and any(part in ('', '.', '..') for part in item.split('/')))):
+                _fail(field, 'use normalized relative paths outside .nodus, or . for the whole code folder')
 
 
 def _stages(stages: Any) -> None:
