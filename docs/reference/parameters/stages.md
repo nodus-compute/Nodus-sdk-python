@@ -13,12 +13,16 @@ framework takes precedence in the current compiler.
 | `inputs` | List of input references below | Empty |
 | `outputs` | Mapping from logical name to relative output path. [Name and path constraints](source.md#file-declaration-constraints) | Empty. Files must actually be produced |
 | `requirements` | Requirements dictionary | Zero/empty fields inherit workload-level values |
-| `continuity` | `{mode: str, resume_on_interruption: bool}` | Missing/empty mode inherits the whole workload continuity object |
+| `continuity` | `nodus.ContinuitySpec` | Missing/empty mode inherits workload mode and resume behavior. Missing/empty `checkpoint_paths` inherits workload paths |
 | `total_units` | Nonnegative integer progress-unit count | `0`. Describes units for compatible restartable work, not GPUs or replicas |
 
 A stage-specific nonempty `continuity.mode` does not receive the SDK top-level
 resume default: provide `resume_on_interruption` explicitly. Setting only that
-flag without a mode does not override the inherited object.
+flag without a mode does not override inherited mode and resume behavior.
+
+A nonempty stage `checkpoint_paths` list overrides workload paths independently
+of mode. New workloads default to `["state"]`. Use `["."]` to opt a stage into
+preserving the whole code folder. See [checkpoint paths](continuity.md#files-saved-for-recovery).
 
 | Input field | Meaning |
 |---|---|

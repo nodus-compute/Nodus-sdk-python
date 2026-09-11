@@ -56,6 +56,9 @@ class ContinuitySpec(TypedDict, total=False):
     The top-level SDK default is checkpointed with resumption enabled.
     Omitted stage continuity inherits from the workload. Stage values are
     passed through for the server to resolve.
+    Missing or empty workload checkpoint_paths defaults to ["state"] on the
+    server. Missing or empty stage paths inherit workload paths. ["."] opts
+    into the whole code folder. NODUS_CHECKPOINT_DIR remains the state folder.
     """
 
     mode: Literal["checkpointed", "restartable", "ephemeral"] | ContinuityMode
