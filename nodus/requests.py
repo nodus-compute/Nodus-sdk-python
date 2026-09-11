@@ -60,6 +60,7 @@ class ContinuitySpec(TypedDict, total=False):
 
     mode: Literal["checkpointed", "restartable", "ephemeral"] | ContinuityMode
     resume_on_interruption: bool
+    checkpoint_paths: list[str]
 
 
 class StageInput(TypedDict):

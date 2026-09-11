@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add typed checkpoint paths and workload-file validation for selecting saved training state.
+
 ## 0.3.6
 
 - Use the live-verified CUDA 12.8 runtime in introductory GPU examples and generated workload files.
