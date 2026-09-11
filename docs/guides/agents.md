@@ -15,7 +15,7 @@ python -m pip install --upgrade nodus-compute
 nodus login
 ```
 
-The PyPI distribution is `nodus-compute`, the Python import is `nodus`, and
+The PyPI distribution is [nodus-compute](https://pypi.org/project/nodus-compute/), the Python import is `nodus`, and
 the terminal command is `nodus`. Use `python -m nodus.cli` if the terminal command
 is not on your PATH. PyTorch is needed inside the remote image for the example
 below, not in your local agent environment.
@@ -63,7 +63,7 @@ if state_path.exists():
     state = json.loads(state_path.read_text(encoding="utf-8"))
 else:
     state = {"request": {
-        "image": "pytorch/pytorch:2.8.0-cuda12.9-cudnn9-runtime",
+        "image": "pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime",
         "command": ["python", "-u", "-c", program],
         "outputs": {"result": "result.json"},
         "optimization": "balanced",
