@@ -5,6 +5,7 @@
 - Use the live-verified CUDA 12.8 runtime in introductory GPU examples and generated workload files.
 - Link the official PyPI package directly from the standalone agent guide.
 - Preserve submission recovery keys when the server returns malformed JSON.
+- Explain that optimization preferences can broaden while explicit GPU requirements remain mandatory.
 
 ## 0.3.5
 

@@ -132,10 +132,11 @@ add `gpu="RTX 4090"` and `peak_memory_gb=16` to a new request with
 
 Optimization choices are `lowest_cost`, `lower_cost`, `balanced`, `faster`, and
 `fastest`. They express a cost and completion-time preference, not a guarantee.
-GPU eligibility also depends on the preference when qualified completion
-estimates are unavailable. For example, RTX 4090 fits balanced but not fastest
-in that mode. Consult the [GPU list and eligibility groups](../reference/parameters/requirements.md)
-before combining an explicit model and preference. Automatic selection can use
+Nodus starts with GPUs suited to your preference and may consider other compatible
+GPUs if preferred capacity is unavailable or fails to start. An explicit GPU model
+and your resource requirements remain mandatory. Consult the
+[GPU models and resource options](../reference/parameters/requirements.md)
+before choosing a model and preference. Automatic selection can use
 newer GPUs, so use an image that supports the selected hardware.
 
 ## Expand a verified workload
