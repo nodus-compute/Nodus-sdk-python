@@ -709,7 +709,14 @@ class Client(_Transport):
                 return "" if text else None
             # The log endpoint answers text/plain, because its whole purpose is
             # to be read. Everything else is JSON.
-            return resp.text if text else resp.json()
+            if text:
+                return resp.text
+            try:
+                return resp.json()
+            except ValueError:
+                raise self._unreached(
+                    APIError, f"{method} {path} returned invalid JSON", idempotency_key
+                ) from None
 
     # -- workloads ---------------------------------------------------------
 
@@ -1287,7 +1294,14 @@ class AsyncClient(_Transport):
                 return "" if text else None
             # The log endpoint answers text/plain, because its whole purpose is
             # to be read. Everything else is JSON.
-            return resp.text if text else resp.json()
+            if text:
+                return resp.text
+            try:
+                return resp.json()
+            except ValueError:
+                raise self._unreached(
+                    APIError, f"{method} {path} returned invalid JSON", idempotency_key
+                ) from None
 
     async def run(
         self,

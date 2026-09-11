@@ -19,7 +19,7 @@ from ._brief import _validate_outputs, validate_requirements, UNSUPPORTED
 from .requests import ContinuitySpec, Policy, Requirements, Source, StageInput, StageSpec
 
 _TEMPLATE = '''# Edit the image and command for your workload.
-image = "pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime"
+image = "pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime"
 command = ["python", "-c", "print(__import__('torch').cuda.get_device_name(0))"]
 # Example spending limit in USD. Review before running.
 budget = 5
