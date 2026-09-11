@@ -635,6 +635,25 @@
                   "type": "string"
                 },
                 "description": "SHA-256 of stored bytes, when available."
+              },
+              "X-Nodus-Log-Source": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "live-snapshot"
+                  ]
+                },
+                "description": "Present when the response uses retained live output instead of a committed artifact."
+              },
+              "X-Nodus-Log-Truncated": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "true",
+                    "false"
+                  ]
+                },
+                "description": "For a live snapshot, whether capture or response limits truncated the retained output. Cancellation can also omit output not received before termination."
               }
             }
           },
@@ -675,10 +694,10 @@
             "schema": {
               "type": "integer"
             },
-            "description": "Positive generation. Omit for latest matching committed log."
+            "description": "Positive generation. Omit for the latest matching recorded log."
           }
         ],
-        "description": "Not a live stream. 404 until a log is committed. X-Nodus-Stage-Id and X-Nodus-Generation identify the returned attempt."
+        "description": "Returns a committed log artifact when available. If no artifact matches, returns the latest matching retained live snapshot within 24 hours after termination, limited to 8 MiB per attempt. This is a snapshot, not a live stream. Returns 404 when neither exists. X-Nodus-Stage-Id and X-Nodus-Generation identify the returned attempt."
       }
     },
     "/v1/webhooks": {
