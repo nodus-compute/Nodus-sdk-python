@@ -19,7 +19,12 @@ with nodus.Client() as client:
 
 `wait()` returns when the workload finishes, fails, or is cancelled. Check
 `succeeded` before using its results. Interactive waits show elapsed time, lifecycle events, live program output,
-and available training progress. Saved logs remain accessible with `logs()`.
+and available training progress. Retrieve recorded output with `logs()`.
+If cancellation stops the run before a log artifact is committed, this call
+can return the retained live snapshot for up to 24 hours after termination.
+That snapshot is limited to 8 MiB per attempt and may omit output that had
+not reached Nodus before cancellation. Download it promptly if you need to
+keep it. A committed log artifact retains its normal retention.
 
 ## Download files
 

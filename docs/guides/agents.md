@@ -15,7 +15,7 @@ python -m pip install --upgrade nodus-compute
 nodus login
 ```
 
-The PyPI distribution is `nodus-compute`, the Python import is `nodus`, and
+The PyPI distribution is [nodus-compute](https://pypi.org/project/nodus-compute/), the Python import is `nodus`, and
 the terminal command is `nodus`. Use `python -m nodus.cli` if the terminal command
 is not on your PATH. PyTorch is needed inside the remote image for the example
 below, not in your local agent environment.
@@ -63,7 +63,7 @@ if state_path.exists():
     state = json.loads(state_path.read_text(encoding="utf-8"))
 else:
     state = {"request": {
-        "image": "pytorch/pytorch:2.8.0-cuda12.9-cudnn9-runtime",
+        "image": "pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime",
         "command": ["python", "-u", "-c", program],
         "outputs": {"result": "result.json"},
         "optimization": "balanced",
@@ -132,10 +132,11 @@ add `gpu="RTX 4090"` and `peak_memory_gb=16` to a new request with
 
 Optimization choices are `lowest_cost`, `lower_cost`, `balanced`, `faster`, and
 `fastest`. They express a cost and completion-time preference, not a guarantee.
-GPU eligibility also depends on the preference when qualified completion
-estimates are unavailable. For example, RTX 4090 fits balanced but not fastest
-in that mode. Consult the [GPU list and eligibility groups](../reference/parameters/requirements.md)
-before combining an explicit model and preference. Automatic selection can use
+Nodus starts with GPUs suited to your preference and may consider other compatible
+GPUs if preferred capacity is unavailable or fails to start. An explicit GPU model
+and your resource requirements remain mandatory. Consult the
+[GPU models and resource options](../reference/parameters/requirements.md)
+before choosing a model and preference. Automatic selection can use
 newer GPUs, so use an image that supports the selected hardware.
 
 ## Expand a verified workload

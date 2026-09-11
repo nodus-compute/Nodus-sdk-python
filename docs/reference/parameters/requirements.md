@@ -22,11 +22,12 @@ The preference does not guarantee total cost or runtime.
 
 ### Combining optimization and an explicit GPU
 
-When a run does not have qualified completion estimates, Nodus uses the
-following GPU eligibility groups. An explicit `gpu` must fit the selected group
-as well as your memory, CPU, disk, and location requirements.
+When completion estimates are unavailable, Nodus starts with the model
+preferences below. If preferred capacity is unavailable or fails to start,
+Nodus may consider other compatible GPUs. An explicit `gpu`, memory, CPU,
+disk, location and budget still constrain the run.
 
-| Optimization | Explicit GPU families eligible without completion estimates |
+| Optimization | Initially preferred explicit GPU models |
 |---|---|
 | `lowest_cost` | `RTX 3090`, `RTX 4090`, `RTX A6000` |
 | `lower_cost` | `RTX 3090`, `RTX 4090`, `RTX A6000`, `A100`, `L40S` |
@@ -35,17 +36,16 @@ as well as your memory, CPU, disk, and location requirements.
 | `fastest` | `B200`, `H200`, `H100` with SXM form factor |
 
 For example, use `gpu="RTX 3090", optimization="lower_cost"` or
-`gpu="RTX 4090", optimization="balanced"`. `RTX 4090` with `fastest` does
-not fit the last group. Nodus reports no eligible capacity instead of changing
-your GPU. The SDK selects model families, not form factors. Nodus applies any
-memory or form-factor restriction shown above when choosing the machine.
+`gpu="RTX 4090", optimization="balanced"`. RTX 4090 can also be considered
+with fastest as Nodus looks for compatible capacity. An explicit GPU model is
+never replaced by another model. The table describes initial preferences,
+not extra requirements imposed by your request.
 
 When qualified estimates are available, optimization can rank the broader
 compatible GPU pool by expected completion cost and time. Explicit GPU and
 resource requirements still apply. Accepted model names such as `A10`, `A10G`,
-`L4`, `L40`, `T4`, `V100`, and `RTX 5090` are not in the current eligibility
-groups. Accepting their spelling does not establish routable capacity.
-Omit `gpu` for the widest available choice within your optimization preference.
+`L4`, `L40`, `T4`, `V100`, and `RTX 5090` do not establish available capacity.
+Omit `gpu` to give Nodus more compatible models to choose from.
 
 An omitted or empty preference in a stage's requirements inherits the workload
 preference. An empty value in the workload requirements lets the API use its
