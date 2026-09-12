@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.3.7
+
+- Omit optimization preferences by default and accept the automatic routing value.
+- Keep legacy optimization arguments compatible without a preference effect on new runs.
+- Explain that optimization tiers are coming later and new runs use the cheapest compatible on-demand capacity.
 
 - Add typed checkpoint paths and workload-file validation for selecting saved training state.
 

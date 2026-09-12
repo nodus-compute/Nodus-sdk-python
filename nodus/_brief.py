@@ -167,7 +167,7 @@ def build_payload(
     model: str | None = None,
     compute_class: Any = None,
     peak_memory_gb: float | None = None,
-    optimization: str = "balanced",
+    optimization: str | None = None,
     gpu: str | None = None,
     budget: float | None = None,
     finish_by: datetime | str | None = None,
@@ -201,7 +201,7 @@ def build_payload(
         req.setdefault("compute_class", _enum_value(compute_class))
     if peak_memory_gb is not None:
         req.setdefault("peak_memory_gb", peak_memory_gb)
-    if "optimization" not in req:
+    if "optimization" not in req and optimization is not None:
         if optimization == "":
             raise ValueError("optimization must be one of: " + ", ".join(OPTIMIZATIONS))
         req["optimization"] = optimization
@@ -304,7 +304,7 @@ def build_payload(
     return payload
 
 
-OPTIMIZATIONS = ("lowest_cost", "lower_cost", "balanced", "faster", "fastest")
+OPTIMIZATIONS = ("automatic", "lowest_cost", "lower_cost", "balanced", "faster", "fastest")
 GPU_FAMILIES = ("A100", "H100", "H200", "B200", "A10", "A10G", "L4", "L40", "L40S", "T4", "V100", "RTX A6000", "RTX 3090", "RTX 4090", "RTX 5090")
 
 

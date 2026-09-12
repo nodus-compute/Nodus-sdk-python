@@ -66,7 +66,6 @@ else:
         "image": "pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime",
         "command": ["python", "-u", "-c", program],
         "outputs": {"result": "result.json"},
-        "optimization": "balanced",
         "budget": 1,
         "idempotency_key": str(uuid.uuid4()),
     }}
@@ -126,18 +125,19 @@ runs beyond the user's scope without authorization.
 ## Choose resources deliberately
 
 Omit `gpu` to let Nodus choose compatible capacity. For a specific requirement,
-add `gpu="RTX 4090"` and `peak_memory_gb=16` to a new request with
-`optimization="balanced"`. GPU model and memory are separate constraints.
+add `gpu="RTX 4090"` and `peak_memory_gb=16` to a new request. GPU model and
+memory are separate constraints.
 `model` is a workload description, not an instruction to download model weights.
 
-Optimization choices are `lowest_cost`, `lower_cost`, `balanced`, `faster`, and
-`fastest`. They express a cost and completion-time preference, not a guarantee.
-Nodus starts with GPUs suited to your preference and may consider other compatible
-GPUs if preferred capacity is unavailable or fails to start. An explicit GPU model
-and your resource requirements remain mandatory. Consult the
+Optimization tiers are not supported yet and are coming later. Omit
+`optimization` in new requests. Legacy arguments remain accepted for compatibility
+but have no preference effect on new runs. Nodus selects the cheapest compatible
+on-demand capacity by full hourly price. Your explicit GPU and resource
+requirements remain mandatory. Lower hourly prices do not guarantee lower total
+completion cost. Consult the
 [GPU models and resource options](../reference/parameters/requirements.md)
-before choosing a model and preference. Automatic selection can use
-newer GPUs, so use an image that supports the selected hardware.
+before choosing a model. Automatic selection can use newer GPUs, so use an
+image that supports the selected hardware.
 
 ## Expand a verified workload
 

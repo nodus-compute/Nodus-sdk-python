@@ -104,13 +104,13 @@ nodus logs WORKLOAD_ID
 nodus cancel WORKLOAD_ID
 ```
 
-## Choose an optional preference
+## Automatic capacity selection
 
-Set `optimization="lowest_cost"`, `"lower_cost"`, `"balanced"`, `"faster"`, or
-`"fastest"`. The default is balanced. Nodus balances expected completion cost
-and completion time when qualified estimates are available, using price and
-GPU performance signals otherwise. Preferences do not guarantee total cost or
-runtime. Older deployments may record the preference without applying it.
+Nodus uses one policy for new runs: choose the cheapest compatible on-demand
+capacity by full hourly price. A lower hourly price does not guarantee a lower
+total completion cost. Optimization tiers are not supported yet and are coming
+later. Existing optimization arguments remain accepted for backward compatibility
+but have no preference effect on new runs.
 
 Set `gpu="H100"` to require a GPU model, or omit it to let Nodus choose.
 No runtime estimate is needed. See [resource options](https://nodus-compute.ai/docs/reference/parameters/requirements/).

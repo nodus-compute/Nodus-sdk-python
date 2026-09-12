@@ -1268,9 +1268,9 @@
           },
           "optimization": {
             "type": "string",
-            "enum": ["", "lowest_cost", "lower_cost", "balanced", "faster", "fastest"],
+            "enum": ["", "automatic", "lowest_cost", "lower_cost", "balanced", "faster", "fastest"],
             "deprecated": true,
-            "description": "Compatibility alias for requirements.optimization. If both are nonempty they must match."
+            "description": "Deprecated compatibility field. Optimization tiers are not currently supported. New submissions use automatic routing regardless of accepted legacy values. Nodus selects the lowest-priced compatible on-demand configuration within resource, availability and spending constraints."
           },
           "outcome": {
             "$ref": "#/components/schemas/Outcome"
@@ -1368,8 +1368,9 @@
         "properties": {
           "optimization": {
             "type": "string",
-            "enum": ["", "lowest_cost", "lower_cost", "balanced", "faster", "fastest"],
-            "description": "Routing preference. An omitted or empty workload preference defaults to balanced. An omitted or empty stage preference inherits the workload preference. Balances expected completion cost and completion time when qualified estimates are available, using price and GPU performance signals otherwise. It does not guarantee total cost or runtime."
+            "enum": ["", "automatic", "lowest_cost", "lower_cost", "balanced", "faster", "fastest"],
+            "deprecated": true,
+            "description": "Optimization tiers are not currently supported. Omit this field. New workloads and stages use automatic routing. Accepted legacy values remain compatible but do not change routing for new submissions. Existing workloads retain their persisted settings. Automatic routing selects the lowest hourly price among compatible available on-demand configurations within spending and price limits. This does not guarantee the lowest total job cost or shortest runtime."
           },
           "disk_gb": {
             "type": "number",

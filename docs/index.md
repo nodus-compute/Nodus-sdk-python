@@ -3,8 +3,9 @@
 Run training, fine-tuning, and batch experiments that need GPU capacity beyond
 your local machine. Submit your command from Python or a workload file, follow
 its progress, and retrieve logs and output files through the same interface.
-Nodus matches your requirements to available capacity. Optional budgets and
-cost or speed preferences let you express what matters for each run.
+Nodus selects the cheapest compatible on-demand capacity by full hourly price.
+Set a workload budget to limit spending. Optimization tiers are not supported
+yet and are coming later.
 
 Install [nodus-compute from PyPI](https://pypi.org/project/nodus-compute/)
 with Python 3.10 or newer, then sign in to get started.

@@ -58,7 +58,7 @@ same configuration and validation.
 ## Add options as needed
 
 Top-level keys use the same names as [Python submission parameters](../reference/parameters/index.md).
-For example, add `gpu = "H100"` or `optimization = "faster"` before any
+For example, add `gpu = "H100"` before any
 TOML table. Nested dictionaries use TOML tables:
 
 ```toml

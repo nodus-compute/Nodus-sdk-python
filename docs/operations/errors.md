@@ -63,5 +63,6 @@ deployment operator before relying on a specific GPU or a hard spending cap.
 
 If login verification is unavailable, preserve the saved credentials and retry
 after the backend is updated. Use committed logs to inspect output when live
-streaming is unavailable. Optimization preferences require a compatible
-deployment to affect placement. Older deployments may only record them.
+streaming is unavailable. Optimization tiers are not supported yet and are
+coming later. Existing optimization arguments are accepted for compatibility
+but have no preference effect on new runs.
