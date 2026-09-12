@@ -26,6 +26,11 @@ Python callers pass `image`, `command`, and `source_asset_id` directly to
 | `command` | `list[str]` or `str` | No command is sent | `command` |
 | `framework` | `"train_eval"` | Absent | `framework = "train_eval"` |
 
+For a single-source SDK call, omitting `image` or passing an empty string selects
+`python:3.11-slim`. It does not request the native runtime available when leaving
+the console image field blank. For GPU workloads, pass a compatible CUDA image
+with the dependencies your code needs.
+
 Use an explicit image and command. Omitting the command is accepted by this SDK,
 but is not a portable way to invoke an image entrypoint: deployment bootstrap
 controls execution. It is unsuitable for a first workload.
