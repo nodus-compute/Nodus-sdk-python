@@ -19,7 +19,7 @@ import nodus
 with nodus.Client() as client:
     code = client.assets.upload("hello.py")
     workload = client.run(
-        image="pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime",
+        image="pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime",
         source_asset_id=code.id,
         command=["python", "hello.py"],
         budget=5,
@@ -42,7 +42,7 @@ When you need additional dependencies, package them with your code in an image.
 For example, put this `Dockerfile` beside `hello.py`:
 
 ```dockerfile
-FROM pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime
+FROM pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime
 WORKDIR /app
 COPY hello.py /app/hello.py
 ```

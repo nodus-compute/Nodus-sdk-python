@@ -14,7 +14,7 @@ Inside a `with nodus.Client() as client:` block:
 from datetime import datetime, timedelta, timezone
 
 workload = client.run(
-    image="pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime",
+    image="pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime",
     command=["python", "-c", "print('deadline example')"],
     budget=5,
     finish_by=datetime.now(timezone.utc) + timedelta(hours=2),

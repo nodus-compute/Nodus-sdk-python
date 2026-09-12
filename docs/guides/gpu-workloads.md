@@ -7,7 +7,7 @@ import nodus
 
 with nodus.Client() as client:
     workload = client.run(
-        image="pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime",
+        image="pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime",
         command=[
             "python", "-c",
             "import torch\n"
