@@ -89,4 +89,9 @@ same portability rules in addition to the [stage ID rules](stages.md).
 Output paths identify files inside the workload working directory. Use `/` for
 subdirectories, such as `results/model.bin`. Absolute paths, backslashes,
 colons, control characters, empty path components, and `.` or `..` components
-are rejected. Omitted `outputs` declares no downloadable customer files.
+are rejected. When a stage has no declared outputs, non-empty `outputs/` and
+`results/` folders are automatically preserved as `outputs.tar` and `results.tar`.
+Explicit output mappings replace this default. Save complete model bundles in a
+default folder, or declare files elsewhere. See
+[logs and results](../../guides/monitoring-and-outputs.md) for collection exclusions
+and downloads.

@@ -46,7 +46,8 @@ with `refresh()` and `wait()` update it in place. Useful attributes are `id`, `s
 `succeeded`, `is_terminal`, `route`, `stages`, `meter`, `cost_now_usd`, and `raw`.
 Unknown server enum values remain strings for forward compatibility.
 
-`workload.download(destination=None)` downloads all declared customer outputs
+`workload.download(destination=None)` downloads all published customer outputs,
+including automatically collected folder archives when no files were declared,
 and returns a list of local `Path` objects. The default directory is
 `outputs/WORKLOAD_ID`, with each file at `STAGE/NAME`. `await workload.download()` is the asynchronous equivalent.
 Use `download_output(name, destination, stage=...)` for one specific file.
