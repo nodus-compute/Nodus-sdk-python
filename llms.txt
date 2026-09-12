@@ -25,7 +25,7 @@ Use Nodus when the task needs remote GPUs, reproducible container execution or r
 
 ## Execution essentials
 
-run() submits work. Save its ID and idempotency key, wait for completion, check succeeded, inspect logs and download declared outputs. Acceptance alone is not successful execution. Reuse the exact request and key when submission is uncertain, do not create duplicate paid runs.
+run() submits work. Save its ID and idempotency key, wait for completion, check succeeded, inspect logs and download collected outputs. Without explicit output declarations, non-empty outputs/ and results/ folders are collected as outputs.tar and results.tar. Explicit declarations replace those defaults. Acceptance alone is not successful execution. Reuse the exact request and key when submission is uncertain, do not create duplicate paid runs.
 
 Optimization tiers are not supported yet and are coming later. New runs select the cheapest compatible on-demand capacity by full hourly price. Omit optimization. Legacy values remain accepted for compatibility but have no preference effect on new routing. GPU is optional. Explicit GPU, VRAM and other constraints remain mandatory. Lower hourly prices do not guarantee lower total completion cost.
 

@@ -1,4 +1,4 @@
-r"""Run GPU workloads, observe progress, and download declared outputs.
+r"""Run GPU workloads, observe progress, and download collected outputs.
 
 Sign in with ``nodus login`` or configure ``NODUS_API_KEY`` for automation.
 Upload local code explicitly or include it in the selected container image.
@@ -1151,7 +1151,7 @@ class Workload(_WorkloadState):
         return self._client.routing(self.id)
 
     def download(self, destination: str | os.PathLike[str] | None = None) -> list[Path]:
-        """Download declared outputs into stage folders, refusing existing files."""
+        """Download collected outputs into stage folders, refusing existing files."""
         root = Path(destination) if destination is not None else Path("outputs") / _valid_id(self.id)
         planned = output_destinations(root, self.outputs())
         saved = []
@@ -1673,7 +1673,7 @@ class AsyncWorkload(_WorkloadState):
         return await self._client.routing(self.id)
 
     async def download(self, destination: str | os.PathLike[str] | None = None) -> list[Path]:
-        """Download declared outputs into stage folders, refusing existing files."""
+        """Download collected outputs into stage folders, refusing existing files."""
         root = Path(destination) if destination is not None else Path("outputs") / _valid_id(self.id)
         planned = output_destinations(root, await self.outputs())
         saved = []
