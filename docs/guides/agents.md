@@ -98,7 +98,9 @@ or package it in the image. Naming a local filename in `command` does not upload
 
 The `outputs` mapping declares which remote files become downloadable. Its key
 `result` is the download name and `result.json` is the file your program writes.
-Only declared files are downloaded. See [logs and results](monitoring-and-outputs.md).
+Without declarations, non-empty `outputs/` and `results/` folders are preserved
+as downloadable tar archives. Explicit declarations override that default.
+See [logs and results](monitoring-and-outputs.md).
 
 ## Keep execution and retries under control
 

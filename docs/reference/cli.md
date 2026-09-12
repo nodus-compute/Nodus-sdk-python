@@ -40,7 +40,7 @@ Set your image, command, budget, and advanced options in a
 | `nodus status ID` | Show status and current cost |
 | `nodus wait ID` | Wait for a terminal status |
 | `nodus logs ID` | Print committed logs |
-| `nodus download ID` | Download declared output files under `outputs/ID` |
+| `nodus download ID` | Download published result files and archives under `outputs/ID` |
 | `nodus cancel ID` | Request cancellation and remote cleanup |
 
 Interactive waits show lifecycle events, live logs, elapsed time, and reported

@@ -28,19 +28,29 @@ keep it. A committed log artifact retains its normal retention.
 
 ## Download files
 
-For workloads that declare output files, use these calls inside the client
-context after the workload completes:
+When a stage omits output declarations, Nodus preserves non-empty `outputs/`
+and `results/` folders as `outputs.tar` and `results.tar`. Save the complete model
+bundle there, including weights, configuration and tokenizer files. Directories
+named `.venv`, `venv`, `node_modules`, `.git`, `.nodus`, `__pycache__` and `.cache`
+are excluded recursively. Symbolic links and special files are skipped, so save
+model files directly into the folder rather than linking to a cache.
+Other locations require explicit output declarations, which replace automatic
+folder collection for that stage.
+
+Download available results inside the client context after the workload completes:
 
 ```python
 for path in done.download():
     print(path)
 ```
 
-Files go into `outputs/WORKLOAD_ID/STAGE/NAME` by default, using the declared output name. Pass a directory to
+Files go into `outputs/WORKLOAD_ID/STAGE/NAME` by default, using the published output name. Pass a directory to
 `done.download("results")` to choose another location. For one file, use
 `done.download_output("result", "result.json")` with your declared output name. See
 [output declarations](../reference/parameters/source.md#input-and-output-files) when your program writes
-files you want to download.
+files outside the default folders. Default folder archives are downloaded as tar
+files and are not automatically extracted. Empty or absent default folders produce
+no archive. A script must actually save its model to disk for Nodus to preserve it.
 
 ## Progress and cancellation
 
