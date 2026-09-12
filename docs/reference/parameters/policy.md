@@ -19,7 +19,7 @@ Inside a `with nodus.Client() as client:` block:
 
 ```python
 workload = client.run(
-    image="pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime",
+    image="pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime",
     command=["python", "-c", "print('regional workload')"],
     data_regions=[],
     budget=5,

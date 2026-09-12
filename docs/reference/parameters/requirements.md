@@ -72,7 +72,7 @@ Inside a `with nodus.Client() as client:` block:
 
 ```python
 workload = client.run(
-    image="pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime",
+    image="pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime",
     command=["python", "-c", "import torch\nprint(torch.cuda.get_device_name(0))"],
     gpu="H100",
     budget=5,

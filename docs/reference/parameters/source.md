@@ -2,7 +2,7 @@
 
 `image` chooses the container environment where your code runs. A container
 image packages the runtime, system libraries, and installed dependencies. For example,
-`pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime` selects an environment with
+`pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime` selects an environment with
 PyTorch and CUDA libraries. Choose an image containing the packages your program needs.
 
 `command` tells that environment which program to start and which arguments to
@@ -39,7 +39,7 @@ Inside a `with nodus.Client() as client:` block:
 
 ```python
 workload = client.run(
-    image="pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime",
+    image="pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime",
     command=["python", "-c", "print('ready')"],
     budget=5,
 )
