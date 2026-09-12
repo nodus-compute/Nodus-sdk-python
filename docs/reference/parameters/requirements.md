@@ -5,7 +5,7 @@
 | `model` | Free-text workload description | No model hint | `requirements.model` |
 | `compute_class` | `"accelerator"` for GPU workloads | Accelerator | `requirements.compute_class` |
 | `peak_memory_gb` | Positive number in GB | No explicit memory hint | `requirements.peak_memory_gb` |
-| `optimization` | `"lowest_cost"`, `"lower_cost"`, `"balanced"`, `"faster"`, `"fastest"` | `"balanced"` | `requirements.optimization` |
+| `optimization` | `"lower_cost"`, `"balanced"`, `"faster"`. Legacy aliases: `"lowest_cost"`, `"fastest"` | `"balanced"` | `requirements.optimization` |
 | `gpu` | `"A100"`, `"H100"`, `"H200"`, `"B200"`, `"A10"`, `"A10G"`, `"L4"`, `"L40"`, `"L40S"`, `"T4"`, `"V100"`, `"RTX A6000"`, `"RTX 3090"`, `"RTX 4090"`, `"RTX 5090"`. [Examples and aliases](#gpu-model) | Nodus chooses | `requirements.gpu` |
 | `requirements` | Dictionary | Optional resource hints | `requirements` |
 
@@ -15,42 +15,40 @@ long your program will run. Provide memory only when you know the requirement.
 
 ## Optimization
 
-Choose the preference closest to your goal. The five choices run from lowest
-cost to fastest. Nodus balances expected completion cost and completion time when qualified
-estimates are available, using price and GPU performance signals otherwise.
-The preference does not guarantee total cost or runtime.
+Choose one of three preferences for your run:
+
+| Preference | Goal when trustworthy, comparable completion estimates are available |
+|---|---|
+| `lower_cost` | Give more weight to expected completion cost |
+| `balanced` | Give equal weight to expected completion cost and time |
+| `faster` | Give more weight to expected completion time |
+
+The legacy values `lowest_cost` and `fastest` remain accepted as aliases for
+`lower_cost` and `faster`, respectively. They do not add separate preferences.
+
+All preferences consider the same pool of compatible GPUs. Without trustworthy,
+comparable completion estimates, all three prefer configurations with lower
+full hourly prices. A lower hourly price does not guarantee a lower total cost,
+and `faster` does not guarantee a shorter runtime.
 
 ### Combining optimization and an explicit GPU
 
-When completion estimates are unavailable, Nodus starts with the model
-preferences below. If preferred capacity is unavailable or fails to start,
-Nodus may consider other compatible GPUs. An explicit `gpu`, memory, CPU,
-disk, location and budget still constrain the run.
-
-| Optimization | Initially preferred explicit GPU models |
-|---|---|
-| `lowest_cost` | `RTX 3090`, `RTX 4090`, `RTX A6000` |
-| `lower_cost` | `RTX 3090`, `RTX 4090`, `RTX A6000`, `A100`, `L40S` |
-| `balanced` | `RTX 4090`, `L40S`, `A100` with 80 GB, `H100` |
-| `faster` | `B200`, `H200`, `H100` |
-| `fastest` | `B200`, `H200`, `H100` with SXM form factor |
+An explicit `gpu`, memory, CPU, disk, image compatibility, location and budget
+constrain every preference. Optimization never relaxes these requirements.
 
 For example, use `gpu="RTX 3090", optimization="lower_cost"` or
-`gpu="RTX 4090", optimization="balanced"`. RTX 4090 can also be considered
-with fastest as Nodus looks for compatible capacity. An explicit GPU model is
-never replaced by another model. The table describes initial preferences,
-not extra requirements imposed by your request.
+`gpu="RTX 4090", optimization="balanced"`. RTX 4090 can also be used with
+`optimization="faster"`. An explicit GPU model is never replaced by another
+model.
 
-When qualified estimates are available, optimization can rank the broader
-compatible GPU pool by expected completion cost and time. Explicit GPU and
-resource requirements still apply. Accepted model names such as `A10`, `A10G`,
+Accepted model names such as `A10`, `A10G`,
 `L4`, `L40`, `T4`, `V100`, and `RTX 5090` do not establish available capacity.
 Omit `gpu` to give Nodus more compatible models to choose from.
 
 An omitted or empty preference in a stage's requirements inherits the workload
 preference. An empty value in the workload requirements lets the API use its
-balanced default. The flat `optimization` shortcut requires one of the five
-named choices.
+balanced default. The flat `optimization` shortcut requires one of the three
+preferences or a legacy alias.
 
 ## GPU model
 
