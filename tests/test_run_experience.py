@@ -12,14 +12,14 @@ from nodus._brief import build_payload
 from nodus._workload_file import load_workload_file
 
 
-@pytest.mark.parametrize('optimization', ['lowest_cost', 'lower_cost', 'balanced', 'faster', 'fastest'])
+@pytest.mark.parametrize('optimization', ['automatic', 'lowest_cost', 'lower_cost', 'balanced', 'faster', 'fastest'])
 def test_optimization_and_gpu_share_normalized_wire(optimization):
     payload = build_payload(command='python train.py', optimization=optimization, gpu='nvidia rtx4090', budget=1)
     assert payload['requirements'] == {'optimization': optimization, 'gpu': 'RTX 4090'}
 
 
 def test_defaults_and_nested_precedence():
-    assert build_payload(command='python train.py', budget=1)['requirements']['optimization'] == 'balanced'
+    assert 'optimization' not in build_payload(command='python train.py', budget=1)['requirements']
     req = {'optimization': 'fastest', 'gpu': 'h100'}
     payload = build_payload(command='python train.py', optimization='faster', gpu='A100', requirements=req, budget=1)
     assert payload['requirements'] == {'optimization': 'fastest', 'gpu': 'H100'}

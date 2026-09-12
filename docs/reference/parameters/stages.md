@@ -36,6 +36,6 @@ directory. Runtime integrations expose resolved inputs through `NODUS_INPUT_<nam
 The value is a local file path, not the original storage URI.
 
 Stage requirements support `model`, `compute_class`, `dataset_bytes`,
-`peak_memory_gb`, `disk_gb`, `vcpus`, `optimization`, `gpu`, and `notes`. Omitted stage preferences
-inherit from the workload. See [resources](requirements.md) and the complete
+`peak_memory_gb`, `disk_gb`, `vcpus`, `gpu`, and `notes`. The `optimization`
+field remains accepted for compatibility but has no preference effect on new runs. See [resources](requirements.md) and the complete
 [multi-stage example](../../guides/multi-stage-workloads.md).

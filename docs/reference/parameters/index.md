@@ -6,7 +6,7 @@ the same named arguments. The table covers every explicit submission argument
 and links to its accepted values, defaults, and examples.
 
 The SDK translates these arguments into an HTTP request. Most omitted arguments
-are not sent, except the default image, continuity policy, and balanced optimization.
+are not sent, except the default image and continuity policy.
 
 | Python argument | HTTP location | Reference |
 |---|---|---|
@@ -14,7 +14,7 @@ are not sent, except the default image, continuity policy, and balanced optimiza
 | `source_asset_id`, `inputs`, `outputs` | Source asset and stage file declarations | [Files](source.md#input-and-output-files) |
 | `framework` | `framework` | [Framework execution](source.md) |
 | `gpu` | `requirements.gpu` | `"A100"`, `"H100"`, `"H200"`, `"B200"`, `"A10"`, `"A10G"`, `"L4"`, `"L40"`, `"L40S"`, `"T4"`, `"V100"`, `"RTX A6000"`, `"RTX 3090"`, `"RTX 4090"`, `"RTX 5090"`. Omit to let Nodus choose. [GPU models and examples](requirements.md#gpu-model) |
-| `optimization` | `requirements.optimization` | `"lowest_cost"`, `"lower_cost"`, `"balanced"`, `"faster"`, `"fastest"`. Default: `"balanced"`. [Optimization](requirements.md#optimization) |
+| `optimization` | `requirements.optimization` | `"automatic"`, `"lowest_cost"`, `"lower_cost"`, `"balanced"`, `"faster"`, `"fastest"`. Compatibility only, omitted by default. No preference effect on new runs. [Optimization](requirements.md#optimization) |
 | `model`, `compute_class`, `peak_memory_gb` | `requirements.*` | [Resources](requirements.md) |
 | `requirements` | `requirements` | [Resources](requirements.md) |
 | `budget`, `finish_by` | `outcome.max_cost_usd`, `outcome.complete_by` | [Budget and deadline](outcome.md) |

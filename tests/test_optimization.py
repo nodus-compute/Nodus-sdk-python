@@ -9,7 +9,7 @@ from nodus._brief import build_payload
 from nodus.requests import Requirements
 
 
-TIERS = ["lowest_cost", "lower_cost", "balanced", "faster", "fastest"]
+TIERS = ["automatic", "lowest_cost", "lower_cost", "balanced", "faster", "fastest"]
 
 
 def test_requirements_expose_optional_routing_fields():
@@ -23,7 +23,7 @@ def test_requirements_expose_optional_routing_fields():
 @pytest.mark.parametrize("tier", [None, "", *TIERS])
 @pytest.mark.parametrize("asynchronous", [False, True])
 @pytest.mark.asyncio
-async def test_optimization_reaches_submission_with_balanced_default(tier, asynchronous):
+async def test_optimization_preserves_compatibility_and_omits_default(tier, asynchronous):
     requirements = Requirements(disk_gb=32.5, vcpus=4.5)
     if tier is not None:
         requirements["optimization"] = tier
@@ -50,7 +50,7 @@ async def test_optimization_reaches_submission_with_balanced_default(tier, async
     for key, value in requirements.items():
         assert sent[0]["requirements"][key] == value
     if tier is None:
-        assert sent[0]["requirements"]["optimization"] == "balanced"
+        assert "optimization" not in sent[0]["requirements"]
 
 
 @pytest.mark.parametrize("tier", [None, "", *TIERS])

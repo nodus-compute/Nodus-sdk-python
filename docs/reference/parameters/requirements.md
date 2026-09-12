@@ -5,7 +5,7 @@
 | `model` | Free-text workload description | No model hint | `requirements.model` |
 | `compute_class` | `"accelerator"` for GPU workloads | Accelerator | `requirements.compute_class` |
 | `peak_memory_gb` | Positive number in GB | No explicit memory hint | `requirements.peak_memory_gb` |
-| `optimization` | `"lower_cost"`, `"balanced"`, `"faster"`. Legacy aliases: `"lowest_cost"`, `"fastest"` | `"balanced"` | `requirements.optimization` |
+| `optimization` | `"automatic"`, `"lowest_cost"`, `"lower_cost"`, `"balanced"`, `"faster"`, `"fastest"`. Compatibility only | Not sent | `requirements.optimization` |
 | `gpu` | `"A100"`, `"H100"`, `"H200"`, `"B200"`, `"A10"`, `"A10G"`, `"L4"`, `"L40"`, `"L40S"`, `"T4"`, `"V100"`, `"RTX A6000"`, `"RTX 3090"`, `"RTX 4090"`, `"RTX 5090"`. [Examples and aliases](#gpu-model) | Nodus chooses | `requirements.gpu` |
 | `requirements` | Dictionary | Optional resource hints | `requirements` |
 
@@ -15,40 +15,22 @@ long your program will run. Provide memory only when you know the requirement.
 
 ## Optimization
 
-Choose one of three preferences for your run:
+Optimization tiers are not supported yet and are coming later. New workloads
+use one automatic policy that selects the cheapest compatible on-demand capacity
+by full hourly price. Lower hourly prices do not guarantee lower total completion
+cost or shorter runtime.
 
-| Preference | Goal when trustworthy, comparable completion estimates are available |
-|---|---|
-| `lower_cost` | Give more weight to expected completion cost |
-| `balanced` | Give equal weight to expected completion cost and time |
-| `faster` | Give more weight to expected completion time |
+Omit `optimization` in new code. The SDK accepts `automatic`, `lowest_cost`,
+`lower_cost`, `balanced`, `faster`, and `fastest` for backward compatibility.
+These values have no preference effect on new workload or stage routing.
+The API records `automatic` for newly accepted workloads. Empty nested values
+remain accepted for compatibility. The flat shortcut does not accept an empty
+string.
 
-The legacy values `lowest_cost` and `fastest` remain accepted as aliases for
-`lower_cost` and `faster`, respectively. They do not add separate preferences.
-
-All preferences consider the same pool of compatible GPUs. Without trustworthy,
-comparable completion estimates, all three prefer configurations with lower
-full hourly prices. A lower hourly price does not guarantee a lower total cost,
-and `faster` does not guarantee a shorter runtime.
-
-### Combining optimization and an explicit GPU
-
-An explicit `gpu`, memory, CPU, disk, image compatibility, location and budget
-constrain every preference. Optimization never relaxes these requirements.
-
-For example, use `gpu="RTX 3090", optimization="lower_cost"` or
-`gpu="RTX 4090", optimization="balanced"`. RTX 4090 can also be used with
-`optimization="faster"`. An explicit GPU model is never replaced by another
-model.
-
-Accepted model names such as `A10`, `A10G`,
-`L4`, `L40`, `T4`, `V100`, and `RTX 5090` do not establish available capacity.
-Omit `gpu` to give Nodus more compatible models to choose from.
-
-An omitted or empty preference in a stage's requirements inherits the workload
-preference. An empty value in the workload requirements lets the API use its
-balanced default. The flat `optimization` shortcut requires one of the three
-preferences or a legacy alias.
+GPU, memory, CPU, disk, image compatibility, location and budget requirements
+remain mandatory. An explicit GPU model is never replaced by another model.
+Omit `gpu` to allow more compatible models. Accepted names do not establish
+available capacity.
 
 ## GPU model
 
@@ -93,7 +75,6 @@ workload = client.run(
     image="pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime",
     command=["python", "-c", "import torch\nprint(torch.cuda.get_device_name(0))"],
     gpu="H100",
-    optimization="balanced",
     budget=5,
 )
 ```
@@ -117,6 +98,6 @@ in a workload file. They are not flat `run()` arguments.
 Omitted or zero disk and CPU values in a stage inherit the workload requirements.
 These fields do not transfer data or install dependencies.
 `nodus.Requirements(...)` provides optional static typing. The SDK validates GPU
-names, optimization choices, and numeric resource bounds for both typed and
+names, compatibility values, and numeric resource bounds for both typed and
 ordinary dictionaries before submission. Booleans and nonfinite numbers are
 not valid resource quantities. Explicit `peak_memory_gb` must be positive.

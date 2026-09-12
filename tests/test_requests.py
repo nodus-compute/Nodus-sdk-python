@@ -26,7 +26,6 @@ def test_typed_requirements_and_continuity_preserve_payload_and_precedence():
     )
     wire = json.loads(json.dumps(payload))
     assert wire["requirements"] == {
-        "optimization": "balanced",
         "compute_class": "vm",
         "dataset_bytes": 1024,
         "peak_memory_gb": 8,
