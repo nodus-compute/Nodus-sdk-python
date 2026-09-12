@@ -30,8 +30,10 @@ keep it. A committed log artifact retains its normal retention.
 
 When a stage omits output declarations, Nodus preserves non-empty `outputs/`
 and `results/` folders as `outputs.tar` and `results.tar`. Save the complete model
-bundle there, including weights, configuration and tokenizer files. Dependency,
-cache and internal directories are excluded. Symbolic links are not followed.
+bundle there, including weights, configuration and tokenizer files. Directories
+named `.venv`, `venv`, `node_modules`, `.git`, `.nodus`, `__pycache__` and `.cache`
+are excluded recursively. Symbolic links and special files are skipped, so save
+model files directly into the folder rather than linking to a cache.
 Other locations require explicit output declarations, which replace automatic
 folder collection for that stage.
 
