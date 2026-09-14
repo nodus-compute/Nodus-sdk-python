@@ -43,6 +43,11 @@ submissions can shift pages. It is not a consistent historical snapshot.
 
 ## Sandbox resources
 
+`nodus.Sandbox(name=..., image=...)` is the direct get-or-create form. Reusing
+the same name reattaches without an image. It is a context manager that
+terminates on exit. Call `close()` to release only the local HTTP client while
+keeping the remote sandbox alive.
+
 `client.sandboxes.create(...)` accepts an image, resource requirements, a
 budget, network policy, lifecycle, reservation, and continuity settings. It
 returns an accepted `Sandbox` handle. Read `sandbox.state` or call
@@ -53,7 +58,8 @@ cursor-based page and `list_page()` also returns `next_cursor`. Iterating over
 `client.sandboxes` follows every page. The asynchronous client provides the
 same methods and `client.sandboxes.iterate()`.
 
-`sandbox.exec(argv, ...)` queues a process and returns `SandboxExec`.
+`sandbox.exec(command, ...)` accepts shell command text or an argument vector,
+queues a process, and returns `SandboxExec`.
 `execution.iter_output()` yields ordered `SandboxOutputFrame` objects with
 `stream`, `data`, and decoded `text`. `execution.write(data, eof=False)` sends
 stdin when it was enabled at execution creation. `execution.wait()` returns

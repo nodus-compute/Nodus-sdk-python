@@ -90,7 +90,11 @@ def _wire(value: Any) -> Any:
     return value
 
 
-def _command(value: list[str] | tuple[str, ...]) -> list[str]:
+def _command(value: str | list[str] | tuple[str, ...]) -> list[str]:
+    if isinstance(value, str):
+        if not value or "\x00" in value:
+            raise ValidationError("command must be nonempty text without NUL characters")
+        return ["/bin/sh", "-lc", value]
     if not isinstance(value, (list, tuple)) or not value:
         raise ValidationError("command must be a nonempty argv list")
     if any(not isinstance(arg, str) or "\x00" in arg for arg in value):
@@ -100,7 +104,7 @@ def _command(value: list[str] | tuple[str, ...]) -> list[str]:
 
 def _create_payload(
     *,
-    image: str,
+    image: str | None,
     name: str | None = None,
     budget: float | None = None,
     wake: str | None = None,
@@ -112,9 +116,13 @@ def _create_payload(
     continuity: dict[str, Any] | None = None,
     from_snapshot: str | None = None,
 ) -> dict[str, Any]:
-    if not isinstance(image, str) or not image.strip():
+    if image is not None and (not isinstance(image, str) or not image.strip()):
         raise ValidationError("image must be nonempty text")
-    body: dict[str, Any] = {"image": image}
+    if image is None and not name:
+        raise ValidationError("image or name is required")
+    body: dict[str, Any] = {}
+    if image is not None:
+        body["image"] = image
     selected_requirements = dict(requirements or {})
     selected_requirements.setdefault("compute_class", "accelerator")
     for key, value in (
@@ -140,7 +148,7 @@ def _create_payload(
 
 
 def _exec_payload(
-    command: list[str] | tuple[str, ...],
+    command: str | list[str] | tuple[str, ...],
     *,
     cwd: str | None,
     env: dict[str, str] | None,
@@ -350,7 +358,7 @@ class Sandboxes:
     def create(
         self,
         *,
-        image: str,
+        image: str | None = None,
         name: str | None = None,
         budget: float | None = None,
         wake: str | None = None,
@@ -424,9 +432,81 @@ class Sandboxes:
 
 
 class Sandbox(_SandboxState):
-    def __init__(self, client: Any, sandbox_id: str = ""):
+    def __init__(
+        self,
+        client: Any | None = None,
+        sandbox_id: str = "",
+        *,
+        image: str | None = None,
+        name: str | None = None,
+        budget: float | None = None,
+        wake: str | None = None,
+        requirements: dict[str, Any] | None = None,
+        outcome: dict[str, Any] | None = None,
+        policy: dict[str, Any] | None = None,
+        lifecycle: dict[str, Any] | None = None,
+        reservation: dict[str, Any] | None = None,
+        continuity: dict[str, Any] | None = None,
+        from_snapshot: str | None = None,
+        idempotency_key: str | None = None,
+    ):
+        if client is None and image is None and not name:
+            raise ValidationError("image or name is required")
         self._client = client
+        self._owned_client = client is None
         self._init_state(sandbox_id)
+        if client is None:
+            from . import Client
+
+            self._client = Client()
+            try:
+                created = self._client.sandboxes.create(
+                    image=image,
+                    name=name,
+                    budget=budget,
+                    wake=wake,
+                    requirements=requirements,
+                    outcome=outcome,
+                    policy=policy,
+                    lifecycle=lifecycle,
+                    reservation=reservation,
+                    continuity=continuity,
+                    from_snapshot=from_snapshot,
+                    idempotency_key=idempotency_key,
+                )
+            except BaseException:
+                self._client.close()
+                raise
+            self._absorb({
+                "id": created.id,
+                "state": getattr(created.state, "value", created.state),
+                "envelope": created.envelope,
+                "cost_usd": created.cost_usd,
+                "url": created.url,
+                "created_at": created.created_at,
+                "updated_at": created.updated_at,
+                "last_activity_at": created.last_activity_at,
+                "terminal_at": created.terminal_at,
+            })
+            self.replayed = created.replayed
+
+    def __enter__(self) -> "Sandbox":
+        return self
+
+    def close(self) -> None:
+        """Close this handle's owned HTTP client without terminating the sandbox."""
+        if self._owned_client:
+            self._client.close()
+
+    def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> None:
+        try:
+            if getattr(self.state, "value", self.state) != SandboxState.TERMINATED.value:
+                self.terminate()
+        except BaseException:
+            if exc_type is None:
+                raise
+        finally:
+            self.close()
 
     def refresh(self) -> "Sandbox":
         path = f"/v1/sandboxes/{_valid_id(self.id, 'sandbox')}"
@@ -434,7 +514,7 @@ class Sandbox(_SandboxState):
         return self
 
     def exec(
-        self, command: list[str] | tuple[str, ...], *, cwd: str | None = None,
+        self, command: str | list[str] | tuple[str, ...], *, cwd: str | None = None,
         env: dict[str, str] | None = None, timeout_seconds: int | None = None,
         stdin: bool = False, idempotency_key: str | None = None,
     ) -> "SandboxExec":
@@ -534,7 +614,7 @@ class AsyncSandboxes:
     async def create(
         self,
         *,
-        image: str,
+        image: str | None = None,
         name: str | None = None,
         budget: float | None = None,
         wake: str | None = None,
@@ -608,7 +688,13 @@ class AsyncSandboxes:
 class AsyncSandbox(_SandboxState):
     def __init__(self, client: Any, sandbox_id: str = ""):
         self._client = client
+        self._owned_client = False
         self._init_state(sandbox_id)
+
+    async def close(self) -> None:
+        """Close this handle's owned HTTP client without terminating the sandbox."""
+        if self._owned_client:
+            await self._client.aclose()
 
     async def refresh(self) -> "AsyncSandbox":
         path = f"/v1/sandboxes/{_valid_id(self.id, 'sandbox')}"
@@ -616,7 +702,7 @@ class AsyncSandbox(_SandboxState):
         return self
 
     async def exec(
-        self, command: list[str] | tuple[str, ...], *, cwd: str | None = None,
+        self, command: str | list[str] | tuple[str, ...], *, cwd: str | None = None,
         env: dict[str, str] | None = None, timeout_seconds: int | None = None,
         stdin: bool = False, idempotency_key: str | None = None,
     ) -> "AsyncSandboxExec":

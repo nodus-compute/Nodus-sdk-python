@@ -89,39 +89,42 @@ your own program, see [logs and results](https://nodus-compute.ai/docs/guides/mo
 ## Run an agent in a sandbox
 
 A sandbox is a durable execution environment with its own public API. It is
-separate from a training or batch workload. Create it once, execute multiple
-commands, stream ordered stdout and stderr frames, send stdin, and reconnect by
-ID from another process.
+separate from a training or batch workload. Name it once, execute multiple
+commands, stream ordered stdout and stderr frames, and reconnect with the same
+name from another process.
 
 ```python
 import nodus
 
-with nodus.Client() as client:
-    sandbox = client.sandboxes.create(
-        image="pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime",
-        requirements={"gpu": "L40S", "peak_memory_gb": 32},
-        budget=5,
-        lifecycle={"idle_timeout_s": 300, "on_idle": "terminate"},
-    )
+with nodus.Sandbox(
+    name="research-agent",
+    image="pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime",
+    requirements={"gpu": "L40S", "peak_memory_gb": 32},
+    budget=5,
+) as sandbox:
     print("Sandbox:", sandbox.id)
-
-    process = sandbox.exec(
-        ["python", "-c", "print('agent tool finished')"],
-        timeout_seconds=120,
-    )
+    process = sandbox.exec("python -c \"print('agent tool finished')\"")
     for frame in process.iter_output():
         print(frame.stream, frame.text, end="")
 
     done = process.wait()
     if not done.succeeded:
         raise RuntimeError(f"Command ended: {done.state}")
-    sandbox.terminate()
 ```
 
 Creating a sandbox can start paid infrastructure. Nodus checks the account
 payment method, account headroom, and sandbox budget before billable placement.
-Keep the sandbox ID to reconnect with `client.sandboxes.from_id(ID)`. See the
-[sandbox guide](https://nodus-compute.ai/docs/guides/agent-sandboxes/).
+Calling `nodus.Sandbox(name="research-agent")` reconnects to the named sandbox.
+See the [sandbox guide](https://nodus-compute.ai/docs/guides/agent-sandboxes/).
+
+The CLI mirrors the same resource and verbs.
+
+```bash
+nodus sandbox new pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime --name research-agent --budget 5
+nodus sandbox exec SANDBOX_ID "python -c 'print(2 + 2)'"
+nodus sandbox cost SANDBOX_ID
+nodus sandbox rm SANDBOX_ID
+```
 
 ## Prefer the terminal?
 
