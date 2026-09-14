@@ -159,6 +159,54 @@ def test_create_exec_stream_stdin_wait_and_terminate_journey():
     assert stdin_call[4] == "stdin-agent-step"
 
 
+def test_top_level_sandbox_is_get_or_create_and_context_managed(monkeypatch):
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content) if request.content else None
+        calls.append((request.method, request.url.path, body))
+        if request.method == "POST" and request.url.path == "/v1/sandboxes":
+            return httpx.Response(202, json=SANDBOX)
+        if request.method == "POST" and request.url.path.endswith("/exec"):
+            return httpx.Response(202, json=EXEC)
+        if request.method == "POST" and request.url.path.endswith("/terminate"):
+            return httpx.Response(200, json={**SANDBOX, "state": "terminated"})
+        raise AssertionError(request.url)
+
+    client = sync_client(handler)
+    monkeypatch.setattr(nodus, "Client", lambda: client)
+
+    with nodus.Sandbox(name="agent-session", image="python:3.12", budget=3) as sandbox:
+        process = sandbox.exec("printf 'hello\\n'")
+
+    assert process.id == "sx_python"
+    assert sandbox.state == nodus.SandboxState.TERMINATED
+    assert calls[0][2]["name"] == "agent-session"
+    assert calls[1][2]["command"] == ["/bin/sh", "-lc", "printf 'hello\\n'"]
+    assert calls[2][:2] == ("POST", "/v1/sandboxes/sb_agent/terminate")
+
+
+def test_top_level_sandbox_can_reattach_by_name_without_an_image(monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert json.loads(request.content) == {"name": "agent-session", "requirements": {"compute_class": "accelerator"}}
+        return httpx.Response(202, json=SANDBOX)
+
+    client = sync_client(handler)
+    monkeypatch.setattr(nodus, "Client", lambda: client)
+    sandbox = nodus.Sandbox(name="agent-session")
+    assert sandbox.id == "sb_agent"
+    client.close()
+
+
+def test_top_level_sandbox_requires_an_image_or_name():
+    try:
+        nodus.Sandbox()
+    except nodus.ValidationError as error:
+        assert "image or name" in str(error)
+    else:
+        raise AssertionError("an unaddressable sandbox was created")
+
+
 def test_reconnect_list_and_non_following_output_page():
     paths = []
 

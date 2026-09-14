@@ -49,18 +49,20 @@ print(sandbox.id, sandbox.state, sandbox.cost_usd)
 Creating a sandbox is a paid operation when Nodus starts infrastructure. The
 control plane requires a valid payment method and enough account headroom. The
 sandbox budget limits its customer-funded usage. Acceptance can precede
-readiness, so call `sandbox.refresh()` to observe the current state.
+readiness. Calling `exec` waits for the environment and then runs the command,
+so application code does not need a readiness loop.
 
 Nodus matches infrastructure from the resource requirements. The customer API
 does not accept supplier names or supplier machine identifiers.
 
 ## Execute commands and stream output
 
-An execution command is an argument vector. It is not parsed by a shell.
+Pass a string for a shell command or an argument vector for exact process
+arguments.
 
 ```python
 execution = sandbox.exec(
-    ["python", "-c", "print('tool result')"],
+    "python -c \"print('tool result')\"",
     cwd="/workspace",
     env={"AGENT_MODE": "live"},
     timeout_seconds=120,
@@ -116,6 +118,44 @@ with nodus.Client() as client:
 Termination stops future execution and schedules resource cleanup. A client
 timeout does not terminate the sandbox. Reconnect and read its current state
 before deciding whether to retry an operation.
+
+For the common case, the top-level constructor creates or reattaches by name.
+Its context manager terminates the sandbox when the block exits.
+
+```python
+with nodus.Sandbox(
+    name="research-agent",
+    image="pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime",
+    requirements={"gpu": "L40S", "peak_memory_gb": 32},
+    budget=5,
+) as sandbox:
+    process = sandbox.exec("python agent.py")
+    for frame in process.iter_output():
+        print(frame.text, end="")
+    process.wait()
+```
+
+Use the same name without an image to reattach. Call `close()` when the local
+handle is no longer needed and the remote sandbox should keep running.
+
+```python
+sandbox = nodus.Sandbox(name="research-agent")
+try:
+    print(sandbox.cost_usd, sandbox.url)
+finally:
+    sandbox.close()
+```
+
+The CLI uses the same nouns and verbs.
+
+```bash
+nodus sandbox new pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime --name research-agent --budget 5
+nodus sandbox ls
+nodus sandbox exec SANDBOX_ID "python agent.py"
+nodus sandbox logs SANDBOX_ID EXEC_ID
+nodus sandbox cost SANDBOX_ID
+nodus sandbox rm SANDBOX_ID
+```
 
 ## Async agents
 

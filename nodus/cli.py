@@ -20,7 +20,7 @@ import warnings
 import webbrowser
 from typing import Any
 
-from . import Client, __version__, _is_header_safe, _redact, _resolve_base_url, _current_hosted_url, config, login
+from . import Client, SandboxExec, __version__, _is_header_safe, _redact, _resolve_base_url, _current_hosted_url, config, login
 from ._terminal import clean, compute_label, format_cost, show_table, show_workload, status_label
 from ._brief import STATUS_FILTERS
 from .errors import NodusError, NotFoundError, AuthenticationError, APIConnectionError, APITimeoutError
@@ -52,6 +52,17 @@ def _positive_seconds(value: str) -> float:
     if not math.isfinite(seconds) or seconds <= 0:
         raise argparse.ArgumentTypeError("expected a finite positive number of seconds")
     return seconds
+
+
+def _positive_cost(value: str) -> float:
+    """Reject invalid spending limits before creating a sandbox."""
+    try:
+        cost = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("expected a finite positive USD amount") from exc
+    if not math.isfinite(cost) or cost <= 0:
+        raise argparse.ArgumentTypeError("expected a finite positive USD amount")
+    return cost
 
 
 def _nonnegative_integer(value: str) -> int:
@@ -210,6 +221,59 @@ def _cmd_assets(args: argparse.Namespace) -> int:
                    [[asset.id, asset.state, asset.name] for asset in client.assets.list()],
                    empty="No assets yet. Use nodus upload FILE to add one.", plain=args.plain)
     return 0
+
+
+def _cmd_sandbox(args: argparse.Namespace) -> int:
+    with Client(base_url=args.base_url) as client:
+        if args.sandbox_cmd == "new":
+            sandbox = client.sandboxes.create(
+                image=args.image,
+                name=args.name,
+                budget=args.budget,
+            )
+            print(_safe_line(sandbox.id))
+            return 0
+        if args.sandbox_cmd == "ls":
+            sandboxes = client.sandboxes.list(limit=args.limit)
+            if args.json:
+                print(json.dumps([
+                    {
+                        "id": sandbox.id,
+                        "state": getattr(sandbox.state, "value", sandbox.state),
+                        "cost_usd": sandbox.cost_usd,
+                        "url": sandbox.url,
+                    }
+                    for sandbox in sandboxes
+                ], indent=2, default=str))
+            else:
+                show_table(
+                    ["Sandbox", "Status", "Cost"],
+                    [[sandbox.id, sandbox.state, format_cost(sandbox.cost_usd)] for sandbox in sandboxes],
+                    empty="No sandboxes yet. Use nodus sandbox new IMAGE to create one.",
+                    plain=args.plain,
+                )
+            return 0
+        if args.sandbox_cmd == "exec":
+            sandbox = client.sandboxes.from_id(args.sandbox_id)
+            command: str | list[str] = args.command[0] if len(args.command) == 1 else args.command
+            process = sandbox.exec(command, cwd=args.cwd)
+            for frame in process.iter_output():
+                print(_safe(frame.text), end="", file=sys.stderr if frame.stream == "stderr" else sys.stdout)
+            process.wait()
+            return 0 if process.succeeded else 1
+        if args.sandbox_cmd == "logs":
+            process = SandboxExec(client, args.sandbox_id, args.exec_id)
+            for frame in process.iter_output(follow=args.follow):
+                print(_safe(frame.text), end="", file=sys.stderr if frame.stream == "stderr" else sys.stdout)
+            return 0
+        sandbox = client.sandboxes.from_id(args.sandbox_id)
+        if args.sandbox_cmd == "cost":
+            sandbox.refresh()
+            print(format_cost(sandbox.cost_usd))
+            return 0
+        sandbox.terminate()
+        print(_safe_line(sandbox.id))
+        return 0
 
 
 def _cmd_download(args: argparse.Namespace) -> int:
@@ -535,7 +599,7 @@ class _CommandHelpFormatter(argparse.RawDescriptionHelpFormatter):
             descriptions = {choice.dest: choice.help for choice in action._choices_actions}
             groups = (
                 ("Setup", ("login", "logout", "init")),
-                ("Run", ("run", "submit")),
+                ("Run", ("run", "submit", "sandbox")),
                 ("Monitor", ("list", "status", "wait", "logs", "cancel")),
                 ("Results", ("download",)),
                 ("Advanced", ("upload", "assets", "events", "artifacts", "ledger", "explain")),
@@ -609,6 +673,28 @@ Use nodus COMMAND --help for command options.""",
     u.add_argument("file")
     sub.add_parser("assets", help="list uploaded and imported data")
 
+    sandbox = sub.add_parser("sandbox", help="create and use agent sandboxes")
+    sandbox_sub = sandbox.add_subparsers(dest="sandbox_cmd", required=True, metavar="COMMAND")
+    sandbox_new = sandbox_sub.add_parser("new", help="create or reattach to a sandbox")
+    sandbox_new.add_argument("image", nargs="?", default=None)
+    sandbox_new.add_argument("--name", default=None)
+    sandbox_new.add_argument("--budget", type=_positive_cost, default=None, help="maximum sandbox cost in USD")
+    sandbox_list = sandbox_sub.add_parser("ls", help="list sandboxes")
+    sandbox_list.add_argument("--limit", type=_page_limit, default=50)
+    sandbox_list.add_argument("--json", action="store_true")
+    sandbox_exec = sandbox_sub.add_parser("exec", help="run a command in a sandbox")
+    sandbox_exec.add_argument("sandbox_id")
+    sandbox_exec.add_argument("--cwd", default=None)
+    sandbox_exec.add_argument("command", nargs=argparse.REMAINDER)
+    sandbox_logs = sandbox_sub.add_parser("logs", help="read command output")
+    sandbox_logs.add_argument("sandbox_id")
+    sandbox_logs.add_argument("exec_id")
+    sandbox_logs.add_argument("--follow", action="store_true")
+    sandbox_cost = sandbox_sub.add_parser("cost", help="show sandbox cost")
+    sandbox_cost.add_argument("sandbox_id")
+    sandbox_remove = sandbox_sub.add_parser("rm", help="terminate a sandbox")
+    sandbox_remove.add_argument("sandbox_id")
+
     e = sub.add_parser("events", help="lifecycle events")
     e.add_argument("workload_id")
     e.add_argument("--follow", action="store_true", help="follow events. Ctrl+C cancels the workload")
@@ -653,6 +739,7 @@ def main(argv: list[str] | None = None) -> int:
         "download": lambda: _cmd_download(args),
         "upload": lambda: _cmd_upload(args),
         "assets": lambda: _cmd_assets(args),
+        "sandbox": lambda: _cmd_sandbox(args),
         "list": lambda: _cmd_list(args),
         "status": lambda: _cmd_status(args),
         "wait": lambda: _cmd_status(args),
