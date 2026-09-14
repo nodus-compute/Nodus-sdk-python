@@ -63,6 +63,23 @@ def test_the_two_workload_handles_offer_the_same_methods():
         assert _params(sync) == _params(asyn), f"Workload.{name} and AsyncWorkload.{name} disagree"
 
 
+def test_the_two_sandbox_surfaces_stay_in_sync():
+    pairs = [
+        (nodus.Sandboxes, nodus.AsyncSandboxes),
+        (nodus.Sandbox, nodus.AsyncSandbox),
+        (nodus.SandboxExec, nodus.AsyncSandboxExec),
+    ]
+    for sync_type, async_type in pairs:
+        assert _own_public(sync_type) == _own_public(async_type)
+        for name in sorted(_own_public(sync_type)):
+            sync = getattr(sync_type, name)
+            asyn = getattr(async_type, name)
+            if isinstance(sync, property) or isinstance(asyn, property):
+                assert isinstance(sync, property) and isinstance(asyn, property)
+                continue
+            assert _params(sync) == _params(asyn), f"{sync_type.__name__}.{name} and {async_type.__name__}.{name} disagree"
+
+
 # The brief a customer writes, spelled out on ``run()`` itself. Reading these
 # names out of a private module is not an API.
 BRIEF_PARAMETERS = {

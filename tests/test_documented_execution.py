@@ -5,6 +5,7 @@ The server simulates completion. These checks do not execute GPU containers.
 from __future__ import annotations
 
 import ast
+import base64
 import hashlib
 import json
 import os
@@ -32,6 +33,21 @@ def docs_api(monkeypatch):
     row = {"id": "wl_docs", "status": "completed", "revision": 2,
            "spend_usd": 0.01, "meter": {"total_now_usd": 0.01},
            "route": {"sku": "nodus:test", "region": "test-region", "expected_cost_usd": 0.01}}
+    sandbox = {
+        "id": "sb_docs", "state": "ready", "envelope": {}, "cost_usd": 0.01,
+        "url": "https://console.nodus-compute.ai/sandboxes/sb_docs",
+        "created_at": "2026-09-13T12:00:00Z", "updated_at": "2026-09-13T12:00:01Z",
+        "last_activity_at": "2026-09-13T12:00:01Z", "terminal_at": None,
+    }
+    execution = {
+        "id": "sx_docs", "sandbox_id": "sb_docs", "state": "running",
+        "spec": {"command": ["python", "agent.py"], "cwd": "", "env": {}, "timeout_s": 120, "stdin": True},
+        "created_at": "2026-09-13T12:00:02Z", "updated_at": "2026-09-13T12:00:03Z",
+        "dispatched_at": "2026-09-13T12:00:02Z", "deadline_at": "2026-09-13T12:02:02Z",
+        "started_at": "2026-09-13T12:00:03Z", "completed_at": None, "exit_code": None,
+        "failure_code": "", "output_sequence": 0, "stdout_bytes": 0, "stderr_bytes": 0,
+        "final_output_sequence": None, "cancel_requested_at": None, "cancel_reason": "",
+    }
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_):
@@ -58,6 +74,20 @@ def docs_api(monkeypatch):
                 return self.reply({"workloads": [row]})
             if path == "/v1/workloads/wl_docs":
                 return self.reply(row)
+            if path in ("/v1/sandboxes/sb_docs", "/v1/sandboxes/sb_example"):
+                return self.reply({**sandbox, "id": path.rsplit("/", 1)[-1]})
+            if path.endswith("/execs/sx_docs/stream"):
+                return self.reply({
+                    "frames": [{
+                        "sequence": 1, "stream": "stdout", "offset": 0,
+                        "data": base64.b64encode(b"tool result\n").decode(),
+                        "created_at": "2026-09-13T12:00:04Z",
+                    }],
+                    "next_sequence": 1, "last_sequence": 1, "final_sequence": 1,
+                    "state": "completed", "done": True, "complete": True,
+                })
+            if path.endswith("/execs/sx_docs"):
+                return self.reply({**execution, "state": "completed", "exit_code": 0, "final_output_sequence": 1})
             suffix = path.removeprefix("/v1/workloads/wl_docs/")
             responses = {
                 "logs": b"GPU output fixture\n",
@@ -105,6 +135,17 @@ def docs_api(monkeypatch):
                 if not self.headers.get("Idempotency-Key") or not payload.get("outcome", {}).get("max_cost_usd"):
                     return self.reply({"error": "invalid_brief"}, 400)
                 return self.reply({"id": "wl_docs", "workload_id": "wl_docs", "status": "accepted", "revision": 1}, 202)
+            if path == "/v1/sandboxes":
+                return self.reply(sandbox, 202)
+            if path in ("/v1/sandboxes/sb_docs/exec", "/v1/sandboxes/sb_example/exec"):
+                sandbox_id = path.split("/")[3]
+                return self.reply({**execution, "sandbox_id": sandbox_id, "spec": {**execution["spec"], **payload}}, 202)
+            if path.endswith("/execs/sx_docs/stdin"):
+                data = base64.b64decode(payload.get("data", ""))
+                return self.reply({"sequence": 1, "bytes": len(data), "eof": bool(payload.get("eof")), "created_at": "2026-09-13T12:00:04Z"}, 202)
+            if path in ("/v1/sandboxes/sb_docs/terminate", "/v1/sandboxes/sb_example/terminate"):
+                sandbox_id = path.split("/")[3]
+                return self.reply({**sandbox, "id": sandbox_id, "state": "terminated"})
             if path == "/v1/workloads/wl_docs/cancel":
                 return self.reply({"status": "cancel_requested"}, 202)
             return self.reply({"error": "not_found", "message": path}, 404)
@@ -143,9 +184,12 @@ def test_python_documentation_executes(path, number, body, docs_api, tmp_path, m
     from nodus._workload_file import write_workload_file
     write_workload_file(tmp_path / "train.toml")
     with nodus.Client() as client:
+        sandbox_handle = client.sandboxes.from_id("sb_docs")
+        execution_handle = sandbox_handle.exec(["python", "agent.py"], stdin=True)
         namespace = {"__name__": "__docs__", "client": client, "nodus": nodus,
                      "workload_id": "wl_docs", "allowed_regions": ["test-region"],
-                     "done": client.get("wl_docs"), "workload": client.get("wl_docs")}
+                     "done": client.get("wl_docs"), "workload": client.get("wl_docs"),
+                     "sandbox": sandbox_handle, "execution": execution_handle}
         exec(compile(body.replace('"YOUR_WORKLOAD_ID"', '"wl_docs"'), str(path), "exec"), namespace)
     # Compile embedded Python argv too, without pretending it ran on a GPU.
     for payload in docs_api[2]:

@@ -2,7 +2,7 @@
 
 # Nodus Python SDK
 
-**One interface for running AI workloads on GPUs.**
+**One interface for running AI workloads and agent sandboxes on GPUs.**
 
 [![PyPI version](https://img.shields.io/pypi/v/nodus-compute)](https://pypi.org/project/nodus-compute/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://github.com/nodus-compute/Nodus-sdk-python/blob/main/pyproject.toml)
@@ -12,11 +12,10 @@
 
 </div>
 
-Run training, fine-tuning, and batch experiments when your local machine lacks
-the GPU memory or capacity they need. Provide your container image and command,
-then use one Python client to submit work, follow progress, and retrieve results.
-Nodus matches the workload to available GPU capacity. Add a budget to set a
-workload spending limit.
+Run training, fine-tuning, batch experiments, and tool-driven agent sessions
+when your local machine lacks the GPU memory or capacity they need. Provide a
+container image and resource requirements. Nodus matches the work to available
+GPU capacity. Add a budget to set a spending limit.
 
 ## 1. Install and sign in
 
@@ -27,7 +26,7 @@ nodus login
 
 Get [nodus-compute on PyPI](https://pypi.org/project/nodus-compute/).
 Requires Python 3.10 or newer. Upgrading an existing installation? Use
-`pip install --upgrade nodus-compute`. These docs cover SDK 0.3.x.
+`pip install --upgrade nodus-compute`. These docs cover SDK 0.4.x.
 
 Your browser opens Nodus sign-in. Sign in and approve the code matching your
 terminal. You can then close the tab. The terminal finishes automatically and
@@ -87,6 +86,43 @@ and remote resource cleanup.
 The script prints the GPU name from the workload logs. For files produced by
 your own program, see [logs and results](https://nodus-compute.ai/docs/guides/monitoring-and-outputs/).
 
+## Run an agent in a sandbox
+
+A sandbox is a durable execution environment with its own public API. It is
+separate from a training or batch workload. Create it once, execute multiple
+commands, stream ordered stdout and stderr frames, send stdin, and reconnect by
+ID from another process.
+
+```python
+import nodus
+
+with nodus.Client() as client:
+    sandbox = client.sandboxes.create(
+        image="pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime",
+        requirements={"gpu": "L40S", "peak_memory_gb": 32},
+        budget=5,
+        lifecycle={"idle_timeout_s": 300, "on_idle": "terminate"},
+    )
+    print("Sandbox:", sandbox.id)
+
+    process = sandbox.exec(
+        ["python", "-c", "print('agent tool finished')"],
+        timeout_seconds=120,
+    )
+    for frame in process.iter_output():
+        print(frame.stream, frame.text, end="")
+
+    done = process.wait()
+    if not done.succeeded:
+        raise RuntimeError(f"Command ended: {done.state}")
+    sandbox.terminate()
+```
+
+Creating a sandbox can start paid infrastructure. Nodus checks the account
+payment method, account headroom, and sandbox budget before billable placement.
+Keep the sandbox ID to reconnect with `client.sandboxes.from_id(ID)`. See the
+[sandbox guide](https://nodus-compute.ai/docs/guides/agent-sandboxes/).
+
 ## Prefer the terminal?
 
 ```bash
@@ -129,6 +165,7 @@ Choose an image with your dependencies and pass its command to `client.run()`.
 - [Train or fine-tune a model](https://nodus-compute.ai/docs/guides/gpu-workloads/)
 - [Read logs and download results](https://nodus-compute.ai/docs/guides/monitoring-and-outputs/)
 - [Use Nodus with a coding agent](https://nodus-compute.ai/docs/guides/agents/)
+- [Run tool-driven agents in sandboxes](https://nodus-compute.ai/docs/guides/agent-sandboxes/)
 
 For individual options, use the [Python reference](https://nodus-compute.ai/docs/reference/python/client/)
 and [parameter reference](https://nodus-compute.ai/docs/reference/parameters/).

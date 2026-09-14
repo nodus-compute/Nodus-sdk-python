@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0
+
+- Add a first-class Sandbox API for long-lived agent execution environments.
+- Create and reconnect to sandboxes through `client.sandboxes`.
+- Execute multiple commands with ordered stdout and stderr frames, stdin, status polling, and termination.
+- Send accelerator requirements by default for the currently supported customer sandbox offering.
+- Publish the complete Sandbox HTTP contract alongside the SDK.
+
 ## 0.3.7
 
 - Omit optimization preferences by default and accept the automatic routing value.

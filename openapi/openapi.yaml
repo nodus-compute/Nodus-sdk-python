@@ -1,9 +1,9 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Nodus Workloads API",
-    "version": "1.0.0",
-    "description": "Provider-neutral infrastructure execution for AI workloads. This contract describes customer API-key workload and webhook operations. Console sign-in, operator, runner and supplier protocols are outside its scope. Obtain a key using nodus login or the console. Use the deployment API origin as the base URL. No paid workload is executed by viewing this contract."
+    "title": "Nodus Infrastructure Execution API",
+    "version": "1.1.0",
+    "description": "Provider-neutral infrastructure execution for AI workloads. This contract describes customer API-key workload, sandbox, asset, and webhook operations. Console sign-in, operator, runner, and supplier protocols are outside its scope. Obtain a key using nodus login or the console. Use the deployment API origin as the base URL. No paid workload is executed by viewing this contract."
   },
   "servers": [
     {
@@ -25,6 +25,9 @@
     },
     {
       "name": "Assets"
+    },
+    {
+      "name": "Sandboxes"
     }
   ],
   "paths": {
@@ -135,7 +138,7 @@
             "schema": {
               "type": "integer"
             },
-            "description": "Page size. 1–100. Omitted, nonpositive, or over 100 defaults to 50."
+            "description": "Page size. 1\u2013100. Omitted, nonpositive, or over 100 defaults to 50."
           },
           {
             "name": "offset",
@@ -1060,13 +1063,17 @@
       "get": {
         "operationId": "getAsset",
         "summary": "Read an asset owned by the authenticated team",
-        "tags": ["Assets"],
+        "tags": [
+          "Assets"
+        ],
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "schema": {"type": "string"},
+            "schema": {
+              "type": "string"
+            },
             "description": "Asset identifier returned by an import, upload or list."
           }
         ],
@@ -1074,19 +1081,31 @@
           "200": {
             "description": "Asset metadata. This endpoint does not download file contents.",
             "content": {
-              "application/json": {"schema": {"$ref": "#/components/schemas/Asset"}}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Asset"
+                }
+              }
             }
           },
           "404": {
             "description": "Asset not found in the authenticated team",
             "content": {
-              "application/json": {"schema": {"$ref": "#/components/schemas/Error"}}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
             }
           },
           "default": {
             "description": "Authentication, rate limits and transient failures apply.",
             "content": {
-              "application/json": {"schema": {"$ref": "#/components/schemas/Error"}}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
             }
           }
         }
@@ -1235,6 +1254,530 @@
           }
         }
       }
+    },
+    "/v1/sandboxes": {
+      "post": {
+        "operationId": "createSandbox",
+        "summary": "Create a sandbox",
+        "tags": [
+          "Sandboxes"
+        ],
+        "description": "Creates a durable execution environment after Nodus matches infrastructure and authorizes customer-funded usage. 202 means accepted and can precede readiness. A payment method, account headroom, and the sandbox budget are enforced before billable placement.",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Stable key for this logical operation. Reuse the same key and body after an uncertain response."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SandboxCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sandbox"
+                }
+              }
+            },
+            "headers": {
+              "Idempotent-Replayed": {
+                "description": "true when the response replays the original operation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The code, message, and fix fields describe the rejection and its remedy.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "listSandboxes",
+        "summary": "List sandboxes",
+        "tags": [
+          "Sandboxes"
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque cursor returned by the previous page."
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Exact customer label filter."
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/SandboxState"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "sandboxes",
+                    "next_cursor"
+                  ],
+                  "properties": {
+                    "sandboxes": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Sandbox"
+                      }
+                    },
+                    "next_cursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The code, message, and fix fields describe the rejection and its remedy.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sandboxes/{id}": {
+      "get": {
+        "operationId": "getSandbox",
+        "summary": "Get a sandbox",
+        "tags": [
+          "Sandboxes"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sandbox"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The code, message, and fix fields describe the rejection and its remedy.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sandboxes/{id}/exec": {
+      "post": {
+        "operationId": "createSandboxExec",
+        "summary": "Execute a command",
+        "tags": [
+          "Sandboxes"
+        ],
+        "description": "Queues one process inside the sandbox. The sandbox can execute multiple commands over its lifetime.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Stable key for this logical operation. Reuse the same key and body after an uncertain response."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SandboxExecRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxExec"
+                }
+              }
+            },
+            "headers": {
+              "Idempotent-Replayed": {
+                "description": "true when the response replays the original operation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The code, message, and fix fields describe the rejection and its remedy.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sandboxes/{id}/execs/{exec_id}": {
+      "get": {
+        "operationId": "getSandboxExec",
+        "summary": "Get command state",
+        "tags": [
+          "Sandboxes"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "exec_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "wait",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "When true, wait up to 30 seconds for the state to change or become terminal."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxExec"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The code, message, and fix fields describe the rejection and its remedy.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sandboxes/{id}/execs/{exec_id}/stream": {
+      "get": {
+        "operationId": "readSandboxExecOutput",
+        "summary": "Read command output",
+        "tags": [
+          "Sandboxes"
+        ],
+        "description": "Reads ordered stdout and stderr frames after a sequence cursor. Repeat with next_sequence to stream without losing output.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "exec_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 16,
+              "default": 16
+            }
+          },
+          {
+            "name": "wait",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "When true, wait up to 30 seconds for output or terminal state."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxOutputPage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The code, message, and fix fields describe the rejection and its remedy.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sandboxes/{id}/execs/{exec_id}/stdin": {
+      "post": {
+        "operationId": "writeSandboxExecStdin",
+        "summary": "Write command input",
+        "tags": [
+          "Sandboxes"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "exec_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Stable key for this logical operation. Reuse the same key and body after an uncertain response."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SandboxStdinRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxStdinReceipt"
+                }
+              }
+            },
+            "headers": {
+              "Idempotent-Replayed": {
+                "description": "true when the response replays the original operation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The code, message, and fix fields describe the rejection and its remedy.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sandboxes/{id}/terminate": {
+      "post": {
+        "operationId": "terminateSandbox",
+        "summary": "Terminate a sandbox",
+        "tags": [
+          "Sandboxes"
+        ],
+        "description": "Stops future execution and schedules exact cleanup of sandbox resources.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Stable key for this logical operation. Reuse the same key and body after an uncertain response."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sandbox"
+                }
+              }
+            },
+            "headers": {
+              "Idempotent-Replayed": {
+                "description": "true when the response replays the original operation.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The code, message, and fix fields describe the rejection and its remedy.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1268,7 +1811,15 @@
           },
           "optimization": {
             "type": "string",
-            "enum": ["", "automatic", "lowest_cost", "lower_cost", "balanced", "faster", "fastest"],
+            "enum": [
+              "",
+              "automatic",
+              "lowest_cost",
+              "lower_cost",
+              "balanced",
+              "faster",
+              "fastest"
+            ],
             "deprecated": true,
             "description": "Deprecated compatibility field. Optimization tiers are not currently supported. New submissions use automatic routing regardless of accepted legacy values. Nodus selects the lowest-priced compatible on-demand configuration within resource, availability and spending constraints."
           },
@@ -1368,7 +1919,15 @@
         "properties": {
           "optimization": {
             "type": "string",
-            "enum": ["", "automatic", "lowest_cost", "lower_cost", "balanced", "faster", "fastest"],
+            "enum": [
+              "",
+              "automatic",
+              "lowest_cost",
+              "lower_cost",
+              "balanced",
+              "faster",
+              "fastest"
+            ],
             "deprecated": true,
             "description": "Optimization tiers are not currently supported. Omit this field. New workloads and stages use automatic routing. Accepted legacy values remain compatible but do not change routing for new submissions. Existing workloads retain their persisted settings. Automatic routing selects the lowest hourly price among compatible available on-demand configurations within spending and price limits. This does not guarantee the lowest total job cost or shortest runtime."
           },
@@ -1648,11 +2207,17 @@
             "type": "string"
           },
           "expected_cost_usd": {
-            "type": ["number", "null"],
+            "type": [
+              "number",
+              "null"
+            ],
             "description": "Estimated total cost, or null when a trustworthy total estimate is unavailable."
           },
           "expected_hours": {
-            "type": ["number", "null"],
+            "type": [
+              "number",
+              "null"
+            ],
             "description": "Estimated completion time in hours, or null when a trustworthy runtime estimate is unavailable."
           },
           "remaining_budget_usd": {
@@ -1793,7 +2358,10 @@
             "type": "number"
           },
           "expected_cost_usd": {
-            "type": ["number", "null"],
+            "type": [
+              "number",
+              "null"
+            ],
             "description": "Estimated fallback cost, or null when a trustworthy total estimate is unavailable."
           }
         },
@@ -2500,6 +3068,673 @@
           },
           "truncated": {
             "type": "boolean"
+          }
+        }
+      },
+      "SandboxCreateRequest": {
+        "type": "object",
+        "required": [
+          "image",
+          "requirements"
+        ],
+        "properties": {
+          "image": {
+            "type": "string",
+            "description": "Container image reference. Nodus resolves tags to an immutable Linux amd64 digest before placement."
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 128,
+            "description": "Optional stable customer label used when listing sandboxes."
+          },
+          "wake": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "instant",
+              "fast",
+              "cheap"
+            ],
+            "default": "auto",
+            "description": "Startup preference expressed as an outcome. Nodus still chooses the infrastructure."
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/SandboxOutcome"
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/SandboxRequirements"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/SandboxPolicy"
+          },
+          "lifecycle": {
+            "$ref": "#/components/schemas/SandboxLifecycle"
+          },
+          "reservation": {
+            "$ref": "#/components/schemas/SandboxReservation"
+          },
+          "continuity": {
+            "$ref": "#/components/schemas/SandboxContinuity"
+          },
+          "from_snapshot": {
+            "type": "string",
+            "description": "Optional Nodus snapshot identifier used to restore a compatible sandbox."
+          }
+        },
+        "additionalProperties": false
+      },
+      "SandboxOutcome": {
+        "type": "object",
+        "properties": {
+          "max_cost_usd": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "Hard customer spending limit for this sandbox. The default is 5 USD. Account credits and configured account limits also apply."
+          },
+          "complete_by": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Optional RFC3339 deadline for the sandbox."
+          }
+        },
+        "additionalProperties": false
+      },
+      "SandboxRequirements": {
+        "type": "object",
+        "required": [
+          "compute_class"
+        ],
+        "properties": {
+          "compute_class": {
+            "type": "string",
+            "enum": [
+              "accelerator"
+            ],
+            "description": "Customer sandboxes currently run on accelerator infrastructure."
+          },
+          "gpu": {
+            "type": "string",
+            "description": "Optional required GPU model family. Nodus matches compatible infrastructure without exposing supplier SKUs."
+          },
+          "vcpus": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Required virtual CPUs. Zero or omission uses the server default."
+          },
+          "peak_memory_gb": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Required memory in GB. Zero or omission uses the server default."
+          },
+          "disk_gb": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Required disk capacity in GB. Zero or omission uses the server default."
+          },
+          "dataset_bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Optional input data size used for infrastructure matching."
+          },
+          "model": {
+            "type": "string",
+            "description": "Optional workload fit signal."
+          },
+          "notes": {
+            "type": "string",
+            "description": "Optional workload fit notes."
+          }
+        },
+        "additionalProperties": false
+      },
+      "SandboxPolicy": {
+        "type": "object",
+        "properties": {
+          "data_regions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Allowed placement regions. Empty or omitted imposes no region filter."
+          },
+          "network": {
+            "type": "string",
+            "enum": [
+              "deny",
+              "allowlist"
+            ],
+            "default": "deny",
+            "description": "Outbound network policy."
+          },
+          "egress_allow": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Exact DNS hostnames allowed when network is allowlist."
+          },
+          "secret_refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Nodus secret references made available to the sandbox without placing secret values in this request."
+          }
+        },
+        "additionalProperties": false
+      },
+      "SandboxLifecycle": {
+        "type": "object",
+        "properties": {
+          "idle_timeout_s": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 300,
+            "description": "Idle seconds before the configured action."
+          },
+          "max_lifetime_s": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 86400,
+            "description": "Maximum sandbox lifetime in seconds."
+          },
+          "on_idle": {
+            "type": "string",
+            "enum": [
+              "suspend",
+              "terminate"
+            ],
+            "default": "suspend",
+            "description": "Action after the idle timeout."
+          }
+        },
+        "additionalProperties": false
+      },
+      "SandboxReservation": {
+        "type": "object",
+        "properties": {
+          "wake_slo_ms": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Requested wake service level in milliseconds."
+          },
+          "max_idle_s": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Maximum idle duration retained by the reservation."
+          },
+          "min_ready": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Minimum ready capacity."
+          },
+          "max_concurrent": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1,
+            "description": "Maximum concurrent sandboxes for this reservation."
+          },
+          "release": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "hold"
+            ],
+            "default": "auto",
+            "description": "Whether idle capacity is automatically released."
+          },
+          "cron": {
+            "type": "string",
+            "description": "Optional five-field cron expression for planned readiness."
+          }
+        },
+        "additionalProperties": false
+      },
+      "SandboxContinuity": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "snapshotted",
+              "ephemeral"
+            ],
+            "default": "snapshotted",
+            "description": "Whether Nodus periodically saves filesystem recovery state."
+          },
+          "interval_s": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Snapshot interval in seconds. Omit for ephemeral sandboxes."
+          }
+        },
+        "additionalProperties": false
+      },
+      "SandboxEnvelope": {
+        "type": "object",
+        "required": [
+          "source",
+          "requirements",
+          "outcome",
+          "policy",
+          "lifecycle",
+          "reservation",
+          "continuity"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "source": {
+            "type": "object",
+            "required": [
+              "image"
+            ],
+            "properties": {
+              "image": {
+                "type": "string"
+              },
+              "asset_id": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "requirements": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/SandboxOutcome"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/SandboxPolicy"
+          },
+          "lifecycle": {
+            "$ref": "#/components/schemas/SandboxLifecycle"
+          },
+          "reservation": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "continuity": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "from_snapshot": {
+            "type": "string"
+          }
+        }
+      },
+      "Sandbox": {
+        "type": "object",
+        "required": [
+          "id",
+          "state",
+          "envelope",
+          "created_at",
+          "updated_at",
+          "last_activity_at",
+          "cost_usd",
+          "url"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/SandboxState"
+          },
+          "envelope": {
+            "$ref": "#/components/schemas/SandboxEnvelope"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_activity_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "terminal_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "cost_usd": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Customer cost recorded for this sandbox."
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Console URL for this sandbox."
+          }
+        }
+      },
+      "SandboxState": {
+        "type": "string",
+        "enum": [
+          "creating",
+          "ready",
+          "running",
+          "idle",
+          "suspended",
+          "resuming",
+          "recovering",
+          "terminated",
+          "failed"
+        ]
+      },
+      "SandboxExecRequest": {
+        "type": "object",
+        "required": [
+          "command"
+        ],
+        "properties": {
+          "command": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            },
+            "description": "Process argument vector. No shell parsing is performed."
+          },
+          "cwd": {
+            "type": "string",
+            "description": "Optional canonical absolute POSIX working directory."
+          },
+          "env": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Environment values for this process."
+          },
+          "timeout_s": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Process timeout no greater than the sandbox maximum lifetime."
+          },
+          "stdin": {
+            "type": "boolean",
+            "default": false,
+            "description": "Enable framed stdin writes for this process."
+          }
+        },
+        "additionalProperties": false
+      },
+      "SandboxExec": {
+        "type": "object",
+        "required": [
+          "id",
+          "sandbox_id",
+          "spec",
+          "state",
+          "created_at",
+          "updated_at",
+          "output_sequence",
+          "stdout_bytes",
+          "stderr_bytes"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sandbox_id": {
+            "type": "string"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/SandboxExecRequest"
+          },
+          "state": {
+            "$ref": "#/components/schemas/SandboxExecState"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "dispatched_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "deadline_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "completed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "exit_code": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Process exit code when known. A completed process can have a nonzero exit code."
+          },
+          "failure_code": {
+            "type": "string",
+            "description": "Failure to start or maintain execution, separate from a process exit code."
+          },
+          "output_sequence": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "stdout_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "stderr_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "final_output_sequence": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "cancel_requested_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "cancel_reason": {
+            "type": "string"
+          }
+        }
+      },
+      "SandboxExecState": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "dispatching",
+          "running",
+          "completed",
+          "failed",
+          "cancelled",
+          "lost"
+        ]
+      },
+      "SandboxOutputFrame": {
+        "type": "object",
+        "required": [
+          "sequence",
+          "stream",
+          "offset",
+          "data",
+          "created_at"
+        ],
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "stream": {
+            "type": "string",
+            "enum": [
+              "stdout",
+              "stderr"
+            ]
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "data": {
+            "type": "string",
+            "format": "byte",
+            "description": "Base64 encoded output bytes."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "SandboxOutputPage": {
+        "type": "object",
+        "required": [
+          "frames",
+          "next_sequence",
+          "last_sequence",
+          "state",
+          "done",
+          "complete"
+        ],
+        "properties": {
+          "frames": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SandboxOutputFrame"
+            }
+          },
+          "next_sequence": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Cursor for the next read."
+          },
+          "last_sequence": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "final_sequence": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "state": {
+            "$ref": "#/components/schemas/SandboxExecState"
+          },
+          "done": {
+            "type": "boolean",
+            "description": "True when the execution is terminal."
+          },
+          "complete": {
+            "type": "boolean",
+            "description": "True when the page reaches the final output sequence without a gap."
+          }
+        }
+      },
+      "SandboxStdinRequest": {
+        "type": "object",
+        "required": [
+          "data",
+          "eof"
+        ],
+        "properties": {
+          "data": {
+            "type": "string",
+            "format": "byte",
+            "description": "Up to 64 KiB of base64 encoded input bytes. Empty data is allowed when eof is true."
+          },
+          "eof": {
+            "type": "boolean",
+            "description": "Close stdin after this frame."
+          }
+        },
+        "additionalProperties": false
+      },
+      "SandboxStdinReceipt": {
+        "type": "object",
+        "required": [
+          "sequence",
+          "bytes",
+          "eof",
+          "created_at"
+        ],
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "eof": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "SandboxError": {
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "fix",
+          "url"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "fix": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
           }
         }
       }

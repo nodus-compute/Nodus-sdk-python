@@ -10,6 +10,7 @@ Prefer a `with` block. Otherwise call `close()`.
 | `run(**brief)` | Accepted `Workload`. [all parameters](../parameters/index.md) |
 | `run_file(path="nodus.toml")` | Accepted `Workload` from a [workload file](../../getting-started/workload-files.md) |
 | `assets` | [Upload, import, list, and delete code or dataset assets](../../guides/assets.md) |
+| `sandboxes` | [Create, reconnect to, list, and control agent sandboxes](../../guides/agent-sandboxes.md) |
 | `get(id)` | Refreshed `Workload` |
 | `list(limit=50, offset=0, status=None, scope=None)` | One page of workloads |
 | `list_page(limit=50, offset=0, status=None, scope=None)` | `(workloads, next_offset)` |
@@ -39,6 +40,29 @@ preset selects nonterminal states and `terminal` selects `completed`, `failed`,
 and `cancelled`. Omit `status` for no status filter.
 Unknown statuses raise `ValueError`. Pagination uses offsets. Concurrent new
 submissions can shift pages. It is not a consistent historical snapshot.
+
+## Sandbox resources
+
+`client.sandboxes.create(...)` accepts an image, resource requirements, a
+budget, network policy, lifecycle, reservation, and continuity settings. It
+returns an accepted `Sandbox` handle. Read `sandbox.state` or call
+`sandbox.refresh()` before assuming the environment is ready.
+
+`client.sandboxes.from_id(ID)` reconnects to a sandbox. `list()` returns one
+cursor-based page and `list_page()` also returns `next_cursor`. Iterating over
+`client.sandboxes` follows every page. The asynchronous client provides the
+same methods and `client.sandboxes.iterate()`.
+
+`sandbox.exec(argv, ...)` queues a process and returns `SandboxExec`.
+`execution.iter_output()` yields ordered `SandboxOutputFrame` objects with
+`stream`, `data`, and decoded `text`. `execution.write(data, eof=False)` sends
+stdin when it was enabled at execution creation. `execution.wait()` returns
+when the process is terminal. Check `succeeded` and `exit_code`. Call
+`sandbox.terminate()` to stop future execution and request resource cleanup.
+
+Sandbox calls use idempotency keys for create, exec, stdin, and terminate.
+Supply a stable key when your application retries after an uncertain response.
+Generated keys protect the SDK transport retries within one method call.
 
 `Workload` offers `refresh`, `wait`, `cancel`, events, logs, artifacts, outputs,
 download, routing, and ledger methods without repeating the ID. Reads and waits

@@ -1,8 +1,10 @@
-# Run GPU workloads with Nodus
+# Run GPU workloads and agent sandboxes with Nodus
 
 Run training, fine-tuning, and batch experiments that need GPU capacity beyond
 your local machine. Submit your command from Python or a workload file, follow
 its progress, and retrieve logs and output files through the same interface.
+For interactive agents, create a durable sandbox and execute multiple commands
+with streamed output and stdin.
 Nodus selects the cheapest compatible on-demand capacity by full hourly price.
 Set a workload budget to limit spending. Optimization tiers are not supported
 yet and are coming later.
@@ -22,6 +24,7 @@ with Python 3.10 or newer, then sign in to get started.
 - [Attach code and datasets](guides/assets.md)
 - [Train or fine-tune a model](guides/gpu-workloads.md)
 - [Run from a workload file](getting-started/workload-files.md)
+- [Run an agent sandbox](guides/agent-sandboxes.md)
 
 ## Go further
 
