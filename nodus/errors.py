@@ -303,8 +303,11 @@ def error_from_response(
         if isinstance(detail, str) and detail:
             message = f"{message}: {_CONTROL.sub('', detail)}"
 
-    code = body.get("error") if isinstance(body, dict) else None
-    remedy = _REMEDIES.get(code) if isinstance(code, str) else None
+    code = (body.get("error") or body.get("code")) if isinstance(body, dict) else None
+    supplied_fix = body.get("fix") if isinstance(body, dict) else None
+    remedy = supplied_fix if isinstance(supplied_fix, str) and supplied_fix else (
+        _REMEDIES.get(code) if isinstance(code, str) else None
+    )
     if remedy:
         message = f"{message}\n{remedy}"
     if request_id:

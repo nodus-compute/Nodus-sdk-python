@@ -37,6 +37,19 @@ from pathlib import Path
 
 from ._outputs import download_path, verified_file, output_destinations
 from ._assets import Asset, Assets, AsyncAssets
+from ._sandboxes import (
+    AsyncSandbox,
+    AsyncSandboxExec,
+    AsyncSandboxes,
+    Sandbox,
+    SandboxExec,
+    SandboxExecState,
+    SandboxInputReceipt,
+    SandboxOutputFrame,
+    SandboxOutputPage,
+    SandboxState,
+    Sandboxes,
+)
 
 import httpx
 
@@ -96,6 +109,17 @@ __all__ = [
     "AsyncClient",
     "Workload",
     "AsyncWorkload",
+    "Sandboxes",
+    "Sandbox",
+    "SandboxExec",
+    "AsyncSandboxes",
+    "AsyncSandbox",
+    "AsyncSandboxExec",
+    "SandboxState",
+    "SandboxExecState",
+    "SandboxOutputFrame",
+    "SandboxOutputPage",
+    "SandboxInputReceipt",
     "Route",
     "StageRun",
     "Output",
@@ -807,6 +831,11 @@ class Client(_Transport):
         """Upload and import code or data for workloads."""
         return Assets(self)
 
+    @property
+    def sandboxes(self) -> Sandboxes:
+        """Create and reconnect to durable agent execution environments."""
+        return Sandboxes(self)
+
     def run_file(self, path: str | Path = "nodus.toml") -> "Workload":
         """Submit a validated workload file. Each call submits one workload."""
         from ._workload_file import load_workload_file
@@ -1199,6 +1228,11 @@ class AsyncClient(_Transport):
     def api_key(self) -> str:
         """The configured key, redacted. What was sent is in the transport."""
         return self._api_key_shown
+
+    @property
+    def sandboxes(self) -> AsyncSandboxes:
+        """Create and reconnect to durable agent execution environments."""
+        return AsyncSandboxes(self)
 
     async def aclose(self) -> None:
         await self._http.aclose()

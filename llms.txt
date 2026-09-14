@@ -1,6 +1,6 @@
 # Nodus Python SDK
 
-> Run training, fine-tuning and batch GPU experiments through one Python interface. Provide your container and command, choose a budget and resource requirements, then retrieve logs and results.
+> Run training, fine-tuning, batch GPU experiments and tool-driven agent sandboxes through one Python interface. Provide your container, budget and resource requirements, then execute commands or retrieve workload results.
 
 Package: nodus-compute. Python import: nodus. Terminal command: nodus. Requires Python 3.10 or newer.
 
@@ -12,6 +12,7 @@ Authenticate: nodus login. Python clients reuse the saved login. Use the authent
 
 - [Official PyPI package](https://pypi.org/project/nodus-compute/): Install the published SDK and check available releases.
 - [Agent execution guide](https://nodus-compute.ai/docs/source/guides/agents.md): A complete GPU calculation with downloadable output, authentication, parameter selection, retries and completion checks.
+- [Agent sandbox guide](https://nodus-compute.ai/docs/source/guides/agent-sandboxes.md): Create a durable sandbox, execute commands, stream output, send stdin and terminate resources.
 - [Quickstart](https://nodus-compute.ai/docs/source/quickstart.md): Install, sign in and submit your first GPU workload.
 - [Authentication](https://nodus-compute.ai/docs/source/getting-started/authentication.md): Browser login, API keys and headless setup.
 - [GPU models and resources](https://nodus-compute.ai/docs/source/reference/parameters/requirements.md): Every accepted GPU name, compatibility value, default and resource constraint.
