@@ -1960,7 +1960,7 @@
           "peak_memory_gb": {
             "type": "number",
             "minimum": 0,
-            "description": "Finite nonnegative device memory requirement in GB for GPU workloads. Zero or omission lets Nodus infer memory. The Python SDK requires a positive value when explicitly supplied."
+            "description": "Finite nonnegative memory requirement per GPU in GB. Memory is not pooled across devices. Zero or omission lets Nodus infer memory. The Python SDK requires a positive value when explicitly supplied."
           },
           "notes": {
             "type": "string"
@@ -1973,6 +1973,24 @@
             "type": "number",
             "deprecated": true,
             "description": "Legacy wire compatibility only. Customers do not need to supply a runtime estimate. It does not determine spending admission."
+          },
+          "gpu_count": {
+            "type": "integer",
+            "enum": [
+              1,
+              2,
+              4,
+              8
+            ],
+            "description": "Exact number of GPUs on one machine. Omission defaults to one GPU or inherits the workload count for a stage. Never split across machines."
+          },
+          "gpu_interconnect": {
+            "type": "string",
+            "enum": [
+              "",
+              "any"
+            ],
+            "description": "No interconnect guarantee. Requests for NVLink or NVSwitch are rejected until topology can be verified."
           }
         },
         "x-go-source": "internal/models/models.go",
@@ -2278,6 +2296,11 @@
           },
           "accelerator": {
             "type": "string"
+          },
+          "gpu_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of GPUs in this single-machine allocation."
           }
         },
         "x-go-source": "internal/models/models.go",

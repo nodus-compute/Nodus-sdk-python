@@ -25,7 +25,7 @@ command = ["python", "-c", "print(__import__('torch').cuda.get_device_name(0))"]
 budget = 5
 '''
 _FIELDS = {
-    'command', 'image', 'model', 'peak_memory_gb', 'optimization', 'gpu',
+    'command', 'image', 'model', 'peak_memory_gb', 'optimization', 'gpu', 'gpu_count', 'gpu_interconnect',
     'budget', 'compute_class', 'continuity', 'finish_by', 'data_regions',
     'stages', 'framework', 'policy', 'requirements', 'idempotency_key',
     'source_asset_id', 'inputs', 'outputs',
@@ -255,7 +255,7 @@ def load_workload_file(path: str | Path = 'nodus.toml') -> dict[str, Any]:
                 _fail(key, 'expected an RFC3339 timestamp with a timezone')
             if deadline.tzinfo is None:
                 _fail(key, 'include the timezone in the deadline')
-        elif key in {'compute_class', 'optimization', 'gpu'}:
+        elif key in {'compute_class', 'optimization', 'gpu', 'gpu_count', 'gpu_interconnect'}:
             choice = {key: value}
             _requirements(choice, 'requirements')
             values[key] = choice[key]
@@ -266,7 +266,7 @@ def load_workload_file(path: str | Path = 'nodus.toml') -> dict[str, Any]:
             _fail('stages', 'put image and command inside each stage source')
     elif 'command' not in values:
         _fail('command', 'provide the command to run')
-    for key in {'model', 'compute_class', 'peak_memory_gb', 'optimization', 'gpu'}:
+    for key in {'model', 'compute_class', 'peak_memory_gb', 'optimization', 'gpu', 'gpu_count', 'gpu_interconnect'}:
         if key in values and key in values.get('requirements', {}):
             _fail(key, 'set this once, at the top level or in requirements')
     if 'data_regions' in values and 'data_regions' in values.get('policy', {}):

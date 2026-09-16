@@ -37,6 +37,8 @@ class Requirements(TypedDict, total=False):
     compute_class: Literal["vm", "accelerator"] | ComputeClass
     dataset_bytes: int
     gpu: str
+    gpu_count: Literal[1, 2, 4, 8]
+    gpu_interconnect: Literal["any"]
     peak_memory_gb: float
     optimization: Literal["", "automatic", "lowest_cost", "lower_cost", "balanced", "faster", "fastest"]
     disk_gb: float
