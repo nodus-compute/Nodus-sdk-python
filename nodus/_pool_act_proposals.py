@@ -35,7 +35,9 @@ class PoolActOutcome:
         if value["source"] == "server_observed" and value["reported_saving_micros"] is not None or value["source"] == "customer_reported" and value["measured_saving_micros"] is not None:
             raise APIError("The API mixed measured and customer-reported outcomes")
         basis = value.get("measurement_basis")
-        if basis is not None and basis != "observed_platform_fee_reduction_30m_v1" or value["measured_saving_micros"] is not None and basis is None:
+        if (basis is not None and (basis != "observed_platform_fee_reduction_30m_v1"
+                or value["source"] != "server_observed" or value["measured_saving_micros"] is None)
+                or value["measured_saving_micros"] is not None and basis is None):
             raise APIError("The API did not identify the observed platform-fee reduction basis")
         row = {k: value[k] for k in fields}
         row["measurement_basis"] = basis

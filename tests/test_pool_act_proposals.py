@@ -61,3 +61,30 @@ def test_observed_platform_fee_reduction_retains_narrow_measurement_basis(asynch
     for basis in (None, "total_saving"):
         with pytest.raises(nodus.APIError):
             call({**outcome, "measurement_basis": basis})
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("source,measured,reported", [
+    ("customer_reported", None, 100),
+    ("server_observed", None, None),
+])
+def test_act_measurement_basis_requires_actual_server_measurement(asynchronous, source, measured, reported):
+    outcome = {"source": source, "result": "no_op", "recorded_at": "2026-09-17T12:02:00Z",
+        "measured_saving_micros": measured, "reported_saving_micros": reported,
+        "measurement_basis": "observed_platform_fee_reduction_30m_v1"}
+    # no_op accepts either source, so this checks the measurement contract itself.
+    with pytest.raises(nodus.APIError):
+        exercise(lambda req: httpx.Response(200, json={"pool_id": "pool_test", "proposals": [
+            {**ACT, "state": "no_op", "outcome": outcome}], "next_cursor": None}),
+            asynchronous, lambda p: p.action_proposals("pool_test"))
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("measured", [None, 0])
+def test_act_unknown_measurement_and_measured_zero_remain_distinct(asynchronous, measured):
+    basis = None if measured is None else "observed_platform_fee_reduction_30m_v1"
+    outcome = {"source": "server_observed", "result": "applied", "recorded_at": "2026-09-17T12:02:00Z",
+        "measured_saving_micros": measured, "reported_saving_micros": None, "measurement_basis": basis}
+    page = exercise(lambda req: httpx.Response(200, json={"pool_id": "pool_test", "proposals": [
+        {**ACT, "state": "applied", "outcome": outcome}], "next_cursor": None}),
+        asynchronous, lambda p: p.action_proposals("pool_test"))
+    assert page.proposals[0].outcome.measured_saving_micros == measured
+    assert page.proposals[0].outcome.measurement_basis == basis

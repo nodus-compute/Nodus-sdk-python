@@ -63,3 +63,15 @@ def test_freeze_cli_reports_unknown_storage_without_zero(monkeypatch, capsys):
 def test_freeze_ack_must_confirm_freeze_intent(asynchronous, state):
     with pytest.raises(nodus.APIError):
         exercise(asynchronous, lambda req: httpx.Response(202, json={**FREEZE, "state": state}), lambda c: c.freeze("wl_test"))
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("state", ["frozen", "resuming", "resumed"])
+@pytest.mark.parametrize("missing_evidence", ["manifest_id", "retained_bytes"])
+def test_saved_freeze_states_require_verified_nonempty_progress(asynchronous, state, missing_evidence):
+    response = {**FREEZE, "state": state}
+    if missing_evidence == "manifest_id":
+        response.pop("manifest_id")
+    else:
+        response["retained_bytes"] = 0
+    with pytest.raises(nodus.APIError):
+        exercise(asynchronous, lambda req: httpx.Response(200, json=response), lambda c: c.freeze_status("wl_test"))

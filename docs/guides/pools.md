@@ -248,12 +248,19 @@ one. These fields may also accompany `set_route` in one request.
 
 | Field | Values |
 |---|---|
-| `wait_policy` | `never` keeps waiting for private capacity and never uses market fallback. `after_wait` allows fallback after waiting. The `cheaper` policy is unavailable |
+| `wait_policy` | `never` keeps waiting for private capacity and never uses market fallback. `after_wait` allows fallback after waiting. `cheaper` may allow early fallback with active, paid Predict and usable forecast evidence |
 | `wait_alpha` | Finite number at least zero. New pools default to 0.1 |
 | `waiting_budget_pct` | Number from 0 through 100 |
 | `burst_approval` | `auto`, `above_threshold`, or `always` |
 | `burst_threshold_micros` | Nonnegative USD micros |
 | `burst_timeout_behaviour` | `keep_waiting` or `cancel` |
+
+The `cheaper` policy compares a current market quote's expected cost to completion
+with the pool's forecast opportunity cost. It requires enabled, funded Predict,
+a positive owned hardware cost, a trusted runtime estimate of at most 30 days,
+and a ready forecast no more than two hours old. Missing or stale evidence does
+not authorize early fallback. Burst approval and workload spending controls
+still apply.
 
 ```python
 client.pools.update_route_settings(
