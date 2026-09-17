@@ -169,6 +169,8 @@ def build_payload(
     peak_memory_gb: float | None = None,
     optimization: str | None = None,
     gpu: str | None = None,
+    gpu_count: int | None = None,
+    gpu_interconnect: str | None = None,
     budget: float | None = None,
     finish_by: datetime | str | None = None,
     continuity: Any = None,
@@ -207,6 +209,10 @@ def build_payload(
         req["optimization"] = optimization
     if gpu is not None:
         req.setdefault("gpu", gpu)
+    if gpu_count is not None:
+        req.setdefault("gpu_count", gpu_count)
+    if gpu_interconnect is not None:
+        req.setdefault("gpu_interconnect", gpu_interconnect)
     req = validate_requirements(req)
 
     # Data residency lives in policy: the envelope reads Policy.DataRegions, and
@@ -333,6 +339,14 @@ def validate_requirements(requirements: dict[str, Any]) -> dict[str, Any]:
             finite = False
         if not finite or (value <= 0 if field == "peak_memory_gb" else value < 0):
             raise ValueError(message)
+    if "gpu_count" in result:
+        value = result["gpu_count"]
+        if type(value) is not int or value not in (1, 2, 4, 8):
+            raise ValueError("gpu_count must be 1, 2, 4, or 8 on one machine")
+    if result.get("gpu_interconnect", "") not in ("", "any"):
+        raise ValueError("gpu_interconnect requires verified topology that is not currently available")
+    if result.get("compute_class") == "vm" and any(k in result for k in ("gpu", "gpu_count", "gpu_interconnect")):
+        raise ValueError("GPU configuration requires accelerator compute")
     if "gpu" in result:
         value = result["gpu"]
         compact = re.sub(r"[\s_-]+", "", value.upper()) if isinstance(value, str) else ""
