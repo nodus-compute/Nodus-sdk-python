@@ -96,6 +96,8 @@ class WorkloadStatus(_WireEnum):
     PROVISIONING = "provisioning"
     RUNNING = "running"
     RECOVERING = "recovering"
+    FREEZING = "freezing"
+    FROZEN = "frozen"
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
@@ -121,7 +123,7 @@ def _num(value: Any, default: float = 0.0) -> float:
         return default
     try:
         out = float(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return default
     return out if math.isfinite(out) else default
 
@@ -487,6 +489,11 @@ class Meter:
     costing me right now". ``as_of`` is part of that number, a live figure
     without the instant it was true cannot be read, and
     ``accruing_rate_usd_hour`` is what ticks it forward between polls.
+
+    Component fields distinguish compute, platform fees and account subscription
+    charges. Older servers omit these components, which default to zero. Keep
+    using the aggregate fields for totals rather than inferring them from missing
+    components. Subscription charges occur only in account-scoped meters.
     """
 
     settled_usd: float = 0.0
@@ -495,12 +502,23 @@ class Meter:
     total_now_usd: float = 0.0
     as_of: datetime | None = None
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
+    compute_settled_usd: float = 0.0
+    platform_fee_settled_usd: float = 0.0
+    subscription_settled_usd: float = 0.0
+    compute_accruing_usd: float = 0.0
+    platform_fee_accruing_usd: float = 0.0
+
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> "Meter | None":
         if not isinstance(d, dict) or not d:
             return None
         return cls(
+            compute_settled_usd=_num(d.get("compute_settled_usd")),
+            platform_fee_settled_usd=_num(d.get("platform_fee_settled_usd")),
+            subscription_settled_usd=_num(d.get("subscription_settled_usd")),
+            compute_accruing_usd=_num(d.get("compute_accruing_usd")),
+            platform_fee_accruing_usd=_num(d.get("platform_fee_accruing_usd")),
             settled_usd=_num(d.get("settled_usd")),
             accruing_usd=_num(d.get("accruing_usd")),
             accruing_rate_usd_hour=_num(d.get("accruing_rate_usd_hour")),

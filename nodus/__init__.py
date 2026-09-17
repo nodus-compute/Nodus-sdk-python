@@ -35,8 +35,14 @@ from importlib.metadata import PackageNotFoundError, version as _distribution_ve
 from typing import Any, AsyncIterator, Iterator
 from pathlib import Path
 
+from ._freeze import WorkloadFreeze
 from ._outputs import download_path, verified_file, output_destinations
 from ._assets import Asset, Assets, AsyncAssets
+from ._pool_predict import PredictSubscription, ForecastPoint, ForecastQueue, ForecastSeries, ForecastCalibration, PoolForecastSnapshot, PoolForecast, PoolRecommendation, PoolRecommendations, RecommendationOutcome
+from ._pool_act_proposals import PoolActOutcome, PoolActProposal, PoolActProposals
+from ._pool_actions import PoolActionPolicy, PoolActionSettings, PoolShadowRun, PoolShadowRuns
+from ._pool_proposals import PoolProposal, PoolProposals
+from ._pools import Pool, PoolHost, HostDevice, EnrollmentToken, Pools, AsyncPools, PoolUtilization, HostUtilization, UtilizationBucket, UtilizationMetrics
 from ._sandboxes import (
     AsyncSandbox,
     AsyncSandboxExec,
@@ -55,7 +61,7 @@ import httpx
 
 from ._terminal import RunProgress
 from ._brief import build_payload, status_filter
-from .requests import Source, Requirements, Policy, ContinuitySpec, StageInput, StageSpec
+from .requests import Source, Requirements, Placement, Policy, ContinuitySpec, StageInput, StageSpec
 from .config import _is_header_safe, read_credentials
 from .errors import (
     APIConnectionError,
@@ -105,6 +111,31 @@ except PackageNotFoundError:
 
 __all__ = [
     "Asset",
+    "Pool",
+    "PoolHost",
+    "HostDevice",
+    "EnrollmentToken",
+    "Pools",
+    "AsyncPools",
+    "PredictSubscription",
+    "ForecastPoint",
+    "ForecastSeries",
+    "ForecastQueue",
+    "ForecastCalibration",
+    "PoolForecastSnapshot",
+    "PoolForecast",
+    "PoolRecommendation",
+    "PoolRecommendations",
+    "PoolProposal",
+    "PoolProposals",
+    "PoolActOutcome", "PoolActProposal", "PoolActProposals",
+    "WorkloadFreeze",
+    "PoolActionPolicy", "PoolActionSettings", "PoolShadowRun", "PoolShadowRuns",
+    "RecommendationOutcome",
+    "PoolUtilization",
+    "HostUtilization",
+    "UtilizationBucket",
+    "UtilizationMetrics",
     "Client",
     "AsyncClient",
     "Workload",
@@ -125,6 +156,7 @@ __all__ = [
     "Output",
     "Source",
     "Requirements",
+    "Placement",
     "Policy",
     "ContinuitySpec",
     "StageInput",
@@ -767,6 +799,7 @@ class Client(_Transport):
         framework: str | None = None,
         policy: Policy | dict[str, Any] | None = None,
         requirements: Requirements | dict[str, Any] | None = None,
+        placement: Placement | dict[str, Any] | None = None,
         idempotency_key: str | None = None,
         extra: dict[str, Any] | None = None,
         **unknown: Any,
@@ -812,6 +845,7 @@ class Client(_Transport):
             framework=framework,
             policy=policy,
             requirements=requirements,
+            placement=placement,
             extra=extra,
             **unknown,
         )
@@ -829,6 +863,11 @@ class Client(_Transport):
         if not wl.id:
             raise NodusError("submit returned no workload id", body=res)
         return wl
+
+    @property
+    def pools(self) -> Pools:
+        """Manage customer-owned pools and observe-only hosts."""
+        return Pools(self)
 
     @property
     def assets(self) -> Assets:
@@ -897,6 +936,24 @@ class Client(_Transport):
             if nxt is None or nxt <= offset:
                 return
             offset = nxt
+
+    def freeze(self, workload_id: str) -> WorkloadFreeze:
+        """Request saved-file freeze. Completion waits for checkpoint and exact cleanup."""
+        result = WorkloadFreeze.from_dict(self._request("POST", f"/v1/workloads/{_valid_id(workload_id)}/freeze", json={}), workload_id)
+        if result.state not in {"requested", "releasing", "frozen"}:
+            raise APIError("The API did not confirm workload freeze intent")
+        return result
+
+    def freeze_status(self, workload_id: str) -> WorkloadFreeze:
+        """Read retained checkpoint bytes without inferring a storage price."""
+        return WorkloadFreeze.from_dict(self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/freeze"), workload_id)
+
+    def resume(self, workload_id: str) -> WorkloadFreeze:
+        """Resume frozen work with its saved files. The customer command must load them."""
+        result = WorkloadFreeze.from_dict(self._request("POST", f"/v1/workloads/{_valid_id(workload_id)}/resume", json={}), workload_id)
+        if result.state not in {"resuming", "resumed"}:
+            raise APIError("The API did not confirm workload resumption")
+        return result
 
     def cancel(self, workload_id: str, *, idempotency_key: str | None = None) -> None:
         self._request(
@@ -1206,6 +1263,15 @@ class Workload(_WorkloadState):
         """This workload's log. See :meth:`Client.logs`."""
         return self._client.logs(self.id, stage=stage, generation=generation)
 
+    def freeze(self) -> WorkloadFreeze:
+        return self._client.freeze(self.id)
+
+    def freeze_status(self) -> WorkloadFreeze:
+        return self._client.freeze_status(self.id)
+
+    def resume(self) -> WorkloadFreeze:
+        return self._client.resume(self.id)
+
     def cancel(self) -> None:
         self._client.cancel(self.id)
 
@@ -1364,6 +1430,7 @@ class AsyncClient(_Transport):
         framework: str | None = None,
         policy: Policy | dict[str, Any] | None = None,
         requirements: Requirements | dict[str, Any] | None = None,
+        placement: Placement | dict[str, Any] | None = None,
         idempotency_key: str | None = None,
         extra: dict[str, Any] | None = None,
         **unknown: Any,
@@ -1390,6 +1457,7 @@ class AsyncClient(_Transport):
             framework=framework,
             policy=policy,
             requirements=requirements,
+            placement=placement,
             extra=extra,
             **unknown,
         )
@@ -1407,6 +1475,11 @@ class AsyncClient(_Transport):
         if not wl.id:
             raise NodusError("submit returned no workload id", body=res)
         return wl
+
+    @property
+    def pools(self) -> AsyncPools:
+        """Manage customer-owned pools and observe-only hosts asynchronously."""
+        return AsyncPools(self)
 
     @property
     def assets(self) -> AsyncAssets:
@@ -1471,6 +1544,24 @@ class AsyncClient(_Transport):
             if nxt is None or nxt <= offset:
                 return
             offset = nxt
+
+    async def freeze(self, workload_id: str) -> WorkloadFreeze:
+        """Request saved-file freeze. Completion waits for checkpoint and exact cleanup."""
+        result = WorkloadFreeze.from_dict(await self._request("POST", f"/v1/workloads/{_valid_id(workload_id)}/freeze", json={}), workload_id)
+        if result.state not in {"requested", "releasing", "frozen"}:
+            raise APIError("The API did not confirm workload freeze intent")
+        return result
+
+    async def freeze_status(self, workload_id: str) -> WorkloadFreeze:
+        """Read retained checkpoint bytes without inferring a storage price."""
+        return WorkloadFreeze.from_dict(await self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/freeze"), workload_id)
+
+    async def resume(self, workload_id: str) -> WorkloadFreeze:
+        """Resume frozen work with its saved files. The customer command must load them."""
+        result = WorkloadFreeze.from_dict(await self._request("POST", f"/v1/workloads/{_valid_id(workload_id)}/resume", json={}), workload_id)
+        if result.state not in {"resuming", "resumed"}:
+            raise APIError("The API did not confirm workload resumption")
+        return result
 
     async def cancel(self, workload_id: str, *, idempotency_key: str | None = None) -> None:
         await self._request(
@@ -1736,6 +1827,15 @@ class AsyncWorkload(_WorkloadState):
     async def logs(self, *, stage: str | None = None, generation: int | None = None) -> str:
         """This workload's log. See :meth:`Client.logs`."""
         return await self._client.logs(self.id, stage=stage, generation=generation)
+
+    async def freeze(self) -> WorkloadFreeze:
+        return await self._client.freeze(self.id)
+
+    async def freeze_status(self) -> WorkloadFreeze:
+        return await self._client.freeze_status(self.id)
+
+    async def resume(self) -> WorkloadFreeze:
+        return await self._client.resume(self.id)
 
     async def cancel(self) -> None:
         await self._client.cancel(self.id)

@@ -28,6 +28,9 @@
     },
     {
       "name": "Sandboxes"
+    },
+    {
+      "name": "Pools"
     }
   ],
   "paths": {
@@ -1779,6 +1782,362 @@
         }
       }
     },
+    "/v1/pools": {
+      "post": {
+        "operationId": "createPool",
+        "summary": "Create a pool for read-only measurement",
+        "tags": [
+          "Pools"
+        ],
+        "responses": {
+          "201": {
+            "description": "Create a pool for read-only measurement",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Pool"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PoolCreateRequest"
+              }
+            }
+          }
+        },
+        "description": "The pool belongs to the authenticated team. This operation has no idempotency contract. Inspect the pool list after a timeout before repeating creation."
+      },
+      "get": {
+        "operationId": "listPools",
+        "summary": "List the authenticated team's pools",
+        "tags": [
+          "Pools"
+        ],
+        "responses": {
+          "200": {
+            "description": "List the authenticated team's pools",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolList"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/pools/{id}": {
+      "get": {
+        "operationId": "getPool",
+        "summary": "Read pool configuration",
+        "tags": [
+          "Pools"
+        ],
+        "responses": {
+          "200": {
+            "description": "Read pool configuration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Pool"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifier returned by Nodus."
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "updatePool",
+        "summary": "Update a pool name or owned hardware cost",
+        "tags": [
+          "Pools"
+        ],
+        "responses": {
+          "200": {
+            "description": "Update a pool name or owned hardware cost",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Pool"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifier returned by Nodus."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PoolPatchRequest"
+              }
+            }
+          }
+        },
+        "description": "Only name and owned_cost_micros_per_hour can be changed. Predict and Route cannot be enabled."
+      }
+    },
+    "/v1/pools/{id}/enrollment-tokens": {
+      "post": {
+        "operationId": "createPoolEnrollmentToken",
+        "summary": "Issue a single-use host enrollment token",
+        "tags": [
+          "Pools"
+        ],
+        "responses": {
+          "201": {
+            "description": "Issue a single-use host enrollment token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolEnrollmentToken"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifier returned by Nodus."
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PoolEnrollmentTokenRequest"
+              }
+            }
+          }
+        },
+        "description": "The secret expires after 24 hours. Observe enrollment is the default. Explicit execute reenrollment binds one existing host and rotates its credential when used. It can be prepared before enabling Route. Requests are not idempotent and must not be automatically replayed."
+      }
+    },
+    "/v1/pools/{id}/hosts": {
+      "get": {
+        "operationId": "listPoolHosts",
+        "summary": "List hosts with health and device inventory",
+        "tags": [
+          "Pools"
+        ],
+        "responses": {
+          "200": {
+            "description": "List hosts with health and device inventory",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolHostList"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifier returned by Nodus."
+          }
+        ]
+      }
+    },
+    "/v1/pools/{id}/hosts/{host}/drain": {
+      "post": {
+        "operationId": "drainPoolHost",
+        "summary": "Request host drain",
+        "tags": [
+          "Pools"
+        ],
+        "responses": {
+          "200": {
+            "description": "Request host drain",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolHost"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifier returned by Nodus."
+          },
+          {
+            "name": "host",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifier returned by Nodus."
+          }
+        ],
+        "description": "Marks the host draining. The observe agent receives desired drain state. Customer processes continue running."
+      }
+    },
+    "/v1/pools/{id}/hosts/{host}": {
+      "delete": {
+        "operationId": "removePoolHost",
+        "summary": "Remove a host and revoke its credential",
+        "tags": [
+          "Pools"
+        ],
+        "responses": {
+          "204": {
+            "description": "Remove a host and revoke its credential"
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifier returned by Nodus."
+          },
+          {
+            "name": "host",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifier returned by Nodus."
+          }
+        ],
+        "description": "Preserves historical measurements. Removal does not stop customer processes or uninstall the agent."
+      }
+    },
     "/v1/sandboxes/{id}/events": {
       "get": {
         "operationId": "listSandboxEvents",
@@ -1834,23 +2193,1094 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "integer"
-            },
-            "description": "Exclusive numeric event ID cursor. At most 100 events per response."
-          },
-          {
-            "name": "after",
-            "in": "query",
-            "required": false,
-            "schema": {
               "type": "integer",
               "format": "int64",
               "minimum": 0
             },
-            "description": "Return events after this event ID."
+            "description": "Exclusive numeric event ID cursor. At most 100 events per response."
           }
         ],
         "description": "Returns up to 100 retained events in ascending ID order. Poll with after set to the last received event ID. Network denial events contain only the denied hostname, count and generation."
+      }
+    },
+    "/v1/pools/{id}/utilization": {
+      "get": {
+        "operationId": "getPoolUtilization",
+        "summary": "Read customer pool utilization from retained device hours",
+        "tags": [
+          "Pools"
+        ],
+        "responses": {
+          "200": {
+            "description": "Retained utilization and explicit measurement availability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolUtilization"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed, duplicate or unsupported query fields or invalid time range.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Result exceeds the full-response bound. Narrow the time window.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifier returned by Nodus."
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Inclusive RFC3339 UTC-hour boundary. Defaults to 168 hours before to."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Exclusive RFC3339 UTC-hour boundary. Defaults to the current UTC hour."
+          },
+          {
+            "name": "bucket",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "hour",
+                "day"
+              ],
+              "default": "hour"
+            },
+            "description": "Group retained hours by hour or UTC calendar day."
+          }
+        ],
+        "description": "Read-only and available to account members. Defaults to the last 168 complete hours, ending at the current UTC hour. From is inclusive and to is exclusive. Both must align to UTC hours and the window must be positive and at most 31 days. Future or incomplete hours are rejected. Day buckets follow UTC calendar boundaries and may have shorter first or last buckets. The response includes current hosts without evidence and removed hosts with retained history. Queries never read raw telemetry. Requests over 100000 device-hour rows or host buckets return 422 instead of partial totals. Narrow the time window to retry."
+      }
+    },
+    "/v1/pools/{id}/forecast": {
+      "get": {
+        "operationId": "getPoolForecast",
+        "summary": "Read a pool forecast and its calibration",
+        "tags": [
+          "Pools"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifier returned by Nodus."
+          },
+          {
+            "name": "horizon",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "enum": [
+                7,
+                30
+              ],
+              "default": 30
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Read a pool forecast and its calibration.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolForecastResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Snapshot is null until the first refresh. Cached data remains readable while disabled or paused. Forecast availability is separate from empirical calibration availability."
+      }
+    },
+    "/v1/pools/{id}/recommendations": {
+      "get": {
+        "operationId": "getPoolRecommendations",
+        "summary": "Read advisory pool recommendations",
+        "tags": [
+          "Pools"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifier returned by Nodus."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 100
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 2048
+            },
+            "description": "Opaque next_cursor returned for the same pool and state filter."
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "open",
+                "done",
+                "expired"
+              ]
+            },
+            "description": "Optional lifecycle filter. Open records that have passed their expiry are treated as expired."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Read advisory pool recommendations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolRecommendationsResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Read advice and human-reported outcomes for this customer-owned pool. Results use keyset pagination in descending creation order. No execution or automatic action is performed."
+      }
+    },
+    "/v1/pools/{id}/recommendations/{rid}/done": {
+      "post": {
+        "operationId": "completePoolRecommendation",
+        "summary": "Record a manual recommendation outcome",
+        "tags": [
+          "Pools"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifier returned by Nodus."
+          },
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Record a manual recommendation outcome.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolRecommendationOutcome"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PoolRecommendationDone"
+              }
+            }
+          }
+        },
+        "description": "Requires an admin. Replaying the same outcome returns the original result. A conflicting replay or an expired recommendation returns 409. This records a customer action and does not execute infrastructure changes."
+      }
+    },
+    "/v1/pools/{id}/proposals": {
+      "get": {
+        "operationId": "listPoolProposals",
+        "summary": "Read retained burst proposals",
+        "tags": [
+          "Pools"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifier returned by Nodus."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 100
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 2048
+            },
+            "description": "Opaque next_cursor returned for the same pool and state filter."
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "approved",
+                "rejected",
+                "expired",
+                "no_op",
+                "applying",
+                "applied"
+              ]
+            },
+            "description": "Optional lifecycle filter. Active records that passed their expiry are returned as expired."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Retained burst proposals.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolProposalsResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Read burst intent for this customer-owned pool, including expired and no-op outcomes. Reads do not require Predict. Keyset pagination uses descending creation order. Follow next_cursor with the same pool and state filter."
+      }
+    },
+    "/v1/pools/{id}/proposals/{pid}/approve": {
+      "post": {
+        "operationId": "approvePoolProposal",
+        "summary": "Approve a burst proposal",
+        "tags": [
+          "Pools"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifier returned by Nodus."
+          },
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Confirmed retained proposal decision.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolProposal"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "maxProperties": 0
+              }
+            }
+          }
+        },
+        "description": "Requires a current account admin and active Route authorization. Send an empty object or omit the body. The proposed amount cannot be changed. The decision is retained atomically. Replays return the same confirmed decision. Expired, no-op, or conflicting decisions return 409. Approval records intent only and does not itself rent capacity. New admission must revalidate the current quote against the approved amount and original expiry."
+      }
+    },
+    "/v1/pools/{id}/proposals/{pid}/reject": {
+      "post": {
+        "operationId": "rejectPoolProposal",
+        "summary": "Reject a burst proposal",
+        "tags": [
+          "Pools"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifier returned by Nodus."
+          },
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Confirmed retained proposal decision.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolProposal"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "maxProperties": 0
+              }
+            }
+          }
+        },
+        "description": "Requires a current account admin and active Route authorization. Send an empty object or omit the body. The proposed amount cannot be changed. The decision is retained atomically. Replays return the same confirmed decision. Expired, no-op, or conflicting decisions return 409. Approval records intent only and does not itself rent capacity. New admission must revalidate the current quote against the approved amount and original expiry."
+      }
+    },
+    "/v1/pools/{id}/action-policies": {
+      "get": {
+        "operationId": "getPoolActionPolicies",
+        "summary": "Read action policies and shadow readiness",
+        "description": "Members may read settings. Readiness never grants execution authority.",
+        "tags": [
+          "Pools"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Read action policies and shadow readiness",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolActionSettings"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "setPoolActionPolicy",
+        "summary": "Set one complete action policy",
+        "description": "Requires an account admin. Approve and auto require active funded Predict and Route with accepted current terms and the kill switch off. Auto also requires a recent complete trusted matching shadow cycle. Off and recommend can be saved without activation. Recommendations require Predict. Saving a policy does not execute an action.",
+        "tags": [
+          "Pools"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Set one complete action policy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolActionSettings"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PoolActionPolicyRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/pools/{id}/act-kill-switch": {
+      "put": {
+        "operationId": "setPoolActKillSwitch",
+        "summary": "Set the Act kill switch",
+        "description": "Requires an account admin. Available even after entitlement loss. Enabling the kill switch blocks new Act authorization and preserves existing resource cleanup.",
+        "tags": [
+          "Pools"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Set the Act kill switch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolActionSettings"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PoolActKillSwitchRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/pools/{id}/shadow-runs": {
+      "get": {
+        "operationId": "listPoolShadowRuns",
+        "summary": "Read trusted shadow coverage and gaps",
+        "description": "Members may read retained cycles. Keyset pagination is bound to the same pool and kind. A gap is a completed elapsed hour without trusted evidence.",
+        "tags": [
+          "Pools"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 100
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 2048
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "idle_reclaim",
+                "defragment",
+                "drain_window",
+                "wait_tuning"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Read trusted shadow coverage and gaps",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolShadowRuns"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "startPoolShadowRun",
+        "summary": "Start a future shadow observation cycle",
+        "description": "Requires an account admin, funded Predict, active Route consent and the kill switch off. Starts at the next complete UTC hour and runs for 168 hours. Starting the same configuration within one hour returns the existing cycle. No action is applied by shadow mode.",
+        "tags": [
+          "Pools"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Start a future shadow observation cycle",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolShadowRun"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PoolActionPolicyRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/pools/{id}/action-proposals": {
+      "get": {
+        "operationId": "listPoolActionProposals",
+        "summary": "Read Act intent and observed outcomes",
+        "description": "Members may read retained action proposals. Follow next_cursor with the same pool and kind. Approval is not evidence that an action was applied. Internal claims, actor identities and source hashes are omitted.",
+        "tags": [
+          "Pools"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 100
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 2048
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "idle_reclaim",
+                "defragment",
+                "drain_window",
+                "wait_tuning"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Retained Act proposals.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolActProposals"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/pools/{id}/action-proposals/{pid}/approve": {
+      "post": {
+        "operationId": "approvePoolActionProposal",
+        "summary": "Approve a retained Act proposal",
+        "tags": [
+          "Pools"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifier returned by Nodus."
+          },
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Retained Act decision.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolActProposal"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "maxProperties": 0
+              }
+            }
+          }
+        },
+        "description": "Requires an account admin. Send an empty object or omit the body. The server retains immutable action evidence. Approval rechecks funded Predict, Route, policy and expiry. Dispatch rechecks authority separately. A stale proposal records no-op or expired state and returns a conflict. Rejection does not apply an action."
+      }
+    },
+    "/v1/pools/{id}/action-proposals/{pid}/reject": {
+      "post": {
+        "operationId": "rejectPoolActionProposal",
+        "summary": "Reject a retained Act proposal",
+        "tags": [
+          "Pools"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifier returned by Nodus."
+          },
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Retained Act decision.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolActProposal"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "maxProperties": 0
+              }
+            }
+          }
+        },
+        "description": "Requires an account admin. Send an empty object or omit the body. The server retains immutable action evidence. Approval rechecks funded Predict, Route, policy and expiry. Dispatch rechecks authority separately. A stale proposal records no-op or expired state and returns a conflict. Rejection does not apply an action."
+      }
+    },
+    "/v1/workloads/{id}/freeze": {
+      "post": {
+        "operationId": "freezeWorkload",
+        "summary": "Request saved-file workload freeze",
+        "description": "Requires a running checkpointed batch workload with useful saved state and a compatible runner. Freeze returns intent until checkpoint and exact compute cleanup are confirmed. Resume requires completed cleanup, preserves selected saved files and restarts the same customer command. Storage bytes are reported separately from unknown storage charges.",
+        "tags": [
+          "Workloads"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Request saved-file workload freeze",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkloadFreeze"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "getWorkloadFreeze",
+        "summary": "Read retained checkpoint and freeze state",
+        "description": "Read retained freeze state for a workload on your account. Retained storage is not separately metered and no storage charge is reported.",
+        "tags": [
+          "Workloads"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Read retained checkpoint and freeze state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkloadFreeze"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workloads/{id}/resume": {
+      "post": {
+        "operationId": "resumeWorkload",
+        "summary": "Resume the command with retained checkpoint files",
+        "description": "Requires a running checkpointed batch workload with useful saved state and a compatible runner. Freeze returns intent until checkpoint and exact compute cleanup are confirmed. Resume requires completed cleanup, preserves selected saved files and restarts the same customer command. Storage bytes are reported separately from unknown storage charges.",
+        "tags": [
+          "Workloads"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Resume the command with retained checkpoint files",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkloadFreeze"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
       }
     }
   },
@@ -1927,6 +3357,9 @@
             "type": "string",
             "maxLength": 120,
             "description": "Optional display name for the run, saved across sessions. Control characters are not allowed."
+          },
+          "placement": {
+            "$ref": "#/components/schemas/Placement"
           }
         },
         "x-go-source": "internal/models/models.go",
@@ -2610,6 +4043,31 @@
           "as_of": {
             "type": "string",
             "format": "date-time"
+          },
+          "compute_settled_usd": {
+            "type": "number",
+            "default": 0,
+            "description": "Settled compute charges in this billing period."
+          },
+          "platform_fee_settled_usd": {
+            "type": "number",
+            "default": 0,
+            "description": "Settled platform fees in this billing period."
+          },
+          "subscription_settled_usd": {
+            "type": "number",
+            "default": 0,
+            "description": "Settled subscription charges in an account meter. Zero in workload meters."
+          },
+          "compute_accruing_usd": {
+            "type": "number",
+            "default": 0,
+            "description": "Compute charges accruing at as_of."
+          },
+          "platform_fee_accruing_usd": {
+            "type": "number",
+            "default": 0,
+            "description": "Platform fees accruing at as_of."
           }
         },
         "x-go-source": "internal/store/meter.go",
@@ -3568,7 +5026,9 @@
           "resuming",
           "recovering",
           "terminated",
-          "failed"
+          "failed",
+          "freezing",
+          "frozen"
         ]
       },
       "SandboxExecRequest": {
@@ -3875,6 +5335,2655 @@
             "format": "uri"
           }
         }
+      },
+      "Pool": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "wait_policy": {
+            "type": "string",
+            "enum": [
+              "never",
+              "after_wait",
+              "cheaper"
+            ],
+            "description": "never keeps waiting for private capacity without market fallback. after_wait permits fallback after the retained wait. cheaper requires funded Predict and a current forecast showing lower expected market completion cost. Missing evidence keeps waiting."
+          },
+          "burst_approval": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "above_threshold",
+              "always"
+            ]
+          },
+          "burst_timeout_behaviour": {
+            "type": "string",
+            "enum": [
+              "keep_waiting",
+              "cancel"
+            ]
+          },
+          "predict_enabled": {
+            "type": "boolean"
+          },
+          "route_enabled": {
+            "type": "boolean"
+          },
+          "sandbox_capable": {
+            "type": "boolean"
+          },
+          "wait_alpha": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Finite nonnegative wait tolerance multiplier. New pools default to 0.1."
+          },
+          "waiting_budget_pct": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "burst_threshold_micros": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "maximum": 9223372036854775807,
+            "description": "Approval threshold in USD micros."
+          },
+          "platform_rate_micros": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Accepted Route rate per active customer device-hour in USD micros. Retained when Route is disabled."
+          },
+          "owned_cost_micros_per_hour": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Customer-supplied owned hardware cost in USD micros per hour. This value does not create a charge."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "state",
+          "wait_policy",
+          "burst_approval",
+          "burst_timeout_behaviour",
+          "predict_enabled",
+          "route_enabled",
+          "sandbox_capable",
+          "wait_alpha",
+          "waiting_budget_pct",
+          "burst_threshold_micros",
+          "platform_rate_micros",
+          "owned_cost_micros_per_hour",
+          "created_at",
+          "updated_at"
+        ],
+        "description": "Customer infrastructure pool with free read-only measurement, optional account-priced Predict, and explicit paid Route activation. Each execution host requires separate host-bound reenrollment. Owned cost is advisory and does not create a charge.",
+        "x-go-source": "internal/models/pools.go",
+        "x-go-type": "PrivatePool"
+      },
+      "PoolCreateRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Trimmed nonempty pool name, at most 200 UTF-8 bytes."
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false,
+        "x-go-source": "internal/api/pools.go",
+        "x-go-type": "poolCreateRequest"
+      },
+      "PoolPatchRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Trimmed nonempty pool name, at most 200 UTF-8 bytes."
+          },
+          "owned_cost_micros_per_hour": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "maximum": 9223372036854775807
+          },
+          "predict_enabled": {
+            "type": "boolean"
+          },
+          "accepted_predict_rate_version": {
+            "type": "string"
+          },
+          "accepted_predict_monthly_micros": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9223372036854775807
+          },
+          "route_enabled": {
+            "type": "boolean"
+          },
+          "accepted_route_rate_version": {
+            "type": "string",
+            "description": "Explicit route-platform-v1 consent required on each enable request."
+          },
+          "accepted_route_rate_micros": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "maximum": 9223372036854775807,
+            "description": "Explicit 20000 USD micros per active customer device-hour required on each enable request."
+          },
+          "wait_policy": {
+            "type": "string",
+            "enum": [
+              "never",
+              "after_wait",
+              "cheaper"
+            ],
+            "description": "never keeps waiting for private capacity without market fallback. after_wait permits fallback after the retained wait. cheaper requires funded Predict and a current forecast showing lower expected market completion cost. Missing evidence keeps waiting."
+          },
+          "wait_alpha": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Finite nonnegative wait tolerance multiplier. New pools default to 0.1."
+          },
+          "waiting_budget_pct": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "burst_approval": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "above_threshold",
+              "always"
+            ]
+          },
+          "burst_threshold_micros": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "maximum": 9223372036854775807,
+            "description": "Approval threshold in USD micros."
+          },
+          "burst_timeout_behaviour": {
+            "type": "string",
+            "enum": [
+              "keep_waiting",
+              "cancel"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "minProperties": 1,
+        "x-go-source": "internal/api/pools.go",
+        "x-go-type": "poolPatchRequest",
+        "description": "Change Predict separately from other settings. Enabling requires explicit accepted_predict_rate_version predict-account-monthly-v1 and accepted_predict_monthly_micros 99000000. Disabling requires only predict_enabled false and stops future refresh and renewal after the last enabled pool is disabled. Cached views remain readable. Change Route and its waiting settings separately from Predict, name, and owned cost. Enabling Route requires an active pool and explicit route-platform-v1 consent at 20000 USD micros per active customer device-hour, including optimize and apply. Consent fields are rejected unless enabling. Disabling blocks new admission and retains accepted terms, existing work, and exact cleanup."
+      },
+      "PoolEnrollmentTokenRequest": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "observe",
+              "execute"
+            ],
+            "default": "observe"
+          },
+          "host_id": {
+            "type": "string",
+            "description": "Existing host in this pool required for execute reenrollment. Rejected for observe mode."
+          }
+        },
+        "additionalProperties": false,
+        "x-go-source": "internal/api/pools.go",
+        "x-go-type": "poolTokenRequest",
+        "description": "Observe is the default, including an omitted body. Execute mode requires an existing host_id and a fresh installation. Token issuance does not activate Route or change host credentials until enrollment."
+      },
+      "PoolEnrollmentToken": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string",
+            "description": "Secret single-use enrollment token returned only when issued. Keep it out of logs and source control."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "observe",
+              "execute"
+            ]
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "token",
+          "mode",
+          "expires_at"
+        ],
+        "x-go-source": "internal/store/pools.go",
+        "x-go-type": "PoolEnrollmentToken"
+      },
+      "PoolInventoryDevice": {
+        "type": "object",
+        "properties": {
+          "device_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "model": {
+            "type": "string"
+          },
+          "memory_mb": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "device_uuid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "device_index",
+          "model",
+          "memory_mb",
+          "device_uuid"
+        ]
+      },
+      "PoolHostInventory": {
+        "type": "object",
+        "properties": {
+          "hostname": {
+            "type": "string"
+          },
+          "kernel": {
+            "type": "string"
+          },
+          "container_runtime": {
+            "type": "string"
+          },
+          "memory_mb": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "disk_mb": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "devices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PoolInventoryDevice"
+            }
+          }
+        },
+        "required": [
+          "hostname",
+          "kernel",
+          "memory_mb",
+          "disk_mb",
+          "devices"
+        ]
+      },
+      "PoolHostDevice": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "host_id": {
+            "type": "string"
+          },
+          "pool_id": {
+            "type": "string"
+          },
+          "device_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "model": {
+            "type": "string"
+          },
+          "memory_mb": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "device_uuid": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "host_id",
+          "pool_id",
+          "device_index",
+          "model",
+          "memory_mb",
+          "device_uuid",
+          "state"
+        ],
+        "x-go-source": "internal/models/pools.go",
+        "x-go-type": "HostDevice"
+      },
+      "PoolHost": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "pool_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "agent_version": {
+            "type": "string"
+          },
+          "agent_mode": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "enrolling",
+              "ready",
+              "draining",
+              "lost",
+              "removed"
+            ]
+          },
+          "inventory": {
+            "$ref": "#/components/schemas/PoolHostInventory"
+          },
+          "devices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PoolHostDevice"
+            }
+          },
+          "last_heartbeat_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "drain_requested_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "enrolled_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "pool_id",
+          "name",
+          "agent_version",
+          "agent_mode",
+          "state",
+          "inventory",
+          "devices",
+          "last_heartbeat_at",
+          "drain_requested_at",
+          "enrolled_at"
+        ],
+        "x-go-source": "internal/models/pools.go",
+        "x-go-type": "PoolHost"
+      },
+      "PoolList": {
+        "type": "object",
+        "properties": {
+          "pools": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Pool"
+            }
+          }
+        },
+        "required": [
+          "pools"
+        ]
+      },
+      "PoolHostList": {
+        "type": "object",
+        "properties": {
+          "hosts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PoolHost"
+            }
+          }
+        },
+        "required": [
+          "hosts"
+        ]
+      },
+      "PoolUtilizationMetrics": {
+        "type": "object",
+        "properties": {
+          "capacity_seconds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "unknown_seconds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "allocated_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "busy_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "idle_allocated_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "stranded_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "foreign_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "fragmentation_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Workload-seconds when a multi-device request waited because free devices were split across hosts."
+          },
+          "queued_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Workload-seconds waiting for the pool. Null when retained queue history cannot cover the window."
+          },
+          "burst_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Settled customer-active burst device-seconds clipped to the requested window."
+          },
+          "allocation_pct": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100
+          },
+          "busy_pct": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100
+          },
+          "busy_of_allocated_pct": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100
+          },
+          "data_status": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "partial",
+              "no_data"
+            ]
+          },
+          "burst_cost_micros": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Exact settled customer cost in USD micros for burst executions wholly inside the requested window. Null when unsettled or crossing the window boundary."
+          }
+        },
+        "required": [
+          "capacity_seconds",
+          "unknown_seconds",
+          "allocated_seconds",
+          "busy_seconds",
+          "idle_allocated_seconds",
+          "stranded_seconds",
+          "foreign_seconds",
+          "fragmentation_seconds",
+          "queued_seconds",
+          "burst_seconds",
+          "allocation_pct",
+          "busy_pct",
+          "busy_of_allocated_pct",
+          "data_status",
+          "burst_cost_micros"
+        ],
+        "x-go-source": "internal/finops/ledger.go",
+        "x-go-type": "Metrics",
+        "description": "Totals cover retained ready-device hourly rows only. Complete means all represented ready seconds have activity evidence, not that the pool existed throughout the requested range. Partial means some ready seconds lack observations and all activity totals and percentages are null. No data means no retained rows. Zero capacity has null percentages. Missing activity is never counted as idle or stranded. Fragmentation, queued and burst are unavailable without Route and remain null in the observe ledger. Route measurements use independent durable queue and execution evidence in the pool summary. Host summaries and host buckets keep Route fields null because these cannot be attributed to a private host."
+      },
+      "PoolUtilizationBucket": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "end": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/PoolUtilizationMetrics"
+          },
+          "foreign_device_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "metrics",
+          "foreign_device_ids"
+        ],
+        "x-go-source": "internal/api/pools_utilization.go",
+        "x-go-type": "poolUtilizationBucket",
+        "description": "Half-open UTC bucket. Empty buckets have no_data metrics. Foreign device IDs identify positive observed foreign allocation even when other activity is unknown."
+      },
+      "PoolUtilizationHost": {
+        "type": "object",
+        "properties": {
+          "host_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "device_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "summary": {
+            "$ref": "#/components/schemas/PoolUtilizationMetrics"
+          },
+          "buckets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PoolUtilizationBucket"
+            }
+          }
+        },
+        "required": [
+          "host_id",
+          "name",
+          "device_count",
+          "summary",
+          "buckets"
+        ],
+        "x-go-source": "internal/api/pools_utilization.go",
+        "x-go-type": "poolUtilizationHost"
+      },
+      "PoolUtilization": {
+        "type": "object",
+        "properties": {
+          "pool_id": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "bucket": {
+            "type": "string",
+            "enum": [
+              "hour",
+              "day"
+            ]
+          },
+          "summary": {
+            "$ref": "#/components/schemas/PoolUtilizationMetrics"
+          },
+          "hosts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PoolUtilizationHost"
+            }
+          }
+        },
+        "required": [
+          "pool_id",
+          "from",
+          "to",
+          "bucket",
+          "summary",
+          "hosts"
+        ],
+        "x-go-source": "internal/api/pools_utilization.go",
+        "x-go-type": "poolUtilizationResponse"
+      },
+      "PoolPredictSubscription": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "disabled",
+              "paused_credits",
+              "paused_cap",
+              "paused_payment",
+              "consent_required"
+            ]
+          },
+          "rate_version": {
+            "type": "string"
+          },
+          "monthly_micros": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "period_start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "period_end": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "paid_current_period": {
+            "type": "boolean"
+          },
+          "enabled_pool_count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "status",
+          "rate_version",
+          "monthly_micros",
+          "period_start",
+          "period_end",
+          "paid_current_period",
+          "enabled_pool_count"
+        ],
+        "x-go-source": "internal/store/pools_predict_billing.go",
+        "x-go-type": "PoolPredictSubscription",
+        "description": "Fixed USD 99 per account per UTC calendar month, independent of device and pool count. The first activation charges the full current month. paid_current_period means funded by credits or accepted postpaid receivable, not that a postpaid invoice has been paid."
+      },
+      "PoolForecastBand": {
+        "type": "object",
+        "properties": {
+          "hour": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "p10": {
+            "type": "number",
+            "minimum": 0
+          },
+          "p50": {
+            "type": "number",
+            "minimum": 0
+          },
+          "p90": {
+            "type": "number",
+            "minimum": 0
+          },
+          "queue_device_hours": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Known queued demand added to this hourly band. Omitted for historical forecasts without queue evidence."
+          }
+        },
+        "required": [
+          "hour",
+          "p10",
+          "p50",
+          "p90"
+        ],
+        "x-go-source": "internal/finops/forecast.go",
+        "x-go-type": "Band"
+      },
+      "PoolForecast": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "insufficient_history"
+            ]
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "horizon_days": {
+            "type": "integer",
+            "enum": [
+              7,
+              30
+            ]
+          },
+          "history_from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "history_hours": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "required_history_hours": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PoolForecastBand"
+            }
+          },
+          "queue": {
+            "$ref": "#/components/schemas/PoolForecastQueue"
+          }
+        },
+        "required": [
+          "model",
+          "status",
+          "as_of",
+          "horizon_days",
+          "history_from",
+          "history_hours",
+          "required_history_hours",
+          "points"
+        ],
+        "x-go-source": "internal/finops/forecast.go",
+        "x-go-type": "Forecast",
+        "description": "Allocated device-hour demand including foreign allocations. A seasonal baseline requires 672 complete hourly observations. Unknown demand is not replaced with zero. No learned model is claimed unless its registry promotion was verified."
+      },
+      "PoolForecastEvaluation": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "no_data",
+              "partial",
+              "complete"
+            ]
+          },
+          "expected_hours": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "forecast_hours": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "evaluated_hours": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "covered_hours": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "hourly_coverage": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pinball_p10": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pinball_p50": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pinball_p90": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "complete_days": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "covered_days": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "daily_coverage": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "status",
+          "expected_hours",
+          "forecast_hours",
+          "evaluated_hours",
+          "covered_hours",
+          "hourly_coverage",
+          "pinball_p10",
+          "pinball_p50",
+          "pinball_p90",
+          "complete_days",
+          "covered_days",
+          "daily_coverage"
+        ],
+        "x-go-source": "internal/finops/forecast.go",
+        "x-go-type": "ForecastEvaluation",
+        "description": "Last 30 completed UTC days scored only against forecasts issued before the target hour. Missing actuals are excluded and denominators are explicit. Daily coverage is the fraction of complete days with every hour covered, not a nominal 80 percent daily interval."
+      },
+      "PoolAdvisoryPrice": {
+        "type": "object",
+        "properties": {
+          "rate_micros_per_device_hour": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "basis": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "rate_micros_per_device_hour",
+          "observed_at",
+          "basis"
+        ],
+        "x-go-source": "internal/store/pools_predict.go",
+        "x-go-type": "PoolAdvisoryPrice",
+        "description": "Fresh compatible available market configuration observed with the customer markup. Device-fit hourly advisory only, not a workload completion quote or an executable reservation."
+      },
+      "PoolForecastSnapshot": {
+        "type": "object",
+        "properties": {
+          "pool_id": {
+            "type": "string"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "forecast": {
+            "$ref": "#/components/schemas/PoolForecast"
+          },
+          "calibration": {
+            "$ref": "#/components/schemas/PoolForecastEvaluation"
+          },
+          "owned_devices": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "advisory_burst_price": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PoolAdvisoryPrice"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "pool_id",
+          "generated_at",
+          "forecast",
+          "calibration",
+          "owned_devices",
+          "advisory_burst_price"
+        ],
+        "x-go-source": "internal/store/pools_predict.go",
+        "x-go-type": "PoolForecastSnapshot"
+      },
+      "PoolRecommendationOutcome": {
+        "type": "object",
+        "properties": {
+          "recorded_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "reported_saving_micros": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "recorded_at",
+          "outcome",
+          "reported_saving_micros"
+        ],
+        "x-go-source": "internal/store/pools_predict.go",
+        "x-go-type": "PoolRecommendationOutcome",
+        "description": "Immutable customer-reported manual outcome. reported_saving_micros is optional customer testimony, not measured or verified savings. No action is executed by recording an outcome."
+      },
+      "PoolRecommendationDone": {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "reported_saving_micros": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "outcome"
+        ],
+        "x-go-source": "internal/store/pools_predict.go",
+        "x-go-type": "PoolRecommendationDone",
+        "additionalProperties": false
+      },
+      "PoolRecommendation": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "pool_id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "rightsize",
+              "idle_reclaim",
+              "drain_window",
+              "defragment",
+              "wait_tuning"
+            ]
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "open",
+              "done",
+              "expired"
+            ]
+          },
+          "recommendation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PoolRightSizeRecommendation"
+              },
+              {
+                "$ref": "#/components/schemas/PoolIdleRecommendation"
+              },
+              {
+                "$ref": "#/components/schemas/PoolDrainRecommendation"
+              },
+              {
+                "$ref": "#/components/schemas/PoolDefragmentRecommendation"
+              },
+              {
+                "$ref": "#/components/schemas/PoolWaitTuningRecommendation"
+              }
+            ]
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PoolRecommendationOutcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "pool_id",
+          "kind",
+          "generated_at",
+          "expires_at",
+          "state",
+          "recommendation",
+          "outcome"
+        ],
+        "x-go-source": "internal/store/pools_predict.go",
+        "x-go-type": "PoolRecommendation"
+      },
+      "PoolForecastResponse": {
+        "type": "object",
+        "properties": {
+          "pool_id": {
+            "type": "string"
+          },
+          "predict_enabled": {
+            "type": "boolean"
+          },
+          "refresh_status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "disabled",
+              "awaiting_refresh",
+              "stale",
+              "paused_credits",
+              "paused_cap",
+              "paused_payment",
+              "consent_required"
+            ]
+          },
+          "subscription": {
+            "$ref": "#/components/schemas/PoolPredictSubscription"
+          },
+          "snapshot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PoolForecastSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "pool_id",
+          "predict_enabled",
+          "refresh_status",
+          "subscription",
+          "snapshot"
+        ],
+        "x-go-source": "internal/api/pools_predict.go",
+        "x-go-type": "poolForecastResponse"
+      },
+      "PoolRecommendationsResponse": {
+        "type": "object",
+        "properties": {
+          "pool_id": {
+            "type": "string"
+          },
+          "predict_enabled": {
+            "type": "boolean"
+          },
+          "refresh_status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "disabled",
+              "awaiting_refresh",
+              "stale",
+              "paused_credits",
+              "paused_cap",
+              "paused_payment",
+              "consent_required"
+            ]
+          },
+          "recommendations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PoolRecommendation"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Opaque continuation cursor or null when no older records remain. Reuse the same state filter."
+          }
+        },
+        "required": [
+          "pool_id",
+          "predict_enabled",
+          "refresh_status",
+          "recommendations",
+          "next_cursor"
+        ],
+        "x-go-source": "internal/api/pools_predict.go",
+        "x-go-type": "poolRecommendationsResponse",
+        "description": "One page of advice and recorded human outcomes, newest first. Follow next_cursor to read older records. Use state=open for current actionable advice."
+      },
+      "PoolRightSizeRecommendation": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "rightsize"
+            ]
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "recommend"
+            ]
+          },
+          "risk": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "recommended_devices": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "expected_savings_micros": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/PoolRightSizeEvidence"
+          }
+        },
+        "required": [
+          "kind",
+          "level",
+          "risk",
+          "recommended_devices",
+          "expected_savings_micros",
+          "evidence"
+        ],
+        "x-go-source": "internal/finops/optimize.go",
+        "x-go-type": "Recommendation"
+      },
+      "PoolRightSizeEvidence": {
+        "type": "object",
+        "properties": {
+          "method": {
+            "type": "string"
+          },
+          "history_from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "history_to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "history_hours": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "horizon_from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "horizon_to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "horizon_hours": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "scenarios_per_hour": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "current_devices": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "released_devices": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "owned_micros_per_device_hour": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "burst_micros_per_device_hour": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "critical_fractile": {
+            "type": "number",
+            "minimum": 0
+          },
+          "expected_burst_device_hours": {
+            "type": "number",
+            "minimum": 0
+          },
+          "expected_burst_micros": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "released_owned_micros": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "advisory_price": {
+            "type": "boolean"
+          },
+          "demand_distribution": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PoolDemandMass"
+            }
+          }
+        },
+        "required": [
+          "method",
+          "history_from",
+          "history_to",
+          "history_hours",
+          "horizon_from",
+          "horizon_to",
+          "horizon_hours",
+          "scenarios_per_hour",
+          "current_devices",
+          "released_devices",
+          "owned_micros_per_device_hour",
+          "burst_micros_per_device_hour",
+          "critical_fractile",
+          "expected_burst_device_hours",
+          "expected_burst_micros",
+          "released_owned_micros",
+          "advisory_price",
+          "demand_distribution"
+        ],
+        "x-go-source": "internal/finops/optimize.go",
+        "x-go-type": "RightSizeEvidence",
+        "description": "Recomputable prospective scenario costs in USD micros. Uses allocated demand and the observed hourly market price. Expected savings are not measured outcomes or guaranteed cost to completion."
+      },
+      "PoolDemandMass": {
+        "type": "object",
+        "properties": {
+          "device_hours": {
+            "type": "number",
+            "minimum": 0
+          },
+          "scenario_count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "device_hours",
+          "scenario_count"
+        ],
+        "x-go-source": "internal/finops/optimize.go",
+        "x-go-type": "DemandMass"
+      },
+      "PoolIdleRecommendation": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "idle_reclaim"
+            ]
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "recommend"
+            ]
+          },
+          "risk": {
+            "type": "string",
+            "enum": [
+              "high"
+            ]
+          },
+          "advisory_only": {
+            "type": "boolean",
+            "const": true
+          },
+          "host_id": {
+            "type": "string"
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "device_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "expected_savings_micros": {
+            "type": "null"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/PoolIdleEvidence"
+          }
+        },
+        "required": [
+          "kind",
+          "level",
+          "risk",
+          "advisory_only",
+          "host_id",
+          "device_id",
+          "device_index",
+          "expected_savings_micros",
+          "expires_at",
+          "evidence"
+        ],
+        "x-go-source": "internal/finops/idle.go",
+        "x-go-type": "IdleRecommendation",
+        "description": "Advisory device allocation with SM below 5 percent for an uninterrupted 30 minutes, supported by one week of observed hourly history. Foreign is only a boolean. No process identity or measured savings are inferred. Evidence expires after three minutes."
+      },
+      "PoolIdleEvidence": {
+        "type": "object",
+        "properties": {
+          "method": {
+            "type": "string"
+          },
+          "sm_util_below_pct": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "trigger_from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "trigger_to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "consecutive_seconds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "observed_through": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "foreign": {
+            "type": "boolean"
+          },
+          "history_from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "history_to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "historical_observed_hours": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "method",
+          "sm_util_below_pct",
+          "trigger_from",
+          "trigger_to",
+          "consecutive_seconds",
+          "observed_through",
+          "foreign",
+          "history_from",
+          "history_to",
+          "historical_observed_hours"
+        ],
+        "x-go-source": "internal/finops/idle.go",
+        "x-go-type": "IdleReclaimEvidence"
+      },
+      "PoolDrainRecommendation": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "drain_window"
+            ]
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "recommend"
+            ]
+          },
+          "risk": {
+            "type": "string",
+            "enum": [
+              "high"
+            ]
+          },
+          "advisory_only": {
+            "type": "boolean",
+            "const": true
+          },
+          "host_id": {
+            "type": "string"
+          },
+          "expected_savings_micros": {
+            "type": "null"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/PoolDrainEvidence"
+          }
+        },
+        "required": [
+          "kind",
+          "level",
+          "risk",
+          "advisory_only",
+          "host_id",
+          "expected_savings_micros",
+          "expires_at",
+          "evidence"
+        ],
+        "x-go-source": "internal/finops/drain.go",
+        "x-go-type": "DrainRecommendation",
+        "description": "A retained UTC drain window with at least three hours remaining at generation. The window may start in the current hour. Expiry is no later than window_to and 24 hours after generation. No measured or estimated saving is invented."
+      },
+      "PoolDrainEvidence": {
+        "type": "object",
+        "properties": {
+          "method": {
+            "type": "string"
+          },
+          "window_from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "window_to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "consecutive_hours": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "threshold_devices": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_p90_device_hours": {
+            "type": "number",
+            "minimum": 0
+          },
+          "history_from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "history_to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "history_hours": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "model": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "method",
+          "window_from",
+          "window_to",
+          "consecutive_hours",
+          "threshold_devices",
+          "max_p90_device_hours",
+          "history_from",
+          "history_to",
+          "history_hours",
+          "model"
+        ],
+        "x-go-source": "internal/finops/drain.go",
+        "x-go-type": "DrainWindowEvidence"
+      },
+      "PoolDefragmentEvidence": {
+        "type": "object",
+        "properties": {
+          "method": {
+            "type": "string"
+          },
+          "history_from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "history_to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "observed_hours": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "fragmentation_wait_seconds": {
+            "type": "number",
+            "minimum": 0
+          },
+          "threshold_seconds": {
+            "type": "number",
+            "minimum": 0
+          },
+          "packing_policy": {
+            "type": "string"
+          },
+          "foreign_jobs_movable": {
+            "type": "boolean",
+            "const": false
+          }
+        },
+        "required": [
+          "method",
+          "history_from",
+          "history_to",
+          "observed_hours",
+          "fragmentation_wait_seconds",
+          "threshold_seconds",
+          "packing_policy",
+          "foreign_jobs_movable"
+        ],
+        "x-go-source": "internal/finops/defragment.go",
+        "x-go-type": "DefragmentEvidence"
+      },
+      "PoolDefragmentRecommendation": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "defragment"
+            ]
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "recommend"
+            ]
+          },
+          "risk": {
+            "type": "string",
+            "enum": [
+              "high"
+            ]
+          },
+          "advisory_only": {
+            "type": "boolean",
+            "const": true
+          },
+          "expected_savings_micros": {
+            "type": "null"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/PoolDefragmentEvidence"
+          }
+        },
+        "required": [
+          "kind",
+          "level",
+          "risk",
+          "advisory_only",
+          "expected_savings_micros",
+          "expires_at",
+          "evidence"
+        ],
+        "x-go-source": "internal/finops/defragment.go",
+        "x-go-type": "DefragmentRecommendation",
+        "description": "Manual placement advice from 336 fully observed Route hours. No advice is produced from missing placement observations. Foreign jobs are never proposed for movement and savings are not inferred."
+      },
+      "Placement": {
+        "type": "object",
+        "properties": {
+          "pool": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Customer pool ID. Nonempty, at most 200 UTF-8 bytes, without surrounding whitespace or control characters."
+          },
+          "prefer": {
+            "type": "string",
+            "enum": [
+              "any"
+            ],
+            "description": "Skip private pools and use eligible market capacity."
+          }
+        },
+        "additionalProperties": false,
+        "oneOf": [
+          {
+            "required": [
+              "pool"
+            ],
+            "not": {
+              "required": [
+                "prefer"
+              ]
+            }
+          },
+          {
+            "required": [
+              "prefer"
+            ],
+            "not": {
+              "required": [
+                "pool"
+              ]
+            }
+          }
+        ],
+        "description": "Choose exactly one customer pool or prefer any eligible market capacity. Omit placement to prefer eligible private capacity.",
+        "x-go-source": "internal/models/placement.go",
+        "x-go-type": "Placement"
+      },
+      "PoolProposal": {
+        "type": "object",
+        "required": [
+          "id",
+          "pool_id",
+          "workload_id",
+          "stage_id",
+          "reason",
+          "kind",
+          "state",
+          "envelope_version",
+          "generation",
+          "device_count",
+          "expected_cost_micros",
+          "approved_cost_micros",
+          "created_at",
+          "expires_at",
+          "decided_at",
+          "applied_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "pool_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "workload_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "stage_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "burst"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected",
+              "expired",
+              "no_op",
+              "applying",
+              "applied"
+            ]
+          },
+          "envelope_version": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 9223372036854775807
+          },
+          "generation": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 9223372036854775807
+          },
+          "device_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 9223372036854775807
+          },
+          "expected_cost_micros": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 9223372036854775807
+          },
+          "approved_cost_micros": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 9223372036854775807,
+            "description": "Null until approval. Once approved, equals the immutable expected_cost_micros."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "decided_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "applied_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "description": "Retained burst approval intent for one submitted workload stage and generation. Approved records intent, applying means that generation claimed the approval, and applied requires an observed winning execution. Expiry blocks new dispatch but does not erase a winner dispatched before expiry. No supplier identity or quote secrets are returned."
+      },
+      "PoolProposalsResponse": {
+        "type": "object",
+        "required": [
+          "pool_id",
+          "proposals",
+          "next_cursor"
+        ],
+        "properties": {
+          "pool_id": {
+            "type": "string"
+          },
+          "proposals": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/PoolProposal"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2048
+          }
+        }
+      },
+      "PoolActionPolicyRequest": {
+        "type": "object",
+        "required": [
+          "kind",
+          "level",
+          "window_cron",
+          "parallelism_cap"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "idle_reclaim",
+              "defragment",
+              "drain_window",
+              "wait_tuning"
+            ]
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "off",
+              "recommend",
+              "approve",
+              "auto"
+            ]
+          },
+          "window_cron": {
+            "type": "string",
+            "maxLength": 256,
+            "description": "Weekly UTC minute hour * * weekday. Minute, hour and weekday accept *, integer lists and inclusive ranges. No steps, names, macros, duplicate values or leading zeros. Weekday 0 is Sunday."
+          },
+          "parallelism_cap": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32
+          }
+        },
+        "x-go-source": "internal/api/pools_action_policies.go",
+        "x-go-type": "poolActionPolicyRequest",
+        "additionalProperties": false
+      },
+      "PoolActionPolicy": {
+        "type": "object",
+        "required": [
+          "kind",
+          "level",
+          "window_cron",
+          "parallelism_cap",
+          "updated_at",
+          "shadow_qualified",
+          "shadow_producer_available"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "idle_reclaim",
+              "defragment",
+              "drain_window",
+              "wait_tuning"
+            ]
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "off",
+              "recommend",
+              "approve",
+              "auto"
+            ]
+          },
+          "window_cron": {
+            "type": "string",
+            "maxLength": 256,
+            "description": "Weekly UTC minute hour * * weekday. Minute, hour and weekday accept *, integer lists and inclusive ranges. No steps, names, macros, duplicate values or leading zeros. Weekday 0 is Sunday."
+          },
+          "parallelism_cap": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "shadow_qualified": {
+            "type": "boolean",
+            "description": "A recent complete trusted cycle matches this policy configuration. This is evidence readiness, not execution authorization."
+          },
+          "shadow_producer_available": {
+            "type": "boolean",
+            "default": false,
+            "description": "True only when this server implements a trusted shadow producer for this kind. This does not establish automatic qualification."
+          }
+        },
+        "x-go-source": "internal/api/pools_action_policies.go",
+        "x-go-type": "poolActionPolicyView"
+      },
+      "PoolActionSettings": {
+        "type": "object",
+        "required": [
+          "pool_id",
+          "kill_switch",
+          "policies"
+        ],
+        "properties": {
+          "pool_id": {
+            "type": "string"
+          },
+          "kill_switch": {
+            "type": "boolean"
+          },
+          "policies": {
+            "type": "array",
+            "minItems": 4,
+            "maxItems": 4,
+            "items": {
+              "$ref": "#/components/schemas/PoolActionPolicy"
+            }
+          }
+        },
+        "x-go-source": "internal/api/pools_action_policies.go",
+        "x-go-type": "poolActionSettingsResponse"
+      },
+      "PoolActKillSwitchRequest": {
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "x-go-source": "internal/api/pools_action_policies.go",
+        "x-go-type": "poolActKillSwitchRequest",
+        "additionalProperties": false
+      },
+      "PoolShadowRun": {
+        "type": "object",
+        "required": [
+          "id",
+          "pool_id",
+          "kind",
+          "window_cron",
+          "parallelism_cap",
+          "cycle_start",
+          "cycle_end",
+          "state",
+          "ended_at",
+          "trusted_hours",
+          "elapsed_hours",
+          "gap_hours",
+          "would_have_acted",
+          "producer_available",
+          "qualifies_auto"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "pool_id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "idle_reclaim",
+              "defragment",
+              "drain_window",
+              "wait_tuning"
+            ]
+          },
+          "window_cron": {
+            "type": "string",
+            "maxLength": 256,
+            "description": "Weekly UTC minute hour * * weekday. Minute, hour and weekday accept *, integer lists and inclusive ranges. No steps, names, macros, duplicate values or leading zeros. Weekday 0 is Sunday."
+          },
+          "parallelism_cap": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32
+          },
+          "cycle_start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cycle_end": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "running",
+              "completed"
+            ]
+          },
+          "ended_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "trusted_hours": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 168
+          },
+          "elapsed_hours": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 168
+          },
+          "gap_hours": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 168
+          },
+          "would_have_acted": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Sum of counterfactual action counts from trusted observations. Never measured savings or an applied-action count."
+          },
+          "producer_available": {
+            "type": "boolean"
+          },
+          "qualifies_auto": {
+            "type": "boolean",
+            "description": "This exact cycle has 168 trusted hours, is completed and ended within 30 days. Current entitlement, policy, permissions and kill switch are checked separately."
+          }
+        },
+        "x-go-source": "internal/store/pools_action_views.go",
+        "x-go-type": "PoolShadowView",
+        "description": "A future 168-hour observation cycle. Missing capture is a gap, never fabricated evidence. Only idle reclaim currently has a trusted producer. Completed generic evidence cannot qualify automatic actions."
+      },
+      "PoolShadowRuns": {
+        "type": "object",
+        "required": [
+          "pool_id",
+          "runs",
+          "next_cursor"
+        ],
+        "properties": {
+          "pool_id": {
+            "type": "string"
+          },
+          "runs": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/PoolShadowRun"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2048
+          }
+        },
+        "x-go-source": "internal/store/pools_action_views.go",
+        "x-go-type": "PoolShadowPage"
+      },
+      "PoolActOutcome": {
+        "type": "object",
+        "required": [
+          "source",
+          "result",
+          "recorded_at",
+          "measured_saving_micros",
+          "reported_saving_micros",
+          "measurement_basis"
+        ],
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "server_observed",
+              "customer_reported"
+            ]
+          },
+          "result": {
+            "type": "string",
+            "enum": [
+              "applied",
+              "no_op",
+              "failed"
+            ]
+          },
+          "recorded_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "measured_saving_micros": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0,
+            "description": "Observed platform-fee reduction only for the returned measurement basis. Null when unmeasured."
+          },
+          "reported_saving_micros": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "measurement_basis": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "observed_platform_fee_reduction_30m_v1",
+              null
+            ],
+            "description": "Observed Route platform-fee reduction over equal 30-minute windows. Not total infrastructure saving or a causal counterfactual."
+          }
+        },
+        "x-go-source": "internal/api/pools_action_proposals.go",
+        "x-go-type": "poolActOutcomeView",
+        "description": "Observed outcomes and customer reports are distinct. Missing measured savings stay null. Customer input never supplies server measurement."
+      },
+      "PoolActProposal": {
+        "type": "object",
+        "required": [
+          "id",
+          "pool_id",
+          "recommendation_id",
+          "reason",
+          "kind",
+          "level",
+          "recommendation",
+          "created_at",
+          "expires_at",
+          "state",
+          "decided_at",
+          "outcome"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "pool_id": {
+            "type": "string"
+          },
+          "recommendation_id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "idle_reclaim",
+              "defragment",
+              "drain_window",
+              "wait_tuning"
+            ]
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "approve",
+              "auto"
+            ]
+          },
+          "recommendation": {
+            "type": "object",
+            "description": "Immutable server-retained recommendation evidence matching kind. No caller-provided action body."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected",
+              "expired",
+              "no_op",
+              "applying",
+              "uncertain",
+              "applied",
+              "failed"
+            ]
+          },
+          "decided_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "outcome": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PoolActOutcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "x-go-source": "internal/api/pools_action_proposals.go",
+        "x-go-type": "poolActProposalView"
+      },
+      "PoolActProposals": {
+        "type": "object",
+        "required": [
+          "pool_id",
+          "proposals",
+          "next_cursor"
+        ],
+        "properties": {
+          "pool_id": {
+            "type": "string"
+          },
+          "proposals": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/PoolActProposal"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2048
+          }
+        },
+        "x-go-source": "internal/api/pools_action_proposals.go",
+        "x-go-type": "poolActProposalsResponse"
+      },
+      "WorkloadFreeze": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "workload_id": {
+            "type": "string"
+          },
+          "stage_id": {
+            "type": "string"
+          },
+          "manifest_id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "requested",
+              "releasing",
+              "frozen",
+              "resuming",
+              "resumed",
+              "failed"
+            ]
+          },
+          "requested_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "frozen_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "retained_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "storage_charge_micros": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Null while retained storage is not separately metered. Do not infer a zero charge."
+          },
+          "storage_billing_status": {
+            "type": "string",
+            "enum": [
+              "retained_storage_not_separately_metered"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "workload_id",
+          "stage_id",
+          "generation",
+          "state",
+          "requested_at",
+          "frozen_at",
+          "retained_bytes",
+          "storage_charge_micros",
+          "storage_billing_status"
+        ],
+        "x-go-source": "internal/store/workload_freeze.go",
+        "x-go-type": "WorkloadFreeze",
+        "description": "Saved checkpoint files and verified compute cleanup. Freeze and resume do not restore arbitrary process memory. The customer command must load its checkpoint."
+      },
+      "PoolWaitTuningEvidence": {
+        "type": "object",
+        "properties": {
+          "observed_hours": {
+            "type": "integer",
+            "minimum": 0,
+            "const": 336
+          },
+          "completed_executions": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "wait_seconds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "runtime_seconds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "burst_spent_micros": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "policy_version": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "observed_delay_pct": {
+            "type": "number",
+            "minimum": 0
+          },
+          "waiting_budget_pct": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "current_alpha": {
+            "type": "number",
+            "minimum": 0
+          },
+          "proposed_alpha": {
+            "type": "number",
+            "minimum": 0
+          },
+          "method": {
+            "type": "string",
+            "const": "bounded_proportional_wait_v1"
+          },
+          "history_from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "history_to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "source_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "required": [
+          "observed_hours",
+          "completed_executions",
+          "wait_seconds",
+          "runtime_seconds",
+          "burst_spent_micros",
+          "policy_version",
+          "observed_delay_pct",
+          "waiting_budget_pct",
+          "current_alpha",
+          "proposed_alpha",
+          "method",
+          "history_from",
+          "history_to",
+          "source_sha256"
+        ],
+        "x-go-source": "internal/finops/wait_tuning.go",
+        "x-go-type": "WaitTuningEvidence"
+      },
+      "PoolWaitTuningRecommendation": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "wait_tuning"
+          },
+          "level": {
+            "type": "string",
+            "const": "recommend"
+          },
+          "risk": {
+            "type": "string",
+            "const": "high"
+          },
+          "advisory_only": {
+            "type": "boolean",
+            "const": true
+          },
+          "expected_savings_micros": {
+            "type": "null"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/PoolWaitTuningEvidence"
+          }
+        },
+        "required": [
+          "kind",
+          "level",
+          "risk",
+          "advisory_only",
+          "expected_savings_micros",
+          "expires_at",
+          "evidence"
+        ],
+        "x-go-source": "internal/finops/wait_tuning.go",
+        "x-go-type": "WaitTuningRecommendation",
+        "description": "At most 25 percent adjustment based on 336 hours of actual Route coverage and completed settled executions. Applies to future waits. No counterfactual savings or universal delay guarantee."
+      },
+      "PoolForecastQueue": {
+        "type": "object",
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": [
+              "retained_queue_immediate_start_v1"
+            ]
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "known_jobs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "unknown_jobs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "known_device_hours": {
+            "type": "number",
+            "minimum": 0
+          },
+          "added_device_hours": {
+            "type": "number",
+            "minimum": 0
+          },
+          "outside_horizon_device_hours": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "method",
+          "observed_at",
+          "known_jobs",
+          "unknown_jobs",
+          "known_device_hours",
+          "added_device_hours",
+          "outside_horizon_device_hours"
+        ],
+        "x-go-source": "internal/finops/queue.go",
+        "x-go-type": "QueueEvidence",
+        "description": "Retained queued demand under an immediate-start scenario from the next complete hour. This is not a placement promise. Unknown runtimes remain a job count. Known device-hours equal added device-hours plus demand beyond the selected horizon."
       }
     }
   },
