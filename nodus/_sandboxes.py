@@ -93,7 +93,7 @@ def _http_path(sandbox_id: str, port: int, path: str, method: str) -> str:
         raise ValidationError("invalid HTTP path")
     if any(part in {".", ".."} for part in urlsplit(decoded).path.split("/")):
         raise ValidationError("HTTP paths cannot contain dot segments")
-    return f"/v1/sandboxes/{_valid_id(sandbox_id, 'sandbox')}/ports/{port}{path}"
+    return f"/v1/sandboxes/{_valid_id(sandbox_id, 'sandbox')}/ports/{port}/{path[1:]}"
 
 
 def _wire(value: Any) -> Any:
