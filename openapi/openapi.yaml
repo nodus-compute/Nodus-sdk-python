@@ -7314,7 +7314,8 @@
           "window_cron",
           "parallelism_cap",
           "updated_at",
-          "shadow_qualified"
+          "shadow_qualified",
+          "shadow_producer_available"
         ],
         "properties": {
           "kind": {
@@ -7352,6 +7353,11 @@
           "shadow_qualified": {
             "type": "boolean",
             "description": "A recent complete trusted cycle matches this policy configuration. This is evidence readiness, not execution authorization."
+          },
+          "shadow_producer_available": {
+            "type": "boolean",
+            "default": false,
+            "description": "True only when this server implements a trusted shadow producer for this kind. This does not establish automatic qualification."
           }
         },
         "x-go-source": "internal/api/pools_action_policies.go",

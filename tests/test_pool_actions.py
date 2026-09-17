@@ -91,3 +91,14 @@ def test_action_cli_preserves_complete_policy_and_reports_gaps(monkeypatch, caps
     assert json.loads(calls[-1].content) == POLICY
     assert cli.main(["pools", "shadows", "pool_test"]) == 0
     assert "167/168" in capsys.readouterr().out
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_shadow_start_capability_comes_from_server(asynchronous):
+    value = copy.deepcopy(SETTINGS)
+    value["policies"][3]["shadow_producer_available"] = True
+    result = exercise(lambda req: httpx.Response(200, json=value), asynchronous, lambda p: p.action_policies("pool_test"))
+    assert result.policies[3].shadow_producer_available is True
+    assert result.policies[0].shadow_producer_available is False
+    value["policies"][3]["shadow_producer_available"] = "true"
+    with pytest.raises(nodus.APIError):
+        exercise(lambda req: httpx.Response(200, json=value), asynchronous, lambda p: p.action_policies("pool_test"))

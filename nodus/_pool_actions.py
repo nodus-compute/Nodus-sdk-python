@@ -66,6 +66,7 @@ class PoolActionPolicy:
     parallelism_cap: int
     updated_at: str
     shadow_qualified: bool
+    shadow_producer_available: bool = False
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
     @classmethod
@@ -74,7 +75,10 @@ class PoolActionPolicy:
         _time(value.get("updated_at"))
         if type(value.get("shadow_qualified")) is not bool:
             raise APIError("The API returned invalid shadow qualification")
-        row.update(updated_at=value["updated_at"], shadow_qualified=value["shadow_qualified"])
+        available = value.get("shadow_producer_available", False)
+        if type(available) is not bool:
+            raise APIError("The API returned invalid shadow producer availability")
+        row.update(updated_at=value["updated_at"], shadow_qualified=value["shadow_qualified"], shadow_producer_available=available)
         return cls(**row, raw=row.copy())
 
 
