@@ -52,6 +52,11 @@ sandbox budget limits its customer-funded usage. Acceptance can precede
 readiness. Calling `exec` waits for the environment and then runs the command,
 so application code does not need a readiness loop.
 
+When a sandbox reaches `failed`, `sandbox.failure` contains the server's
+`code`, `message`, and `fix` guidance. It is `None` when no failure is returned.
+Call `sandbox.refresh()` to read the latest state. The sandbox's console link
+shows the same failure guidance.
+
 Nodus matches infrastructure from the resource requirements. The customer API
 does not accept supplier names or supplier machine identifiers.
 
