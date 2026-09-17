@@ -52,6 +52,10 @@ def journal_socket(tmp_path,monkeypatch):
                     result={'decision':'execute','step_id':step_id,'claim_token':token,'external_key':external,'revision':1}
                 elif row[0]!=definition:
                     self.send_response(409);self.end_headers();self.wfile.write(b'{"code":"step_definition_conflict"}');return
+                elif row[1]=='unknown' and request['effect'] in ('pure','idempotent'):
+                    token=uuid.uuid4().hex
+                    db.execute('UPDATE journal SET status=?,token=? WHERE step=?',('started',token,step_id));db.commit()
+                    result={'decision':'execute','step_id':step_id,'claim_token':token,'external_key':row[4],'revision':3}
                 else:
                     result={'decision':'replay' if row[1]=='completed' else 'unknown','step_id':step_id,'result':row[2],'external_key':row[4],'revision':2}
             elif action=='complete':
@@ -221,3 +225,25 @@ def test_event_submission_preserves_command_and_source_identity():
         assert 'env' not in body and 'stdin' not in body
         assert requests[1].url.params['source']=='queue'
     finally:client.close()
+
+
+def test_qualified_remote_deduplication_commits_one_effect_across_retry(journal_socket):
+    db,state=journal_socket
+    received=[]
+    @nodus.step(name='charge',version='1',effect='idempotent',dedupe_seconds=3600)
+    def charge():
+        key=nodus.step_context().idempotency_key
+        received.append(key)
+        remote=state['effects']
+        remote.execute('INSERT INTO effects(external_key) VALUES (?) ON CONFLICT(external_key) DO NOTHING',(key,))
+        remote.commit()
+        if len(received)==1:
+            raise ConnectionError('remote response lost after commit')
+        receipt=remote.execute('SELECT id FROM effects WHERE external_key=?',(key,)).fetchone()[0]
+        return {'receipt':receipt}
+    def main(event):
+        return charge(_step_id='invoice:42:charge')
+    result=nodus.agent.resume(main,run_id='cycle-42',version='1')
+    assert result=={'receipt':1}
+    assert len(received)==2 and received[0]==received[1]
+    assert state['effects'].execute('SELECT count(*) FROM effects').fetchone()[0]==1
