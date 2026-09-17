@@ -177,3 +177,5 @@ See [troubleshooting](https://nodus-compute.ai/docs/operations/errors/) if a run
 ## Contributing
 
 See [RELEASING.md](https://github.com/nodus-compute/Nodus-sdk-python/blob/main/RELEASING.md) for release steps. Licensed under [Apache-2.0](https://github.com/nodus-compute/Nodus-sdk-python/blob/main/LICENSE).
+
+Devbox preview builds also include [named development sessions](https://github.com/nodus-compute/Nodus-sdk-python/blob/main/docs/guides/devboxes.md).

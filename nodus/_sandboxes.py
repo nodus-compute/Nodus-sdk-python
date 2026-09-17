@@ -26,6 +26,7 @@ __all__ = [
     "SandboxInputReceipt",
     "Sandboxes",
     "Sandbox",
+    "Devbox",
     "SandboxExec",
     "AsyncSandboxes",
     "AsyncSandbox",
@@ -107,6 +108,7 @@ def _create_payload(
     *,
     image: str | None,
     name: str | None = None,
+    profile: str | None = None,
     budget: float | None = None,
     wake: str | None = None,
     requirements: dict[str, Any] | None = None,
@@ -126,9 +128,11 @@ def _create_payload(
     if image is not None:
         body["image"] = image
     selected_requirements = dict(requirements or {})
-    selected_requirements.setdefault("compute_class", "accelerator")
+    if profile != "devbox":
+        selected_requirements.setdefault("compute_class", "accelerator")
     for key, value in (
         ("name", name),
+        ("profile", profile),
         ("wake", wake),
         ("requirements", selected_requirements),
         ("policy", policy),
@@ -371,6 +375,7 @@ class Sandboxes:
         *,
         image: str | None = None,
         name: str | None = None,
+        profile: str | None = None,
         budget: float | None = None,
         wake: str | None = None,
         requirements: dict[str, Any] | None = None,
@@ -384,7 +389,7 @@ class Sandboxes:
         idempotency_key: str | None = None,
     ) -> "Sandbox":
         body = _create_payload(
-            image=image, name=name, budget=budget, wake=wake, requirements=requirements,
+            image=image, name=name, profile=profile, budget=budget, wake=wake, requirements=requirements,
             outcome=outcome, policy=policy, lifecycle=lifecycle,
             reservation=reservation, continuity=continuity,
             from_snapshot=from_snapshot, secrets=secrets,
@@ -451,6 +456,7 @@ class Sandbox(_SandboxState):
         *,
         image: str | None = None,
         name: str | None = None,
+        profile: str | None = None,
         budget: float | None = None,
         wake: str | None = None,
         requirements: dict[str, Any] | None = None,
@@ -476,6 +482,7 @@ class Sandbox(_SandboxState):
                 created = self._client.sandboxes.create(
                     image=image,
                     name=name,
+                    profile=profile,
                     budget=budget,
                     wake=wake,
                     requirements=requirements,
@@ -642,6 +649,7 @@ class AsyncSandboxes:
         *,
         image: str | None = None,
         name: str | None = None,
+        profile: str | None = None,
         budget: float | None = None,
         wake: str | None = None,
         requirements: dict[str, Any] | None = None,
@@ -655,7 +663,7 @@ class AsyncSandboxes:
         idempotency_key: str | None = None,
     ) -> "AsyncSandbox":
         body = _create_payload(
-            image=image, name=name, budget=budget, wake=wake, requirements=requirements,
+            image=image, name=name, profile=profile, budget=budget, wake=wake, requirements=requirements,
             outcome=outcome, policy=policy, lifecycle=lifecycle,
             reservation=reservation, continuity=continuity,
             from_snapshot=from_snapshot, secrets=secrets,
@@ -831,3 +839,14 @@ class AsyncSandboxExec(_SandboxExecState):
             idempotency_key=idempotency_key or f"sandbox-stdin-{uuid.uuid4()}",
         )
         return SandboxInputReceipt.from_dict(self._client._one(response, "POST", path))
+
+
+class Devbox(Sandbox):
+    """Create or reconnect to a named sandbox using server devbox defaults."""
+
+    def __init__(self, *, name: str, image: str | None = None, **kwargs: Any):
+        if not isinstance(name, str) or not name.strip():
+            raise ValidationError("devbox name must be nonempty text")
+        if {"client", "sandbox_id"} & kwargs.keys():
+            raise ValidationError("Devbox creates a named session, not an internal handle")
+        super().__init__(name=name, image=image, profile="devbox", **kwargs)

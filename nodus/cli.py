@@ -23,7 +23,7 @@ from typing import Any
 from . import Client, SandboxExec, __version__, _is_header_safe, _redact, _resolve_base_url, _current_hosted_url, config, login
 from ._terminal import clean, compute_label, format_cost, show_table, show_workload, status_label
 from ._brief import STATUS_FILTERS
-from .errors import NodusError, NotFoundError, AuthenticationError, APIConnectionError, APITimeoutError
+from .errors import ValidationError, NodusError, NotFoundError, AuthenticationError, APIConnectionError, APITimeoutError
 from .types import _num
 from ._workload_file import load_workload_file, write_workload_file
 
@@ -221,6 +221,45 @@ def _cmd_assets(args: argparse.Namespace) -> int:
                    [[asset.id, asset.state, asset.name] for asset in client.assets.list()],
                    empty="No assets yet. Use nodus upload FILE to add one.", plain=args.plain)
     return 0
+
+
+def _devboxes(client, *, name=None):
+    cursor = None
+    seen = set()
+    while True:
+        rows, next_cursor = client.sandboxes.list_page(cursor=cursor, name=name)
+        for box in rows:
+            if box.envelope.get("profile") == "devbox" and (name is None or box.envelope.get("name", "") == name):
+                yield box
+        if next_cursor is None:
+            return
+        if next_cursor in seen:
+            raise ValidationError("Sandbox pagination did not advance. Retry the command.")
+        seen.add(next_cursor)
+        cursor = next_cursor
+
+
+def _cmd_devbox(args: argparse.Namespace) -> int:
+    with Client(base_url=args.base_url) as client:
+        if args.devbox_cmd == "up":
+            box = client.sandboxes.create(profile="devbox", name=args.name, image=args.image, budget=args.budget)
+            print(_safe_line(box.id))
+            return 0
+        if args.devbox_cmd == "rm":
+            matches = [box for box in _devboxes(client, name=args.name) if not box.is_terminal]
+            if len(matches) != 1:
+                raise ValidationError("Expected exactly one active devbox with that name. Use nodus devbox ls.")
+            matches[0].terminate()
+            print(_safe_line(matches[0].id))
+            return 0
+        boxes = list(_devboxes(client))
+        if args.json:
+            print(json.dumps([{"id": box.id, "name": box.envelope.get("name", ""), "state": box.state, "cost_usd": box.cost_usd} for box in boxes], indent=2, default=str))
+        else:
+            show_table(["Devbox", "Name", "Status", "Cost"],
+                       [[box.id, box.envelope.get("name", ""), box.state, format_cost(box.cost_usd)] for box in boxes],
+                       empty="No devboxes yet.", plain=args.plain)
+        return 0
 
 
 def _cmd_sandbox(args: argparse.Namespace) -> int:
@@ -595,7 +634,7 @@ class _CommandHelpFormatter(argparse.RawDescriptionHelpFormatter):
             descriptions = {choice.dest: choice.help for choice in action._choices_actions}
             groups = (
                 ("Setup", ("login", "logout", "init")),
-                ("Run", ("run", "submit", "sandbox")),
+                ("Run", ("run", "submit", "sandbox", "devbox")),
                 ("Monitor", ("list", "status", "wait", "logs", "cancel")),
                 ("Results", ("download",)),
                 ("Advanced", ("upload", "assets", "events", "artifacts", "ledger", "explain")),
@@ -669,6 +708,17 @@ Use nodus COMMAND --help for command options.""",
     u.add_argument("file")
     sub.add_parser("assets", help="list uploaded and imported data")
 
+    devbox = sub.add_parser("devbox", help="create and manage devbox sandboxes")
+    devbox_sub = devbox.add_subparsers(dest="devbox_cmd", required=True, metavar="COMMAND")
+    devbox_up = devbox_sub.add_parser("up", help="create or reconnect to a named devbox")
+    devbox_up.add_argument("name")
+    devbox_up.add_argument("--image", default=None)
+    devbox_up.add_argument("--budget", type=_positive_cost, default=None)
+    devbox_ls = devbox_sub.add_parser("ls", help="list devbox sandboxes")
+    devbox_ls.add_argument("--json", action="store_true")
+    devbox_rm = devbox_sub.add_parser("rm", help="terminate an active devbox by name")
+    devbox_rm.add_argument("name")
+
     sandbox = sub.add_parser("sandbox", help="create and use agent sandboxes")
     sandbox_sub = sandbox.add_subparsers(dest="sandbox_cmd", required=True, metavar="COMMAND")
     sandbox_new = sandbox_sub.add_parser("new", help="create or reattach to a sandbox")
@@ -736,6 +786,7 @@ def main(argv: list[str] | None = None) -> int:
         "upload": lambda: _cmd_upload(args),
         "assets": lambda: _cmd_assets(args),
         "sandbox": lambda: _cmd_sandbox(args),
+        "devbox": lambda: _cmd_devbox(args),
         "list": lambda: _cmd_list(args),
         "status": lambda: _cmd_status(args),
         "wait": lambda: _cmd_status(args),

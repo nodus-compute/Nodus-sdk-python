@@ -3333,10 +3333,6 @@
       },
       "SandboxCreateRequest": {
         "type": "object",
-        "required": [
-          "image",
-          "requirements"
-        ],
         "properties": {
           "image": {
             "type": "string",
@@ -3389,9 +3385,17 @@
               "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
             },
             "description": "Tenant secret names bound to current versions at boot. The NODUS_ prefix is reserved. Values are available to commands as environment variables and files in NODUS_SECRETS_DIR."
+          },
+          "profile": {
+            "type": "string",
+            "enum": [
+              "devbox"
+            ],
+            "description": "Optional server preset. Devbox supplies a 7 day maximum lifetime, 30 minute idle suspend, 5 minute snapshot interval, 2 vCPUs, 4 GB memory, 20 GB disk, a 10 USD budget, and package-host egress. Explicit fields override preset defaults. Preview deployments only."
           }
         },
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "Creates a sandbox, or reconnects to an active name within the authenticated account. New sandboxes require an image. Omitted fields on a reconnect preserve existing configuration."
       },
       "SandboxOutcome": {
         "type": "object",
@@ -3399,7 +3403,7 @@
           "max_cost_usd": {
             "type": "number",
             "exclusiveMinimum": 0,
-            "description": "Hard customer spending limit for this sandbox. The default is 5 USD. Account credits and configured account limits also apply."
+            "description": "Hard customer spending limit for this sandbox. The server default is 5 USD, or 10 USD for the devbox profile. Reconnecting without a budget preserves the existing limit. Account credits and configured account limits also apply."
           },
           "complete_by": {
             "type": "string",
@@ -3411,16 +3415,14 @@
       },
       "SandboxRequirements": {
         "type": "object",
-        "required": [
-          "compute_class"
-        ],
         "properties": {
           "compute_class": {
             "type": "string",
             "enum": [
+              "vm",
               "accelerator"
             ],
-            "description": "Customer sandboxes currently run on accelerator infrastructure."
+            "description": "Required infrastructure class. VM devboxes require a preview deployment with compatible capacity. Existing GPU sandbox clients explicitly request accelerator."
           },
           "gpu": {
             "type": "string",
@@ -3643,6 +3645,13 @@
               "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
             },
             "description": "Tenant secret names bound to current versions at boot. The NODUS_ prefix is reserved. Values are available to commands as environment variables and files in NODUS_SECRETS_DIR."
+          },
+          "profile": {
+            "type": "string",
+            "enum": [
+              "devbox"
+            ],
+            "description": "Applied sandbox preset, when one was requested."
           }
         }
       },
