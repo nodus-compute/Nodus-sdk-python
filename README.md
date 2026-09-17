@@ -195,8 +195,8 @@ action. Predict is needed to produce recommendations.
 `start_shadow` starts a future 168-hour observation cycle for an explicit policy.
 `shadow_runs` and `pools shadows` expose trusted hours, elapsed gaps and
 counterfactual action counts. Follow `next_cursor` with the same pool and kind.
-Only idle reclaim currently has a trusted shadow producer. Missing observations
-remain gaps. Generic completed evidence does not qualify automatic actions.
+The response reports which action kinds currently have a trusted shadow
+producer. Missing observations remain gaps. Generic completed evidence does not qualify automatic actions.
 A qualified cycle is evidence readiness, not permission to execute, and
 counterfactual counts are neither measured savings nor completed actions.
 

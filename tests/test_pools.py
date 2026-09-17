@@ -341,3 +341,17 @@ def test_complete_zero_capacity_has_no_percentage_denominator(asynchronous):
                       lambda pools: pools.utilization("pool_test"))
     assert result.summary.busy_seconds == 0
     assert result.summary.busy_pct is None
+
+
+@pytest.mark.parametrize("cost", [None, 0, 1234567])
+def test_utilization_preserves_settled_burst_cost(cost):
+    from nodus import UtilizationMetrics
+    metrics = UtilizationMetrics.from_dict({**METRICS, "burst_cost_micros": cost})
+    assert metrics.burst_cost_micros == cost
+
+
+@pytest.mark.parametrize("cost", [-1, True, 1.5, "10", 2**63])
+def test_utilization_rejects_invalid_burst_money(cost):
+    from nodus import UtilizationMetrics
+    with pytest.raises(nodus.APIError):
+        UtilizationMetrics.from_dict({**METRICS, "burst_cost_micros": cost})

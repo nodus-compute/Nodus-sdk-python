@@ -53,8 +53,8 @@ removal does not uninstall the agent or stop programs on the machine.
 
 Run `nodus pools utilization POOL_ID` to see measured allocated, busy, and
 busy-of-allocated percentages. Add `--json` for host buckets and observed
-foreign device IDs. All durations are device-seconds, except the Route-only
-queued duration. Unknown readings are `None` in Python and `null` in JSON.
+foreign device IDs. Queued and fragmentation durations are workload-seconds. Other durations
+are device-seconds. Unknown readings are `None` in Python and `null` in JSON.
 A measured zero is distinct from an unknown reading.
 
 The default window is the last seven days of complete UTC hours. Use `--from`
@@ -74,7 +74,12 @@ derived totals and percentages. Foreign device IDs still identify allocation
 observed during a partial bucket. Summaries cover retained ready device time. A complete summary does not claim
 continuous coverage of every host hour. Empty buckets report `no_data`.
 Missing history is never counted as idle.
-Fragmentation, queued, and burst metrics are unavailable without Route.
+Fragmentation, queued, and burst metrics require retained Route evidence and
+appear in the pool summary. Host rows keep these fields unknown. Gaps,
+ambiguous queue retries, and unsettled execution keep affected values unknown.
+`summary.burst_cost_micros` contains exact settled customer cost in USD micros
+when each relevant burst execution falls wholly inside the requested window.
+A burst crossing a window boundary leaves cost unknown instead of prorating it.
 
 
 ## Forecasts and advisory recommendations
@@ -101,6 +106,13 @@ count, and any advisory market price. Four complete weeks of measured history
 are required. The weekly seasonal baseline is identified explicitly. Missing
 history does not become zero demand, and the SDK does not invent a learned
 model or a market price.
+
+When Route provides known queued demand, `snapshot.forecast.queue` records its
+known device-hours and the count of jobs with unknown runtimes. Each point's
+`queue_device_hours` identifies the contribution added to its band. This assumes
+known queued jobs start next hour and is not a placement promise. The evidence
+separates demand included in the selected horizon from demand beyond it.
+Older snapshots can omit this evidence.
 
 The `calibration` object evaluates predictions issued before their target
 hours against subsequently observed outcomes. Unknown coverage and pinball

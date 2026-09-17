@@ -82,6 +82,7 @@ class ForecastPoint:
     p10: float
     p50: float
     p90: float
+    queue_device_hours: float | None = None
 
     @classmethod
     def from_dict(cls, value: Any) -> ForecastPoint:
@@ -91,6 +92,37 @@ class ForecastPoint:
             _number(row.get(key))
         if not row["p10"] <= row["p50"] <= row["p90"]:
             raise APIError("The API returned an unordered forecast band")
+        queue_hours = row.get("queue_device_hours")
+        _number(queue_hours, nullable=True)
+        if queue_hours is not None and queue_hours > row["p10"]:
+            raise APIError("The API returned contradictory queued demand")
+        return cls(row["hour"], row["p10"], row["p50"], row["p90"], queue_hours)
+
+
+@dataclass(frozen=True)
+class ForecastQueue:
+    """Known queued demand under an immediate-start scenario, with unknown jobs explicit."""
+
+    method: str
+    observed_at: str
+    known_jobs: int
+    unknown_jobs: int
+    known_device_hours: float
+    added_device_hours: float
+    outside_horizon_device_hours: float
+
+    @classmethod
+    def from_dict(cls, value: Any) -> ForecastQueue:
+        row = _record(value, ("method", "observed_at"))
+        if row["method"] != "retained_queue_immediate_start_v1":
+            raise APIError("The API returned an unknown queue forecast method")
+        _time(row["observed_at"])
+        for name in ("known_jobs", "unknown_jobs"):
+            _integer(row.get(name))
+        for name in ("known_device_hours", "added_device_hours", "outside_horizon_device_hours"):
+            _number(row.get(name))
+        if not math.isclose(row["known_device_hours"], row["added_device_hours"] + row["outside_horizon_device_hours"], rel_tol=1e-9, abs_tol=1e-9):
+            raise APIError("The API returned contradictory queue totals")
         return cls(**{key: row[key] for key in cls.__dataclass_fields__})
 
 
@@ -106,6 +138,7 @@ class ForecastSeries:
     history_hours: int
     required_history_hours: int
     points: list[ForecastPoint]
+    queue: ForecastQueue | None = None
 
     @classmethod
     def from_dict(cls, value: Any) -> ForecastSeries:
@@ -121,7 +154,14 @@ class ForecastSeries:
             raise APIError("The API returned incomplete forecast evidence")
         if any(_time(point.hour, hour=True) - start != timedelta(hours=i) for i, point in enumerate(points)):
             raise APIError("The API returned noncontiguous forecast hours")
-        return cls(**{key: row[key] for key in cls.__dataclass_fields__ if key != "points"}, points=points)
+        queue = None if row.get("queue") is None else ForecastQueue.from_dict(row["queue"])
+        if queue is not None:
+            observed = _time(queue.observed_at)
+            if not start <= observed < start + timedelta(hours=1) or any(p.queue_device_hours is None for p in points):
+                raise APIError("The API returned incomplete queue forecast evidence")
+            if not math.isclose(sum(p.queue_device_hours for p in points), queue.added_device_hours, rel_tol=1e-9, abs_tol=1e-9):
+                raise APIError("The API returned contradictory queue contributions")
+        return cls(**{key: row[key] for key in cls.__dataclass_fields__ if key not in ("points", "queue")}, points=points, queue=queue)
 
 
 @dataclass(frozen=True)

@@ -354,3 +354,32 @@ def test_wait_tuning_keeps_settled_evidence_without_invented_saving(asynchronous
     page = exercise(lambda req: httpx.Response(200, json={**RECOMMENDATIONS, "recommendations": [row]}), asynchronous, lambda p: p.recommendations("pool_test"))
     assert page.recommendations[0].recommendation["expected_savings_micros"] is None
     assert page.recommendations[0].recommendation["evidence"]["completed_executions"] == 2
+
+
+def queued_forecast():
+    series = copy.deepcopy(FORECAST["snapshot"]["forecast"])
+    for point in series["points"]:
+        point["queue_device_hours"] = 0
+    series["points"][1].update(p10=3, p50=4, p90=5, queue_device_hours=2)
+    series["queue"] = {"method": "retained_queue_immediate_start_v1", "observed_at": AS_OF,
+        "known_jobs": 1, "unknown_jobs": 2, "known_device_hours": 3,
+        "added_device_hours": 2, "outside_horizon_device_hours": 1}
+    return series
+
+
+def test_forecast_preserves_queue_contribution_and_unknown_jobs():
+    series = nodus.ForecastSeries.from_dict(queued_forecast())
+    assert series.queue.unknown_jobs == 2
+    assert series.queue.added_device_hours == 2
+    assert series.points[1].queue_device_hours == 2
+    assert nodus.ForecastSeries.from_dict(FORECAST["snapshot"]["forecast"]).queue is None
+
+
+@pytest.mark.parametrize("field,value", [("unknown_jobs", -1), ("known_jobs", True),
+    ("method", "guessed"), ("added_device_hours", 4), ("known_device_hours", float("inf")),
+    ("observed_at", "2026-09-17T13:00:00Z")])
+def test_forecast_rejects_contradictory_queue_evidence(field, value):
+    series = queued_forecast()
+    series["queue"][field] = value
+    with pytest.raises(nodus.APIError):
+        nodus.ForecastSeries.from_dict(series)

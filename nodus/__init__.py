@@ -38,7 +38,7 @@ from pathlib import Path
 from ._freeze import WorkloadFreeze
 from ._outputs import download_path, verified_file, output_destinations
 from ._assets import Asset, Assets, AsyncAssets
-from ._pool_predict import PredictSubscription, ForecastPoint, ForecastSeries, ForecastCalibration, PoolForecastSnapshot, PoolForecast, PoolRecommendation, PoolRecommendations, RecommendationOutcome
+from ._pool_predict import PredictSubscription, ForecastPoint, ForecastQueue, ForecastSeries, ForecastCalibration, PoolForecastSnapshot, PoolForecast, PoolRecommendation, PoolRecommendations, RecommendationOutcome
 from ._pool_act_proposals import PoolActOutcome, PoolActProposal, PoolActProposals
 from ._pool_actions import PoolActionPolicy, PoolActionSettings, PoolShadowRun, PoolShadowRuns
 from ._pool_proposals import PoolProposal, PoolProposals
@@ -120,6 +120,7 @@ __all__ = [
     "PredictSubscription",
     "ForecastPoint",
     "ForecastSeries",
+    "ForecastQueue",
     "ForecastCalibration",
     "PoolForecastSnapshot",
     "PoolForecast",

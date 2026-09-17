@@ -161,10 +161,12 @@ class UtilizationMetrics:
     queued_seconds: int | None
     burst_seconds: int | None
     data_status: str
+    burst_cost_micros: int | None = None
 
     @classmethod
     def from_dict(cls, value: Any) -> UtilizationMetrics:
-        row = _row(value, ("data_status",))
+        row = dict(_row(value, ("data_status",)))
+        row.setdefault("burst_cost_micros", None)
         if row["data_status"] not in ("complete", "partial", "no_data"):
             raise APIError("The API returned an invalid utilization status")
         for key in cls.__dataclass_fields__:

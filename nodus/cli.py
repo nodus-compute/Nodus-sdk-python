@@ -350,12 +350,15 @@ def _cmd_pools(args: argparse.Namespace) -> int:
                                    (metrics.allocation_pct, metrics.busy_pct, metrics.busy_of_allocated_pct)]
                     rows.append([label, metrics.data_status, *percentages])
                 show_table(["Scope", "Data", "Allocated", "Busy", "Busy / allocated"], rows, empty="No utilization data.", plain=args.plain)
-                show_table(["Metric", "Device seconds"],
+                show_table(["Metric", "Seconds"],
                            [[name.replace("_seconds", "").replace("_", " ").capitalize(),
                              str(value) if value is not None else ("Not available" if name in
                              ("fragmentation_seconds", "queued_seconds", "burst_seconds") else "Unknown")]
                             for name in ledger.summary.__dataclass_fields__ if name.endswith("_seconds")
                             for value in [getattr(ledger.summary, name)]], empty="No utilization data.", plain=args.plain)
+                cost = ledger.summary.burst_cost_micros
+                print("Settled burst cost (USD micros): " + ("Not available" if cost is None else str(cost)))
+                print("Queued and fragmentation values use workload-seconds. Burst uses device-seconds.")
         else:
             hosts = client.pools.hosts(args.pool_id)
             show_table(["Host", "Name", "Health", "Mode", "Devices"],

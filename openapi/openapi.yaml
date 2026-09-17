@@ -5860,21 +5860,24 @@
               "integer",
               "null"
             ],
-            "minimum": 0
+            "minimum": 0,
+            "description": "Workload-seconds when a multi-device request waited because free devices were split across hosts."
           },
           "queued_seconds": {
             "type": [
               "integer",
               "null"
             ],
-            "minimum": 0
+            "minimum": 0,
+            "description": "Workload-seconds waiting for the pool. Null when retained queue history cannot cover the window."
           },
           "burst_seconds": {
             "type": [
               "integer",
               "null"
             ],
-            "minimum": 0
+            "minimum": 0,
+            "description": "Settled customer-active burst device-seconds clipped to the requested window."
           },
           "allocation_pct": {
             "type": [
@@ -5907,6 +5910,14 @@
               "partial",
               "no_data"
             ]
+          },
+          "burst_cost_micros": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Exact settled customer cost in USD micros for burst executions wholly inside the requested window. Null when unsettled or crossing the window boundary."
           }
         },
         "required": [
@@ -5923,11 +5934,12 @@
           "allocation_pct",
           "busy_pct",
           "busy_of_allocated_pct",
-          "data_status"
+          "data_status",
+          "burst_cost_micros"
         ],
         "x-go-source": "internal/finops/ledger.go",
         "x-go-type": "Metrics",
-        "description": "Totals cover retained ready-device hourly rows only. Complete means all represented ready seconds have activity evidence, not that the pool existed throughout the requested range. Partial means some ready seconds lack observations and all activity totals and percentages are null. No data means no retained rows. Zero capacity has null percentages. Missing activity is never counted as idle or stranded. Fragmentation, queued and burst are unavailable without Route and remain null in the observe ledger."
+        "description": "Totals cover retained ready-device hourly rows only. Complete means all represented ready seconds have activity evidence, not that the pool existed throughout the requested range. Partial means some ready seconds lack observations and all activity totals and percentages are null. No data means no retained rows. Zero capacity has null percentages. Missing activity is never counted as idle or stranded. Fragmentation, queued and burst are unavailable without Route and remain null in the observe ledger. Route measurements use independent durable queue and execution evidence in the pool summary. Host summaries and host buckets keep Route fields null because these cannot be attributed to a private host."
       },
       "PoolUtilizationBucket": {
         "type": "object",
@@ -6103,6 +6115,11 @@
           "p90": {
             "type": "number",
             "minimum": 0
+          },
+          "queue_device_hours": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Known queued demand added to this hourly band. Omitted for historical forecasts without queue evidence."
           }
         },
         "required": [
@@ -6155,6 +6172,9 @@
             "items": {
               "$ref": "#/components/schemas/PoolForecastBand"
             }
+          },
+          "queue": {
+            "$ref": "#/components/schemas/PoolForecastQueue"
           }
         },
         "required": [
@@ -7917,6 +7937,53 @@
         "x-go-source": "internal/finops/wait_tuning.go",
         "x-go-type": "WaitTuningRecommendation",
         "description": "At most 25 percent adjustment based on 336 hours of actual Route coverage and completed settled executions. Applies to future waits. No counterfactual savings or universal delay guarantee."
+      },
+      "PoolForecastQueue": {
+        "type": "object",
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": [
+              "retained_queue_immediate_start_v1"
+            ]
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "known_jobs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "unknown_jobs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "known_device_hours": {
+            "type": "number",
+            "minimum": 0
+          },
+          "added_device_hours": {
+            "type": "number",
+            "minimum": 0
+          },
+          "outside_horizon_device_hours": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "method",
+          "observed_at",
+          "known_jobs",
+          "unknown_jobs",
+          "known_device_hours",
+          "added_device_hours",
+          "outside_horizon_device_hours"
+        ],
+        "x-go-source": "internal/finops/queue.go",
+        "x-go-type": "QueueEvidence",
+        "description": "Retained queued demand under an immediate-start scenario from the next complete hour. This is not a placement promise. Unknown runtimes remain a job count. Known device-hours equal added device-hours plus demand beyond the selected horizon."
       }
     }
   },
