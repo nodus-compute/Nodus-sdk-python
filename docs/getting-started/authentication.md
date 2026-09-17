@@ -20,10 +20,12 @@ Use the current package for the documented commands and workload experience.
 Custom or older servers may not support every feature. See
 [backend compatibility](../operations/errors.md#backend-compatibility).
 
-Before starting a workload, open [Billing](https://console.nodus-compute.ai/?view=billing)
-and add a payment method. New accounts start with $30 in credits, but a card is
-required to use them. Adding a card does not purchase credits. If you joined
-a shared workspace, its administrator manages the payment method.
+New accounts start with $30 in credits and can run workloads without adding a
+payment method. Available credits and configured spending limits determine
+whether a run can start. Check your balance in
+[Billing](https://console.nodus-compute.ai/?view=billing). Shared workspace
+members use the team's credits and administrator-controlled limits. Adding an
+optional payment method does not purchase credits or increase your balance.
 
 ## Use your login in Python
 

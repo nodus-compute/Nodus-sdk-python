@@ -239,6 +239,7 @@ class SandboxInputReceipt:
 
 
 class _SandboxState:
+    failure: dict[str, Any] | None
     id: str
     state: Any
     envelope: dict[str, Any]
@@ -261,10 +262,13 @@ class _SandboxState:
         self.last_activity_at = None
         self.terminal_at = None
         self.replayed = False
+        self.failure = None
 
     def _absorb(self, value: dict[str, Any] | None) -> None:
         body = _obj(value)
         self.id = _text(body.get("id")) or self.id
+        failure = body.get("failure")
+        self.failure = dict(failure) if isinstance(failure, dict) else None
         if "state" in body:
             self.state = SandboxState.coerce(body.get("state"))
         if "envelope" in body:

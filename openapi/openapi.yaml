@@ -3439,6 +3439,26 @@
             "type": "string",
             "format": "uri",
             "description": "Console URL for this sandbox."
+          },
+          "failure": {
+            "type": "object",
+            "description": "Recorded cause and recovery guidance for a failed sandbox. Omitted for other states.",
+            "required": [
+              "code",
+              "message",
+              "fix"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "fix": {
+                "type": "string"
+              }
+            }
           }
         }
       },

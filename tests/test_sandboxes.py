@@ -294,3 +294,24 @@ def test_sandbox_error_uses_the_public_code_and_fix():
             assert error.payload["code"] == "payment_method_required"
         else:
             raise AssertionError("the rejected sandbox was reported as accepted")
+
+
+def test_failure_guidance_is_loaded_and_cleared_on_refresh():
+    failure = {"code": "no_capable_capacity", "message": "No compatible capacity became available before the placement deadline.", "fix": "Retry later or reduce the requested resources."}
+    responses = iter([dict(SANDBOX, state="failed", failure=failure), dict(SANDBOX, state="terminated")])
+    with sync_client(lambda request: httpx.Response(200, json=next(responses))) as client:
+        box = client.sandboxes.from_id("sb_agent")
+        assert box.failure == failure
+        box.refresh()
+        assert box.failure is None
+
+
+def test_async_failure_guidance_uses_the_server_fields():
+    failure = {"code": "boot_timeout", "message": "The sandbox did not become ready before its boot deadline.", "fix": "Check the image and resource requirements, then create a new sandbox."}
+    async def run():
+        client = nodus.AsyncClient(api_key="nk_live_test", base_url="https://nodus.invalid")
+        client._http = httpx.AsyncClient(base_url="https://nodus.invalid", transport=httpx.MockTransport(lambda request: httpx.Response(200, json=dict(SANDBOX, state="failed", failure=failure))))
+        async with client:
+            box = await client.sandboxes.from_id("sb_agent")
+            assert box.failure == failure
+    asyncio.run(run())
