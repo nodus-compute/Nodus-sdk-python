@@ -2692,6 +2692,273 @@
         },
         "description": "Requires a current account admin and active Route authorization. Send an empty object or omit the body. The proposed amount cannot be changed. The decision is retained atomically. Replays return the same confirmed decision. Expired, no-op, or conflicting decisions return 409. Approval records intent only and does not itself rent capacity. New admission must revalidate the current quote against the approved amount and original expiry."
       }
+    },
+    "/v1/pools/{id}/action-policies": {
+      "get": {
+        "operationId": "getPoolActionPolicies",
+        "summary": "Read action policies and shadow readiness",
+        "description": "Members may read settings. Readiness never grants execution authority.",
+        "tags": [
+          "Pools"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Read action policies and shadow readiness",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolActionSettings"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "setPoolActionPolicy",
+        "summary": "Set one complete action policy",
+        "description": "Requires an account admin. Approve and auto require active funded Predict and Route with accepted current terms and the kill switch off. Auto also requires a recent complete trusted matching shadow cycle. Off and recommend can be saved without activation. Recommendations require Predict. Saving a policy does not execute an action.",
+        "tags": [
+          "Pools"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Set one complete action policy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolActionSettings"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PoolActionPolicyRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/pools/{id}/act-kill-switch": {
+      "put": {
+        "operationId": "setPoolActKillSwitch",
+        "summary": "Set the Act kill switch",
+        "description": "Requires an account admin. Available even after entitlement loss. Enabling the kill switch blocks new Act authorization and preserves existing resource cleanup.",
+        "tags": [
+          "Pools"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Set the Act kill switch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolActionSettings"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PoolActKillSwitchRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/pools/{id}/shadow-runs": {
+      "get": {
+        "operationId": "listPoolShadowRuns",
+        "summary": "Read trusted shadow coverage and gaps",
+        "description": "Members may read retained cycles. Keyset pagination is bound to the same pool and kind. A gap is a completed elapsed hour without trusted evidence.",
+        "tags": [
+          "Pools"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 100
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 2048
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "idle_reclaim",
+                "defragment",
+                "drain_window",
+                "wait_tuning"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Read trusted shadow coverage and gaps",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolShadowRuns"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "startPoolShadowRun",
+        "summary": "Start a future shadow observation cycle",
+        "description": "Requires an account admin, funded Predict, active Route consent and the kill switch off. Starts at the next complete UTC hour and runs for 168 hours. Starting the same configuration within one hour returns the existing cycle. No action is applied by shadow mode.",
+        "tags": [
+          "Pools"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Start a future shadow observation cycle",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolShadowRun"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PoolActionPolicyRequest"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -6660,6 +6927,267 @@
             "maxLength": 2048
           }
         }
+      },
+      "PoolActionPolicyRequest": {
+        "type": "object",
+        "required": [
+          "kind",
+          "level",
+          "window_cron",
+          "parallelism_cap"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "idle_reclaim",
+              "defragment",
+              "drain_window",
+              "wait_tuning"
+            ]
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "off",
+              "recommend",
+              "approve",
+              "auto"
+            ]
+          },
+          "window_cron": {
+            "type": "string",
+            "maxLength": 256,
+            "description": "Weekly UTC minute hour * * weekday. Minute, hour and weekday accept *, integer lists and inclusive ranges. No steps, names, macros, duplicate values or leading zeros. Weekday 0 is Sunday."
+          },
+          "parallelism_cap": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32
+          }
+        },
+        "x-go-source": "internal/api/pools_action_policies.go",
+        "x-go-type": "poolActionPolicyRequest",
+        "additionalProperties": false
+      },
+      "PoolActionPolicy": {
+        "type": "object",
+        "required": [
+          "kind",
+          "level",
+          "window_cron",
+          "parallelism_cap",
+          "updated_at",
+          "shadow_qualified"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "idle_reclaim",
+              "defragment",
+              "drain_window",
+              "wait_tuning"
+            ]
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "off",
+              "recommend",
+              "approve",
+              "auto"
+            ]
+          },
+          "window_cron": {
+            "type": "string",
+            "maxLength": 256,
+            "description": "Weekly UTC minute hour * * weekday. Minute, hour and weekday accept *, integer lists and inclusive ranges. No steps, names, macros, duplicate values or leading zeros. Weekday 0 is Sunday."
+          },
+          "parallelism_cap": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "shadow_qualified": {
+            "type": "boolean",
+            "description": "A recent complete trusted cycle matches this policy configuration. This is evidence readiness, not execution authorization."
+          }
+        },
+        "x-go-source": "internal/api/pools_action_policies.go",
+        "x-go-type": "poolActionPolicyView"
+      },
+      "PoolActionSettings": {
+        "type": "object",
+        "required": [
+          "pool_id",
+          "kill_switch",
+          "policies"
+        ],
+        "properties": {
+          "pool_id": {
+            "type": "string"
+          },
+          "kill_switch": {
+            "type": "boolean"
+          },
+          "policies": {
+            "type": "array",
+            "minItems": 4,
+            "maxItems": 4,
+            "items": {
+              "$ref": "#/components/schemas/PoolActionPolicy"
+            }
+          }
+        },
+        "x-go-source": "internal/api/pools_action_policies.go",
+        "x-go-type": "poolActionSettingsResponse"
+      },
+      "PoolActKillSwitchRequest": {
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "x-go-source": "internal/api/pools_action_policies.go",
+        "x-go-type": "poolActKillSwitchRequest",
+        "additionalProperties": false
+      },
+      "PoolShadowRun": {
+        "type": "object",
+        "required": [
+          "id",
+          "pool_id",
+          "kind",
+          "window_cron",
+          "parallelism_cap",
+          "cycle_start",
+          "cycle_end",
+          "state",
+          "ended_at",
+          "trusted_hours",
+          "elapsed_hours",
+          "gap_hours",
+          "would_have_acted",
+          "producer_available",
+          "qualifies_auto"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "pool_id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "idle_reclaim",
+              "defragment",
+              "drain_window",
+              "wait_tuning"
+            ]
+          },
+          "window_cron": {
+            "type": "string",
+            "maxLength": 256,
+            "description": "Weekly UTC minute hour * * weekday. Minute, hour and weekday accept *, integer lists and inclusive ranges. No steps, names, macros, duplicate values or leading zeros. Weekday 0 is Sunday."
+          },
+          "parallelism_cap": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32
+          },
+          "cycle_start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cycle_end": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "running",
+              "completed"
+            ]
+          },
+          "ended_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "trusted_hours": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 168
+          },
+          "elapsed_hours": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 168
+          },
+          "gap_hours": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 168
+          },
+          "would_have_acted": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Sum of counterfactual action counts from trusted observations. Never measured savings or an applied-action count."
+          },
+          "producer_available": {
+            "type": "boolean"
+          },
+          "qualifies_auto": {
+            "type": "boolean",
+            "description": "This exact cycle has 168 trusted hours, is completed and ended within 30 days. Current entitlement, policy, permissions and kill switch are checked separately."
+          }
+        },
+        "x-go-source": "internal/store/pools_action_views.go",
+        "x-go-type": "PoolShadowView",
+        "description": "A future 168-hour observation cycle. Missing capture is a gap, never fabricated evidence. Only idle reclaim currently has a trusted producer. Completed generic evidence cannot qualify automatic actions."
+      },
+      "PoolShadowRuns": {
+        "type": "object",
+        "required": [
+          "pool_id",
+          "runs",
+          "next_cursor"
+        ],
+        "properties": {
+          "pool_id": {
+            "type": "string"
+          },
+          "runs": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/PoolShadowRun"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2048
+          }
+        },
+        "x-go-source": "internal/store/pools_action_views.go",
+        "x-go-type": "PoolShadowPage"
       }
     }
   },

@@ -9,6 +9,7 @@ from typing import Any
 
 import httpx
 
+from ._pool_actions import PoolActionSettings, PoolShadowRun, PoolShadowRuns, action_policy, shadow_query, policy_ack, kill_payload, kill_ack, shadow_ack
 from ._pool_proposals import PoolProposal, PoolProposals, proposal_query, proposal_decision
 from ._pool_route import route_settings, route_patch, route_result
 from ._pool_predict import PoolForecast, PoolRecommendations, RecommendationOutcome, predict_patch, done_payload, horizon_query, recommendation_query
@@ -445,6 +446,28 @@ class Pools:
         """Read cached hourly bands, issued calibration, and subscription refresh state."""
         return PoolForecast.from_dict(_predict_result(self._request("GET", _path(pool_id) + "/forecast", params=horizon_query(horizon)), pool_id))
 
+    def action_policies(self, pool_id: str) -> PoolActionSettings:
+        """Read configured action levels and matching trusted shadow readiness."""
+        return PoolActionSettings.from_dict(self._request("GET", _path(pool_id) + "/action-policies"), pool_id)
+
+    def set_action_policy(self, pool_id: str, *, kind: str, level: str, window_cron: str, parallelism_cap: int) -> PoolActionSettings:
+        """Save one complete policy. Approve and auto require funded Predict and Route."""
+        body = action_policy(kind, level, window_cron, parallelism_cap)
+        return policy_ack(self._request("PUT", _path(pool_id) + "/action-policies", json=body), pool_id, body)
+
+    def set_act_kill_switch(self, pool_id: str, enabled: bool) -> PoolActionSettings:
+        """Stop new Act authorization while preserving existing exact cleanup."""
+        return kill_ack(self._request("PUT", _path(pool_id) + "/act-kill-switch", json=kill_payload(enabled)), pool_id, enabled)
+
+    def shadow_runs(self, pool_id: str, *, limit: int | None = None, cursor: str | None = None, kind: str | None = None) -> PoolShadowRuns:
+        """Read trusted coverage and gaps, following next_cursor with the same kind."""
+        return PoolShadowRuns.from_dict(self._request("GET", _path(pool_id) + "/shadow-runs", params=shadow_query(limit, cursor, kind)), pool_id)
+
+    def start_shadow(self, pool_id: str, *, kind: str, level: str, window_cron: str, parallelism_cap: int) -> PoolShadowRun:
+        """Start a future 168-hour shadow cycle without granting action authority."""
+        body = action_policy(kind, level, window_cron, parallelism_cap)
+        return shadow_ack(self._request("POST", _path(pool_id) + "/shadow-runs", json=body), pool_id, body)
+
     def proposals(self, pool_id: str, *, limit: int | None = None, cursor: str | None = None,
                         state: str | None = None) -> PoolProposals:
         """Read burst intent states. Follow next_cursor with the same pool and state."""
@@ -560,6 +583,28 @@ class AsyncPools:
     async def forecast(self, pool_id: str, *, horizon: int | None = None) -> PoolForecast:
         """Read cached hourly bands, issued calibration, and subscription refresh state."""
         return PoolForecast.from_dict(_predict_result(await self._request("GET", _path(pool_id) + "/forecast", params=horizon_query(horizon)), pool_id))
+
+    async def action_policies(self, pool_id: str) -> PoolActionSettings:
+        """Read configured action levels and matching trusted shadow readiness."""
+        return PoolActionSettings.from_dict(await self._request("GET", _path(pool_id) + "/action-policies"), pool_id)
+
+    async def set_action_policy(self, pool_id: str, *, kind: str, level: str, window_cron: str, parallelism_cap: int) -> PoolActionSettings:
+        """Save one complete policy. Approve and auto require funded Predict and Route."""
+        body = action_policy(kind, level, window_cron, parallelism_cap)
+        return policy_ack(await self._request("PUT", _path(pool_id) + "/action-policies", json=body), pool_id, body)
+
+    async def set_act_kill_switch(self, pool_id: str, enabled: bool) -> PoolActionSettings:
+        """Stop new Act authorization while preserving existing exact cleanup."""
+        return kill_ack(await self._request("PUT", _path(pool_id) + "/act-kill-switch", json=kill_payload(enabled)), pool_id, enabled)
+
+    async def shadow_runs(self, pool_id: str, *, limit: int | None = None, cursor: str | None = None, kind: str | None = None) -> PoolShadowRuns:
+        """Read trusted coverage and gaps, following next_cursor with the same kind."""
+        return PoolShadowRuns.from_dict(await self._request("GET", _path(pool_id) + "/shadow-runs", params=shadow_query(limit, cursor, kind)), pool_id)
+
+    async def start_shadow(self, pool_id: str, *, kind: str, level: str, window_cron: str, parallelism_cap: int) -> PoolShadowRun:
+        """Start a future 168-hour shadow cycle without granting action authority."""
+        body = action_policy(kind, level, window_cron, parallelism_cap)
+        return shadow_ack(await self._request("POST", _path(pool_id) + "/shadow-runs", json=body), pool_id, body)
 
     async def proposals(self, pool_id: str, *, limit: int | None = None, cursor: str | None = None,
                         state: str | None = None) -> PoolProposals:

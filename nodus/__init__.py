@@ -38,6 +38,7 @@ from pathlib import Path
 from ._outputs import download_path, verified_file, output_destinations
 from ._assets import Asset, Assets, AsyncAssets
 from ._pool_predict import PredictSubscription, ForecastPoint, ForecastSeries, ForecastCalibration, PoolForecastSnapshot, PoolForecast, PoolRecommendation, PoolRecommendations, RecommendationOutcome
+from ._pool_actions import PoolActionPolicy, PoolActionSettings, PoolShadowRun, PoolShadowRuns
 from ._pool_proposals import PoolProposal, PoolProposals
 from ._pools import Pool, PoolHost, HostDevice, EnrollmentToken, Pools, AsyncPools, PoolUtilization, HostUtilization, UtilizationBucket, UtilizationMetrics
 from ._sandboxes import (
@@ -124,6 +125,7 @@ __all__ = [
     "PoolRecommendations",
     "PoolProposal",
     "PoolProposals",
+    "PoolActionPolicy", "PoolActionSettings", "PoolShadowRun", "PoolShadowRuns",
     "RecommendationOutcome",
     "PoolUtilization",
     "HostUtilization",

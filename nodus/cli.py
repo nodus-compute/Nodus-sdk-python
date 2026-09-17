@@ -258,6 +258,31 @@ def _cmd_pools(args: argparse.Namespace) -> int:
                     show_table(["UTC hour", "p10 device-hours", "p50 device-hours", "p90 device-hours"],
                         [[point.hour, str(point.p10), str(point.p50), str(point.p90)] for point in snapshot.forecast.points],
                         empty="Insufficient measured history for a forecast.", plain=args.plain)
+        elif args.pools_cmd in ("action-policies", "action-policy", "act-kill-switch"):
+            if args.pools_cmd == "action-policy":
+                settings = client.pools.set_action_policy(args.pool_id, kind=args.kind, level=args.level,
+                    window_cron=args.window_cron, parallelism_cap=args.parallelism_cap)
+            elif args.pools_cmd == "act-kill-switch":
+                settings = client.pools.set_act_kill_switch(args.pool_id, args.setting == "on")
+            else:
+                settings = client.pools.action_policies(args.pool_id)
+            print(_safe_line(f"Act kill switch: {'on' if settings.kill_switch else 'off'}"))
+            show_table(["Kind", "Level", "UTC window", "Parallelism", "Shadow qualified"],
+                [[p.kind, p.level, p.window_cron, str(p.parallelism_cap), str(p.shadow_qualified)] for p in settings.policies], empty="No action policies returned.", plain=args.plain)
+        elif args.pools_cmd == "start-shadow":
+            run = client.pools.start_shadow(args.pool_id, kind=args.kind, level=args.level,
+                window_cron=args.window_cron, parallelism_cap=args.parallelism_cap)
+            print(_safe_line(f"{run.id}: {run.state}. Shadow observations do not execute actions."))
+        elif args.pools_cmd == "shadows":
+            page = client.pools.shadow_runs(args.pool_id, limit=args.limit, cursor=args.cursor, kind=args.kind)
+            if args.json:
+                print(json.dumps(page.raw, indent=2))
+            else:
+                show_table(["Run", "Kind", "Trusted hours", "Elapsed gaps", "Would have acted", "Qualified"],
+                    [[r.id, r.kind, f"{r.trusted_hours}/168", str(r.gap_hours), str(r.would_have_acted), str(r.qualifies_auto)] for r in page.runs],
+                    empty="No shadow runs. Automatic actions are not qualified.", plain=args.plain)
+                if page.next_cursor:
+                    print(_safe_line("Next cursor: " + page.next_cursor))
         elif args.pools_cmd == "proposals":
             page = client.pools.proposals(args.pool_id, limit=args.limit, cursor=args.cursor, state=args.state)
             if args.json:
@@ -793,6 +818,26 @@ Use nodus COMMAND --help for command options.""",
     pools_forecast.add_argument("pool_id")
     pools_forecast.add_argument("--horizon", type=int, choices=(7, 30), default=None)
     pools_forecast.add_argument("--json", action="store_true")
+    action_kinds = ("idle_reclaim", "defragment", "drain_window", "wait_tuning")
+    action_levels = ("off", "recommend", "approve", "auto")
+    policies = pools_sub.add_parser("action-policies", help="read action policy and shadow readiness")
+    policies.add_argument("pool_id")
+    for command in ("action-policy", "start-shadow"):
+        action = pools_sub.add_parser(command, help="save a policy" if command == "action-policy" else "start a future 168-hour shadow cycle")
+        action.add_argument("pool_id")
+        action.add_argument("kind", choices=action_kinds)
+        action.add_argument("level", choices=action_levels)
+        action.add_argument("--window-cron", required=True, help="weekly UTC minute hour * * weekday, without steps")
+        action.add_argument("--parallelism-cap", type=int, required=True)
+    kill = pools_sub.add_parser("act-kill-switch", help="stop new Act authorization while preserving cleanup")
+    kill.add_argument("pool_id")
+    kill.add_argument("setting", choices=("on", "off"))
+    shadows = pools_sub.add_parser("shadows", help="read actual trusted shadow coverage and gaps")
+    shadows.add_argument("pool_id")
+    shadows.add_argument("--kind", choices=action_kinds, default=None)
+    shadows.add_argument("--limit", type=int, default=None)
+    shadows.add_argument("--cursor", default=None)
+    shadows.add_argument("--json", action="store_true")
     pools_proposals = pools_sub.add_parser("proposals", help="read burst approval intent and retained outcomes")
     pools_proposals.add_argument("pool_id")
     pools_proposals.add_argument("--json", action="store_true")

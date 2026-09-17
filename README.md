@@ -178,3 +178,28 @@ See [troubleshooting](https://nodus-compute.ai/docs/operations/errors/) if a run
 ## Contributing
 
 See [RELEASING.md](https://github.com/nodus-compute/Nodus-sdk-python/blob/main/RELEASING.md) for release steps. Licensed under [Apache-2.0](https://github.com/nodus-compute/Nodus-sdk-python/blob/main/LICENSE).
+
+### Action policies and shadow readiness
+
+`client.pools.action_policies(pool_id)` reads all four per-kind settings and the
+Act kill switch. Use `set_action_policy` with explicit `kind`, `level`,
+`window_cron` and `parallelism_cap` to save one policy. The sync and async clients
+support the same methods. The CLI provides `pools action-policies`,
+`pools action-policy` and `pools act-kill-switch`.
+
+Approve and auto require funded Predict and active Route with current consent.
+The kill switch remains available after entitlement loss. Enabling it blocks new
+Act authorization while preserving cleanup. Saving a policy does not execute an
+action. Predict is needed to produce recommendations.
+
+`start_shadow` starts a future 168-hour observation cycle for an explicit policy.
+`shadow_runs` and `pools shadows` expose trusted hours, elapsed gaps and
+counterfactual action counts. Follow `next_cursor` with the same pool and kind.
+Only idle reclaim currently has a trusted shadow producer. Missing observations
+remain gaps. Generic completed evidence does not qualify automatic actions.
+A qualified cycle is evidence readiness, not permission to execute, and
+counterfactual counts are neither measured savings nor completed actions.
+
+UTC maintenance windows use five fields. Day-of-month and month must be `*`.
+Minute, hour and weekday accept integers, lists, inclusive ranges or `*`.
+Weekday 0 means Sunday. Steps, names and macros are unsupported.
