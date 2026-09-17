@@ -118,7 +118,7 @@ to overwrite existing files. Use a new destination directory for another copy.
 | `ManifestFile` | `uri`, `sha256`, `bytes`, `media`, `is_tar` |
 | `Output` | `name`, `stage_id`, `sha256`, `bytes`, `download` |
 | `Route` | `sku`, `compute_class`, `fit_class`, `region`, `memory_gb`, `resources`, prices and estimated cost |
-| `Meter` | `settled_usd`, `accruing_usd`, `total_now_usd`, `accruing_rate_usd_hour`, `as_of` |
+| `Meter` | `settled_usd`, `accruing_usd`, `total_now_usd`, `accruing_rate_usd_hour`, `as_of`, `compute_settled_usd`, `platform_fee_settled_usd`, `subscription_settled_usd`, `compute_accruing_usd`, `platform_fee_accruing_usd` |
 | `Ledger` | `entries`, `charged_usd`, `settlement` |
 
 `Event` has `type` and `payload`, not a `message` attribute. Output download

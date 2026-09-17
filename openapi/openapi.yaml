@@ -3245,6 +3245,31 @@
           "as_of": {
             "type": "string",
             "format": "date-time"
+          },
+          "compute_settled_usd": {
+            "type": "number",
+            "default": 0,
+            "description": "Settled compute charges in this billing period."
+          },
+          "platform_fee_settled_usd": {
+            "type": "number",
+            "default": 0,
+            "description": "Settled platform fees in this billing period."
+          },
+          "subscription_settled_usd": {
+            "type": "number",
+            "default": 0,
+            "description": "Settled subscription charges in an account meter. Zero in workload meters."
+          },
+          "compute_accruing_usd": {
+            "type": "number",
+            "default": 0,
+            "description": "Compute charges accruing at as_of."
+          },
+          "platform_fee_accruing_usd": {
+            "type": "number",
+            "default": 0,
+            "description": "Platform fees accruing at as_of."
           }
         },
         "x-go-source": "internal/store/meter.go",
