@@ -1778,6 +1778,80 @@
           }
         }
       }
+    },
+    "/v1/sandboxes/{id}/events": {
+      "get": {
+        "operationId": "listSandboxEvents",
+        "summary": "Read sandbox lifecycle and network denial events",
+        "tags": [
+          "Sandboxes"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "events": {
+                      "type": [
+                        "array",
+                        "null"
+                      ],
+                      "items": {
+                        "$ref": "#/components/schemas/WorkloadEvent"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "id"
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Exclusive numeric event ID cursor. At most 100 events per response."
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            },
+            "description": "Return events after this event ID."
+          }
+        ],
+        "description": "Returns up to 100 retained events in ascending ID order. Poll with after set to the last received event ID. Network denial events contain only the denied hostname, count and generation."
+      }
     }
   },
   "components": {
@@ -3411,6 +3485,27 @@
             "type": "number",
             "minimum": 0,
             "description": "Customer cost recorded for this sandbox."
+          },
+          "network_usage": {
+            "type": "object",
+            "description": "Last reported cumulative proxied HTTP and TLS stream bytes across sandbox generations. A lost host can leave its final unreported bytes unknown. These counters do not determine customer charges.",
+            "required": [
+              "sent_bytes",
+              "received_bytes"
+            ],
+            "properties": {
+              "sent_bytes": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "received_bytes": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
           },
           "url": {
             "type": "string",

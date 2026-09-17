@@ -315,3 +315,39 @@ def test_async_failure_guidance_uses_the_server_fields():
             box = await client.sandboxes.from_id("sb_agent")
             assert box.failure == failure
     asyncio.run(run())
+
+
+def test_network_usage_and_denied_events_survive_refresh():
+    usage = {"sent_bytes": 123, "received_bytes": 456}
+    event = {"id": 72, "event_id": "denied-event", "event_type": "sandbox.egress_denied", "payload": {"hostname": "example.com", "count": 2, "generation": 1}}
+    def handler(request):
+        if request.url.path.endswith("/events"):
+            assert request.url.params["after"] == "71"
+            return httpx.Response(200, json={"events": [event]})
+        return httpx.Response(200, json=dict(SANDBOX, network_usage=usage))
+    with sync_client(handler) as client:
+        box = client.sandboxes.from_id("sb_agent")
+        assert box.network_usage == usage
+        box.network_usage["sent_bytes"] = 0
+        box.refresh()
+        assert box.network_usage == usage
+        events = box.events(after=71)
+        assert len(events) == 1
+        assert events[0].seq == 72
+        assert events[0].type == "sandbox.egress_denied"
+        assert events[0].payload == event["payload"]
+
+
+def test_async_network_usage_and_events_preserve_legacy_responses():
+    usage = {"sent_bytes": 9007199254740993, "received_bytes": 27}
+    responses = iter([dict(SANDBOX, network_usage=usage), dict(SANDBOX), {"events": None}])
+    async def run():
+        client = nodus.AsyncClient(api_key="nk_live_test", base_url="https://nodus.invalid")
+        client._http = httpx.AsyncClient(base_url="https://nodus.invalid", transport=httpx.MockTransport(lambda request: httpx.Response(200, json=next(responses))))
+        async with client:
+            box = await client.sandboxes.from_id("sb_agent")
+            assert box.network_usage == usage
+            await box.refresh()
+            assert box.network_usage is None
+            assert await box.events() == []
+    asyncio.run(run())
