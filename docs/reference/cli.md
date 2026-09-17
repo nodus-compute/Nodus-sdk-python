@@ -74,6 +74,9 @@ See [code and datasets](../guides/assets.md) for imports and attaching assets to
 |---|---|
 | `nodus pools create NAME` | Register a customer-owned host pool |
 | `nodus pools token POOL_ID` | Print a secret single-use enrollment token |
+| `nodus pools token POOL_ID --mode execute --host-id HOST_ID` | Print a secret token for explicit reenrollment of one existing host |
+| `nodus pools route POOL_ID off` | Disable new private admission while retaining cleanup |
+| `nodus pools route-settings POOL_ID --wait-policy after_wait --wait-alpha 0.1` | Update future placement policy |
 | `nodus pools hosts POOL_ID` | Inspect enrolled hosts |
 | `nodus pools utilization POOL_ID --json` | Read measured utilization and host buckets |
 | `nodus pools forecast POOL_ID --horizon 7 --json` | Read cached forecast evidence and the subscription rate |

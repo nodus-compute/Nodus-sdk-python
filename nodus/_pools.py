@@ -1,4 +1,4 @@
-"""Manage customer-owned pools and observe-only host enrollment."""
+"""Manage customer-owned pools and explicit host enrollment."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -9,6 +9,7 @@ from typing import Any
 
 import httpx
 
+from ._pool_route import route_settings, route_patch, route_result
 from ._pool_predict import PoolForecast, PoolRecommendations, RecommendationOutcome, predict_patch, done_payload, horizon_query, recommendation_query
 from .errors import APIConnectionError, APIError, APITimeoutError, ValidationError
 
@@ -46,6 +47,13 @@ class Pool:
     platform_rate_micros: int | None = None
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
+    wait_policy: str | None = None
+    wait_alpha: float | None = None
+    waiting_budget_pct: float | None = None
+    burst_approval: str | None = None
+    burst_threshold_micros: int | None = None
+    burst_timeout_behaviour: str | None = None
+
     @classmethod
     def from_dict(cls, value: Any) -> Pool:
         row = _row(value, ("id", "name", "kind", "state"))
@@ -55,9 +63,14 @@ class Pool:
         for key in ("predict_enabled", "route_enabled"):
             if row.get(key) is not None and not isinstance(row[key], bool):
                 raise APIError("The API returned an invalid pool capability")
+        settings = {key: row.get(key) for key in ("wait_policy", "wait_alpha", "waiting_budget_pct", "burst_approval", "burst_threshold_micros", "burst_timeout_behaviour")}
+        try:
+            route_settings(**{key: value for key, value in settings.items() if not (key == "wait_policy" and value == "cheaper")})
+        except ValidationError:
+            raise APIError("The API returned invalid Route settings") from None
         return cls(row["id"], row["name"], row["kind"], row["state"],
                    row.get("predict_enabled"), row.get("route_enabled"),
-                   row.get("owned_cost_micros_per_hour"), row.get("platform_rate_micros"), dict(row))
+                   row.get("owned_cost_micros_per_hour"), row.get("platform_rate_micros"), dict(row), **settings)
 
 
 @dataclass(frozen=True)
@@ -122,7 +135,7 @@ class EnrollmentToken:
     @classmethod
     def from_dict(cls, value: Any) -> EnrollmentToken:
         row = _row(value, ("id", "token", "mode", "expires_at"))
-        if row["mode"] != "observe" or not re.fullmatch(r"[A-Za-z0-9_-]+", row["token"]):
+        if row["mode"] not in ("observe", "execute") or not re.fullmatch(r"[A-Za-z0-9_-]+", row["token"]):
             raise APIError("The API returned an invalid enrollment token")
         return cls(row["id"], row["token"], row["mode"], row["expires_at"])
 
@@ -342,8 +355,23 @@ def _response(client: Any, method: str, path: str, response: httpx.Response) -> 
         raise APIError("The API returned an invalid pool response") from None
 
 
+def _enrollment_payload(mode: str, host_id: str | None) -> dict[str, str]:
+    if mode == "observe" and host_id is None:
+        return {"mode": mode}
+    if mode == "execute" and host_id is not None:
+        return {"mode": mode, "host_id": _id(host_id, "host")}
+    raise ValidationError("Use observe without a host ID or execute with the existing host ID")
+
+
+def _enrollment_result(value: Any, mode: str) -> EnrollmentToken:
+    token = EnrollmentToken.from_dict(value)
+    if token.mode != mode:
+        raise APIError("The API returned a token for a different enrollment mode")
+    return token
+
+
 class Pools:
-    """Manage pools and their observe-only hosts."""
+    """Manage pools and their enrolled hosts."""
 
     def __init__(self, client: Any):
         self._client = client
@@ -375,14 +403,36 @@ class Pools:
         return Pool.from_dict(self._request("PATCH", _path(pool_id),
             json=_patch(name, owned_cost_micros_per_hour)))
 
-    def enrollment_token(self, pool_id: str) -> EnrollmentToken:
-        """Issue a single-use observe token that expires after 24 hours."""
-        return EnrollmentToken.from_dict(self._request("POST", _path(pool_id) + "/enrollment-tokens",
-            json={"mode": "observe"}))
+    def enrollment_token(self, pool_id: str, *, mode: str = "observe", host_id: str | None = None) -> EnrollmentToken:
+        """Issue an observe token or explicitly reenroll one existing host for execution."""
+        return _enrollment_result(self._request("POST", _path(pool_id) + "/enrollment-tokens",
+            json=_enrollment_payload(mode, host_id)), mode)
 
     def hosts(self, pool_id: str) -> list[PoolHost]:
         """List a pool's hosts and their device inventory."""
         return _rows(self._request("GET", _path(pool_id) + "/hosts"), "hosts", PoolHost)
+
+    def set_route(self, pool_id: str, enabled: bool, *, accepted_rate_version: str | None = None,
+                        accepted_rate_micros: int | None = None, wait_policy: str | None = None,
+                        wait_alpha: float | None = None, waiting_budget_pct: float | None = None,
+                        burst_approval: str | None = None, burst_threshold_micros: int | None = None,
+                        burst_timeout_behaviour: str | None = None) -> Pool:
+        """Set Route with explicit rate consent for each enable request. Existing work keeps its terms."""
+        settings = route_settings(wait_policy=wait_policy, wait_alpha=wait_alpha, waiting_budget_pct=waiting_budget_pct,
+            burst_approval=burst_approval, burst_threshold_micros=burst_threshold_micros, burst_timeout_behaviour=burst_timeout_behaviour)
+        payload = route_patch(enabled, accepted_rate_version, accepted_rate_micros, settings)
+        return Pool.from_dict(route_result(self._request("PATCH", _path(pool_id), json=payload), pool_id, payload))
+
+    def update_route_settings(self, pool_id: str, *, wait_policy: str | None = None,
+                        wait_alpha: float | None = None, waiting_budget_pct: float | None = None,
+                        burst_approval: str | None = None, burst_threshold_micros: int | None = None,
+                        burst_timeout_behaviour: str | None = None) -> Pool:
+        """Update future placement settings separately from Predict, pool name, and owned cost."""
+        payload = route_settings(wait_policy=wait_policy, wait_alpha=wait_alpha, waiting_budget_pct=waiting_budget_pct,
+            burst_approval=burst_approval, burst_threshold_micros=burst_threshold_micros, burst_timeout_behaviour=burst_timeout_behaviour)
+        if not payload:
+            raise ValidationError("Provide at least one Route setting")
+        return Pool.from_dict(route_result(self._request("PATCH", _path(pool_id), json=payload), pool_id, payload))
 
     def set_predict(self, pool_id: str, enabled: bool, *, accepted_rate_version: str | None = None,
                           accepted_monthly_micros: int | None = None) -> Pool:
@@ -421,7 +471,7 @@ class Pools:
 
 
 class AsyncPools:
-    """Manage pools and their observe-only hosts."""
+    """Manage pools and their enrolled hosts."""
 
     def __init__(self, client: Any):
         self._client = client
@@ -453,14 +503,36 @@ class AsyncPools:
         return Pool.from_dict(await self._request("PATCH", _path(pool_id),
             json=_patch(name, owned_cost_micros_per_hour)))
 
-    async def enrollment_token(self, pool_id: str) -> EnrollmentToken:
-        """Issue a single-use observe token that expires after 24 hours."""
-        return EnrollmentToken.from_dict(await self._request("POST", _path(pool_id) + "/enrollment-tokens",
-            json={"mode": "observe"}))
+    async def enrollment_token(self, pool_id: str, *, mode: str = "observe", host_id: str | None = None) -> EnrollmentToken:
+        """Issue an observe token or explicitly reenroll one existing host for execution."""
+        return _enrollment_result(await self._request("POST", _path(pool_id) + "/enrollment-tokens",
+            json=_enrollment_payload(mode, host_id)), mode)
 
     async def hosts(self, pool_id: str) -> list[PoolHost]:
         """List a pool's hosts and their device inventory."""
         return _rows(await self._request("GET", _path(pool_id) + "/hosts"), "hosts", PoolHost)
+
+    async def set_route(self, pool_id: str, enabled: bool, *, accepted_rate_version: str | None = None,
+                        accepted_rate_micros: int | None = None, wait_policy: str | None = None,
+                        wait_alpha: float | None = None, waiting_budget_pct: float | None = None,
+                        burst_approval: str | None = None, burst_threshold_micros: int | None = None,
+                        burst_timeout_behaviour: str | None = None) -> Pool:
+        """Set Route with explicit rate consent for each enable request. Existing work keeps its terms."""
+        settings = route_settings(wait_policy=wait_policy, wait_alpha=wait_alpha, waiting_budget_pct=waiting_budget_pct,
+            burst_approval=burst_approval, burst_threshold_micros=burst_threshold_micros, burst_timeout_behaviour=burst_timeout_behaviour)
+        payload = route_patch(enabled, accepted_rate_version, accepted_rate_micros, settings)
+        return Pool.from_dict(route_result(await self._request("PATCH", _path(pool_id), json=payload), pool_id, payload))
+
+    async def update_route_settings(self, pool_id: str, *, wait_policy: str | None = None,
+                        wait_alpha: float | None = None, waiting_budget_pct: float | None = None,
+                        burst_approval: str | None = None, burst_threshold_micros: int | None = None,
+                        burst_timeout_behaviour: str | None = None) -> Pool:
+        """Update future placement settings separately from Predict, pool name, and owned cost."""
+        payload = route_settings(wait_policy=wait_policy, wait_alpha=wait_alpha, waiting_budget_pct=waiting_budget_pct,
+            burst_approval=burst_approval, burst_threshold_micros=burst_threshold_micros, burst_timeout_behaviour=burst_timeout_behaviour)
+        if not payload:
+            raise ValidationError("Provide at least one Route setting")
+        return Pool.from_dict(route_result(await self._request("PATCH", _path(pool_id), json=payload), pool_id, payload))
 
     async def set_predict(self, pool_id: str, enabled: bool, *, accepted_rate_version: str | None = None,
                           accepted_monthly_micros: int | None = None) -> Pool:

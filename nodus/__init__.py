@@ -57,7 +57,7 @@ import httpx
 
 from ._terminal import RunProgress
 from ._brief import build_payload, status_filter
-from .requests import Source, Requirements, Policy, ContinuitySpec, StageInput, StageSpec
+from .requests import Source, Requirements, Placement, Policy, ContinuitySpec, StageInput, StageSpec
 from .config import _is_header_safe, read_credentials
 from .errors import (
     APIConnectionError,
@@ -146,6 +146,7 @@ __all__ = [
     "Output",
     "Source",
     "Requirements",
+    "Placement",
     "Policy",
     "ContinuitySpec",
     "StageInput",
@@ -788,6 +789,7 @@ class Client(_Transport):
         framework: str | None = None,
         policy: Policy | dict[str, Any] | None = None,
         requirements: Requirements | dict[str, Any] | None = None,
+        placement: Placement | dict[str, Any] | None = None,
         idempotency_key: str | None = None,
         extra: dict[str, Any] | None = None,
         **unknown: Any,
@@ -833,6 +835,7 @@ class Client(_Transport):
             framework=framework,
             policy=policy,
             requirements=requirements,
+            placement=placement,
             extra=extra,
             **unknown,
         )
@@ -1390,6 +1393,7 @@ class AsyncClient(_Transport):
         framework: str | None = None,
         policy: Policy | dict[str, Any] | None = None,
         requirements: Requirements | dict[str, Any] | None = None,
+        placement: Placement | dict[str, Any] | None = None,
         idempotency_key: str | None = None,
         extra: dict[str, Any] | None = None,
         **unknown: Any,
@@ -1416,6 +1420,7 @@ class AsyncClient(_Transport):
             framework=framework,
             policy=policy,
             requirements=requirements,
+            placement=placement,
             extra=extra,
             **unknown,
         )

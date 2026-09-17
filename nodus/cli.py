@@ -228,7 +228,16 @@ def _cmd_pools(args: argparse.Namespace) -> int:
         if args.pools_cmd == "create":
             print(_safe_line(client.pools.create(args.name).id))
         elif args.pools_cmd == "token":
-            print(client.pools.enrollment_token(args.pool_id).token)
+            print(client.pools.enrollment_token(args.pool_id, mode=args.mode, host_id=args.host_id).token)
+        elif args.pools_cmd in ("route", "route-settings"):
+            settings = {name: getattr(args, name) for name in ("wait_policy", "wait_alpha", "waiting_budget_pct", "burst_approval", "burst_threshold_micros", "burst_timeout_behaviour")}
+            if args.pools_cmd == "route":
+                pool = client.pools.set_route(args.pool_id, args.setting == "on",
+                    accepted_rate_version=args.accept_rate_version, accepted_rate_micros=args.accept_rate_micros, **settings)
+                print(_safe_line(f"{pool.id}: Route {'enabled' if pool.route_enabled else 'disabled'}"))
+            else:
+                pool = client.pools.update_route_settings(args.pool_id, **settings)
+                print(_safe_line(f"{pool.id}: Route settings updated"))
         elif args.pools_cmd == "predict":
             pool = client.pools.set_predict(args.pool_id, args.setting == "on",
                 accepted_rate_version=args.accept_rate_version, accepted_monthly_micros=args.accept_monthly_micros)
@@ -741,8 +750,23 @@ Use nodus COMMAND --help for command options.""",
     pools_sub = pools.add_subparsers(dest="pools_cmd", required=True, metavar="COMMAND")
     pools_create = pools_sub.add_parser("create", help="create a pool")
     pools_create.add_argument("name")
-    pools_token = pools_sub.add_parser("token", help="print a secret single-use observe enrollment token")
+    pools_token = pools_sub.add_parser("token", help="print a secret single-use host enrollment token")
     pools_token.add_argument("pool_id")
+    pools_token.add_argument("--mode", choices=("observe", "execute"), default="observe")
+    pools_token.add_argument("--host-id", default=None, help="existing host ID required for explicit execute reenrollment")
+    for command in ("route", "route-settings"):
+        route = pools_sub.add_parser(command, help="set Route activation and future placement policy")
+        route.add_argument("pool_id")
+        if command == "route":
+            route.add_argument("setting", choices=("on", "off"))
+            route.add_argument("--accept-rate-version", default=None)
+            route.add_argument("--accept-rate-micros", type=int, default=None, help="explicit rate per active customer device-hour in USD micros")
+        route.add_argument("--wait-policy", choices=("never", "after_wait"), default=None)
+        route.add_argument("--wait-alpha", type=float, default=None)
+        route.add_argument("--waiting-budget-pct", type=float, default=None)
+        route.add_argument("--burst-approval", choices=("auto", "above_threshold", "always"), default=None)
+        route.add_argument("--burst-threshold-micros", type=int, default=None)
+        route.add_argument("--burst-timeout-behaviour", choices=("keep_waiting", "cancel"), default=None)
     pools_hosts = pools_sub.add_parser("hosts", help="list enrolled hosts and health")
     pools_hosts.add_argument("pool_id")
     pools_predict = pools_sub.add_parser("predict", help="set paid account-wide Predict with explicit rate consent")

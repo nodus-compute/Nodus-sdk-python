@@ -164,6 +164,7 @@ def build_payload(
     outputs: dict[str, str] | None = None,
     command: list[str] | str | None = None,
     requirements: dict[str, Any] | None = None,
+    placement: dict[str, Any] | None = None,
     model: str | None = None,
     compute_class: Any = None,
     peak_memory_gb: float | None = None,
@@ -294,7 +295,11 @@ def build_payload(
     if pol:
         payload["policy"] = pol
 
+    if placement is not None:
+        payload["placement"] = validate_placement(placement)
     _merge_extra(payload, extra)
+    if payload.get("placement") is not None:
+        payload["placement"] = validate_placement(payload["placement"])
     if "expected_runtime_hours" in payload:
         raise ValueError(UNSUPPORTED["expected_runtime_hours"])
     for stage in payload.get("stages", []):
@@ -308,6 +313,18 @@ def build_payload(
             stage["requirements"] = validate_requirements(stage["requirements"])
     _warn_about_the_money(payload)
     return payload
+
+
+def validate_placement(placement: Any) -> dict[str, str]:
+    if not isinstance(placement, dict):
+        raise ValueError("placement must contain one pool or prefer='any'")
+    if set(placement) == {"prefer"} and placement["prefer"] == "any":
+        return dict(placement)
+    if set(placement) == {"pool"}:
+        pool = placement["pool"]
+        if isinstance(pool, str) and 0 < len(pool.encode("utf-8")) <= 200 and pool.strip() == pool and not any(ord(c) < 32 or 127 <= ord(c) <= 159 for c in pool):
+            return dict(placement)
+    raise ValueError("placement must name one nonempty pool or set prefer='any', with no extra fields")
 
 
 OPTIMIZATIONS = ("automatic", "lowest_cost", "lower_cost", "balanced", "faster", "fastest")

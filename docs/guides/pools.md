@@ -1,10 +1,10 @@
-# Measure your own GPU hosts
+# Use your own GPU hosts
 
 Sign in with `nodus login` or configure `NODUS_API_KEY`. Pools register
 customer-owned GPU hosts for free, read-only measurement on deployments where
 Compute is enabled. Your existing scheduler continues running your workloads.
-Predict adds an optional paid forecast and advisory recommendations. Routing
-onto these hosts and automated actions are unavailable.
+Predict adds an optional paid forecast and advisory recommendations. Route
+requires separate execution enrollment and explicit price consent.
 
 Create a pool with `nodus pools create Research`. The command prints its pool
 ID. Run `nodus pools token POOL_ID`, replacing `POOL_ID` with that returned ID,
@@ -28,8 +28,10 @@ on the asynchronous client. IDs always come from the server.
 | `list()` | All pools owned by the authenticated team |
 | `get(pool_id)` | A `Pool` with its current configuration |
 | `update(pool_id, name=..., owned_cost_micros_per_hour=...)` | Updated `Pool`. Supply at least one setting |
-| `enrollment_token(pool_id)` | An `EnrollmentToken` with `id`, `token`, `mode`, and `expires_at` |
+| `enrollment_token(pool_id, mode="observe", host_id=None)` | An `EnrollmentToken` with `id`, `token`, `mode`, and `expires_at` |
 | `utilization(pool_id, from_=..., to=..., bucket=...)` | `PoolUtilization` with a summary, host summaries, and time buckets |
+| `set_route(pool_id, enabled, accepted_rate_version=..., accepted_rate_micros=...)` | Updated `Pool` with explicit price consent when enabling |
+| `update_route_settings(pool_id, wait_policy=..., wait_alpha=...)` | Updated future placement settings |
 | `hosts(pool_id)` | `PoolHost` objects with health, inventory, and `HostDevice` objects |
 | `drain_host(pool_id, host_id)` | The host marked draining, without stopping customer processes |
 | `remove_host(pool_id, host_id)` | Revokes the host credential and removes the host, preserving historical measurements |
@@ -177,3 +179,95 @@ All these Python methods are also available on `AsyncClient.pools` and must
 be awaited. Forecasts return `PoolForecast`, recommendations return
 `PoolRecommendations`, and their unchanged response JSON is available in
 `raw`. Subscription changes return `Pool`.
+
+
+## Enable Route with explicit consent
+
+An account admin can enable Route at **$0.02 per active customer device-hour**,
+including optimization and apply. Your private hosts have no supplier rental
+charge. Market capacity has separate compute charges. Enabling Route does not
+create a Predict subscription or change an observe host's execution permission.
+
+First choose an existing host from `client.pools.hosts(pool_id)`. Use the
+Compute Hosts panel's **Enable execution** action to obtain a fresh token and
+pinned installation command. Run that command in a root Bash shell on the
+same Linux host. The installation rotates the host credential and installs
+the execution service. You can prepare execution hosts before enabling Route.
+The equivalent token request is explicit:
+
+```python
+token = client.pools.enrollment_token(
+    pool_id,
+    mode="execute",
+    host_id=host_id,
+)
+```
+
+Tokens are single-use secrets. Use `token.token` only when providing it to
+the installation prompt. Do not log it or put it in command history. A token
+response does not mean the host has installed execution support.
+
+After reviewing the rate, enable Route:
+
+```python
+pool = client.pools.set_route(
+    pool_id,
+    True,
+    accepted_rate_version="route-platform-v1",
+    accepted_rate_micros=20000,
+)
+```
+
+The same consent through the CLI is:
+
+```bash
+nodus pools route POOL_ID on \
+  --accept-rate-version route-platform-v1 \
+  --accept-rate-micros 20000
+```
+
+Disabling with `client.pools.set_route(pool_id, False)` or
+`nodus pools route POOL_ID off` stops new admission. Existing work, accepted
+terms, and exact cleanup remain tracked. Send Route changes separately from
+Predict, pool name, and owned hardware cost updates.
+
+`update_route_settings` accepts the following optional fields. Supply at least
+one. These fields may also accompany `set_route` in one request.
+
+| Field | Values |
+|---|---|
+| `wait_policy` | `never` keeps waiting for private capacity and never uses market fallback. `after_wait` allows fallback after waiting. The `cheaper` policy is unavailable |
+| `wait_alpha` | Finite number at least zero. New pools default to 0.1 |
+| `waiting_budget_pct` | Number from 0 through 100 |
+| `burst_approval` | `auto`, `above_threshold`, or `always` |
+| `burst_threshold_micros` | Nonnegative USD micros |
+| `burst_timeout_behaviour` | `keep_waiting` or `cancel` |
+
+```python
+client.pools.update_route_settings(
+    pool_id,
+    wait_policy="after_wait",
+    wait_alpha=0.1,
+    burst_approval="always",
+)
+```
+
+## Choose private or market placement
+
+Omit `placement` to prefer eligible private capacity. Set one pool explicitly,
+or use `prefer="any"` to skip private pools. Do not set both fields.
+
+```python
+workload = client.run(
+    command=["python", "train.py"],
+    gpu_count=1,
+    budget=5,
+    placement=nodus.Placement(pool=pool_id),
+)
+```
+
+Use `placement=nodus.Placement(prefer="any")` for market capacity. Your image,
+GPU requirements, spending controls, and output selection still apply.
+Unavailable, disabled, or inaccessible explicit pools are rejected. Accepted
+submission does not mean execution has started. Observe progress and retrieve
+results as for other workloads. The same arguments work with `AsyncClient`.
