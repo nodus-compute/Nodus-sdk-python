@@ -609,13 +609,18 @@ class Sandbox(_SandboxState):
         response = self._client._request("GET", path, params={"after": after})
         return [Event.from_dict(_obj(row)) for row in _rows(_obj(response).get("events"))]
 
-    def request(self, method: str, path: str = "/", *, port: int, json: Any = None) -> str:
-        """Send one JSON request to a guest HTTP port and return bounded text.
+    def request(
+        self, method: str, path: str = "/", *, port: int,
+        json: Any = None, content: bytes | None = None,
+    ) -> bytes:
+        """Send JSON or raw bytes to a guest HTTP port and return bounded bytes.
 
         Requests are never retried. A timed out mutation may have executed.
         """
+        if content is not None and (not isinstance(content, bytes) or json is not None):
+            raise ValidationError("content must be bytes and cannot be combined with json")
         route = _http_path(self.id, port, path, method)
-        return self._client._request(method, route, json=json, text=True,
+        return self._client._request(method, route, json=json, content=content, raw=True,
                                      max_bytes=65536, max_retries=0)
 
     def exec(
@@ -852,10 +857,15 @@ class AsyncSandbox(_SandboxState):
         response = await self._client._request("GET", path, params={"after": after})
         return [Event.from_dict(_obj(row)) for row in _rows(_obj(response).get("events"))]
 
-    async def request(self, method: str, path: str = "/", *, port: int, json: Any = None) -> str:
-        """Send one JSON request to a guest HTTP port without automatic retries."""
+    async def request(
+        self, method: str, path: str = "/", *, port: int,
+        json: Any = None, content: bytes | None = None,
+    ) -> bytes:
+        """Send JSON or raw bytes and return bounded bytes without automatic retries."""
+        if content is not None and (not isinstance(content, bytes) or json is not None):
+            raise ValidationError("content must be bytes and cannot be combined with json")
         route = _http_path(self.id, port, path, method)
-        return await self._client._request(method, route, json=json, text=True,
+        return await self._client._request(method, route, json=json, content=content, raw=True,
                                            max_bytes=65536, max_retries=0)
 
     async def exec(

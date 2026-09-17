@@ -669,6 +669,8 @@ class Client(_Transport):
         idempotency_key: str | None = None,
         params: dict[str, Any] | None = None,
         text: bool = False,
+        raw: bool = False,
+        content: bytes | None = None,
         headers_out: dict[str, str] | None = None,
         max_bytes: int | None = None,
         timeout: float | None = None,
@@ -682,15 +684,15 @@ class Client(_Transport):
         slept = 0.0
         while True:
             delay: float | None = None
-            capped: str | None = None
+            capped: bytes | None = None
             try:
                 if max_bytes is None:
                     resp = self._http.request(
-                        method, path, json=json, headers=headers, params=params, **request_options
+                        method, path, json=json, content=content, headers=headers, params=params, **request_options
                     )
                 else:
                     with self._http.stream(
-                        method, path, json=json, headers=headers, params=params, **request_options
+                        method, path, json=json, content=content, headers=headers, params=params, **request_options
                     ) as resp:
                         if resp.status_code < 400:
                             chunks, total = [], 0
@@ -699,7 +701,7 @@ class Client(_Transport):
                                 if total > max_bytes:
                                     raise self._too_big(path, max_bytes)
                                 chunks.append(chunk)
-                            capped = b"".join(chunks).decode("utf-8", "replace")
+                            capped = b"".join(chunks)
                         else:
                             resp.read()
             except httpx.TimeoutException as exc:
@@ -740,7 +742,9 @@ class Client(_Transport):
             if headers_out is not None:
                 headers_out.update(resp.headers)
             if capped is not None:
-                return capped
+                return capped if raw else capped.decode("utf-8", "replace")
+            if raw:
+                return resp.content
             if not resp.content:
                 return "" if text else None
             # The log endpoint answers text/plain, because its whole purpose is
@@ -1307,6 +1311,8 @@ class AsyncClient(_Transport):
         idempotency_key: str | None = None,
         params: dict[str, Any] | None = None,
         text: bool = False,
+        raw: bool = False,
+        content: bytes | None = None,
         headers_out: dict[str, str] | None = None,
         max_bytes: int | None = None,
         timeout: float | None = None,
@@ -1320,15 +1326,15 @@ class AsyncClient(_Transport):
         slept = 0.0
         while True:
             delay: float | None = None
-            capped: str | None = None
+            capped: bytes | None = None
             try:
                 if max_bytes is None:
                     resp = await self._http.request(
-                        method, path, json=json, headers=headers, params=params, **request_options
+                        method, path, json=json, content=content, headers=headers, params=params, **request_options
                     )
                 else:
                     async with self._http.stream(
-                        method, path, json=json, headers=headers, params=params, **request_options
+                        method, path, json=json, content=content, headers=headers, params=params, **request_options
                     ) as resp:
                         if resp.status_code < 400:
                             chunks, total = [], 0
@@ -1337,7 +1343,7 @@ class AsyncClient(_Transport):
                                 if total > max_bytes:
                                     raise self._too_big(path, max_bytes)
                                 chunks.append(chunk)
-                            capped = b"".join(chunks).decode("utf-8", "replace")
+                            capped = b"".join(chunks)
                         else:
                             await resp.aread()
             except httpx.TimeoutException as exc:
@@ -1378,7 +1384,9 @@ class AsyncClient(_Transport):
             if headers_out is not None:
                 headers_out.update(resp.headers)
             if capped is not None:
-                return capped
+                return capped if raw else capped.decode("utf-8", "replace")
+            if raw:
+                return resp.content
             if not resp.content:
                 return "" if text else None
             # The log endpoint answers text/plain, because its whole purpose is

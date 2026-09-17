@@ -28,7 +28,10 @@ with nodus.Client() as client:
 
 The image must already contain your server. Wait for the sandbox to become ready
 before calling it. `box.request("POST", "/infer", port=8080, json=payload)` returns
-response text. Decode JSON in your application when appropriate. The server
+response bytes. Use `json.loads(response)` for JSON or `response.decode("utf-8")`
+for text. Send binary bodies with `content=payload_bytes` instead of `json=`.
+Both synchronous and asynchronous service methods return bytes, including
+`b""` for an empty response. The server
 must return a successful 2xx response at its health path before an inference
 request is forwarded.
 
