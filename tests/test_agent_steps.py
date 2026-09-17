@@ -25,7 +25,10 @@ import uuid
 def journal_socket(tmp_path,monkeypatch):
     import tempfile
     from pathlib import Path
-    socket_dir=tempfile.TemporaryDirectory(prefix='nds-agent-',dir='/tmp')
+    import socket
+    if not hasattr(socket, 'AF_UNIX') or not hasattr(socketserver, 'UnixStreamServer'):
+        pytest.skip('Guest driver fixture requires Unix-domain socket support')
+    socket_dir=tempfile.TemporaryDirectory(prefix='nds-agent-',dir='/tmp' if os.name == 'posix' else None)
     path=Path(socket_dir.name)/'j.sock'
     db=sqlite3.connect(tmp_path/'journal.sqlite',check_same_thread=False)
     db.execute('CREATE TABLE journal (step TEXT PRIMARY KEY, definition TEXT, status TEXT, result TEXT, token TEXT, external_key TEXT)')

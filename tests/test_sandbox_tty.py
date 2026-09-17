@@ -1,4 +1,6 @@
 import json
+import os
+import pytest
 import httpx
 from nodus import Client
 from nodus._sandboxes import Sandbox
@@ -20,6 +22,7 @@ def test_tty_launch_and_resize_wire():
     assert seen[1]==('/v1/sandboxes/sb_test/execs/ex_test/resize',{'rows':40,'cols':120})
 
 
+@pytest.mark.skipif(os.name != "posix", reason="Physical shell requires an interactive POSIX terminal")
 def test_shell_restores_real_terminal_and_cancels_disconnect(monkeypatch):
     import os
     import pty
