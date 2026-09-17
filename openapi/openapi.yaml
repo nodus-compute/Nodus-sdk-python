@@ -2193,20 +2193,11 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "integer"
-            },
-            "description": "Exclusive numeric event ID cursor. At most 100 events per response."
-          },
-          {
-            "name": "after",
-            "in": "query",
-            "required": false,
-            "schema": {
               "type": "integer",
               "format": "int64",
               "minimum": 0
             },
-            "description": "Return events after this event ID."
+            "description": "Exclusive numeric event ID cursor. At most 100 events per response."
           }
         ],
         "description": "Returns up to 100 retained events in ascending ID order. Poll with after set to the last received event ID. Network denial events contain only the denied hostname, count and generation."
