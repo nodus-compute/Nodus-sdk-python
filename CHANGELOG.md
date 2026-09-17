@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Submit benchmark matrices with an explicit total budget and idempotency key, then inspect the server report through the SDK or CLI.
+- Add registered sandbox services, bounded HTTP requests and a scheduled micro-batch example.
 
 - Expose server-reported per-unit latency and posted cost through `workload.unit_metrics`.
 - Expose reported sandbox network bytes through `network_usage`.

@@ -13,6 +13,7 @@ import re
 import time
 from typing import Any, AsyncIterator, Iterator
 import uuid
+from urllib.parse import unquote, urlsplit
 
 from ._secrets import _names
 from .errors import APITimeoutError, NodusError, ValidationError
@@ -80,6 +81,21 @@ def _valid_id(value: Any, kind: str) -> str:
     )
 
 
+def _http_path(sandbox_id: str, port: int, path: str, method: str) -> str:
+    if isinstance(port, bool) or not isinstance(port, int) or not 1024 <= port <= 65535 or port == 18080:
+        raise ValidationError("port must be a guest HTTP port from 1024 to 65535, excluding 18080")
+    if method not in {"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}:
+        raise ValidationError("unsupported HTTP method")
+    if not isinstance(path, str) or len(path) > 4096 or not path.startswith("/") or path.startswith("//"):
+        raise ValidationError("path must be an absolute guest HTTP path")
+    decoded = unquote(path)
+    if any(c in decoded for c in ("\r", "\n", "\\", "\x00")) or urlsplit(path).fragment:
+        raise ValidationError("invalid HTTP path")
+    if any(part in {".", ".."} for part in urlsplit(decoded).path.split("/")):
+        raise ValidationError("HTTP paths cannot contain dot segments")
+    return f"/v1/sandboxes/{_valid_id(sandbox_id, 'sandbox')}/ports/{port}{path}"
+
+
 def _wire(value: Any) -> Any:
     if isinstance(value, Enum):
         return value.value
@@ -119,6 +135,7 @@ def _create_payload(
     continuity: dict[str, Any] | None = None,
     from_snapshot: str | None = None,
     secrets: list[str] | None = None,
+    service: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if image is not None and (not isinstance(image, str) or not image.strip()):
         raise ValidationError("image must be nonempty text")
@@ -141,6 +158,7 @@ def _create_payload(
         ("continuity", continuity),
         ("from_snapshot", from_snapshot),
         ("secrets", _names(secrets)),
+        ("service", service),
     ):
         if value is not None:
             body[key] = _wire(value)
@@ -398,13 +416,14 @@ class Sandboxes:
         continuity: dict[str, Any] | None = None,
         from_snapshot: str | None = None,
         secrets: list[str] | None = None,
+        service: dict[str, Any] | None = None,
         idempotency_key: str | None = None,
     ) -> "Sandbox":
         body = _create_payload(
             image=image, name=name, profile=profile, budget=budget, wake=wake, requirements=requirements,
             outcome=outcome, policy=policy, lifecycle=lifecycle,
             reservation=reservation, continuity=continuity,
-            from_snapshot=from_snapshot, secrets=secrets,
+            from_snapshot=from_snapshot, secrets=secrets, service=service,
         )
         headers: dict[str, str] = {}
         response = self._client._request(
@@ -479,6 +498,7 @@ class Sandbox(_SandboxState):
         continuity: dict[str, Any] | None = None,
         from_snapshot: str | None = None,
         secrets: list[str] | None = None,
+        service: dict[str, Any] | None = None,
         idempotency_key: str | None = None,
     ):
         if client is None and image is None and not name:
@@ -503,7 +523,7 @@ class Sandbox(_SandboxState):
                     lifecycle=lifecycle,
                     reservation=reservation,
                     continuity=continuity,
-                    from_snapshot=from_snapshot, secrets=secrets,
+                    from_snapshot=from_snapshot, secrets=secrets, service=service,
                     idempotency_key=idempotency_key,
                 )
             except BaseException:
@@ -557,6 +577,15 @@ class Sandbox(_SandboxState):
         path = f"/v1/sandboxes/{_valid_id(self.id, 'sandbox')}/events"
         response = self._client._request("GET", path, params={"after": after})
         return [Event.from_dict(_obj(row)) for row in _rows(_obj(response).get("events"))]
+
+    def request(self, method: str, path: str = "/", *, port: int, json: Any = None) -> str:
+        """Send one JSON request to a guest HTTP port and return bounded text.
+
+        Requests are never retried. A timed out mutation may have executed.
+        """
+        route = _http_path(self.id, port, path, method)
+        return self._client._request(method, route, json=json, text=True,
+                                     max_bytes=65536, max_retries=0)
 
     def exec(
         self, command: str | list[str] | tuple[str, ...], *, cwd: str | None = None,
@@ -686,13 +715,14 @@ class AsyncSandboxes:
         continuity: dict[str, Any] | None = None,
         from_snapshot: str | None = None,
         secrets: list[str] | None = None,
+        service: dict[str, Any] | None = None,
         idempotency_key: str | None = None,
     ) -> "AsyncSandbox":
         body = _create_payload(
             image=image, name=name, profile=profile, budget=budget, wake=wake, requirements=requirements,
             outcome=outcome, policy=policy, lifecycle=lifecycle,
             reservation=reservation, continuity=continuity,
-            from_snapshot=from_snapshot, secrets=secrets,
+            from_snapshot=from_snapshot, secrets=secrets, service=service,
         )
         headers: dict[str, str] = {}
         response = await self._client._request(
@@ -772,6 +802,12 @@ class AsyncSandbox(_SandboxState):
         path = f"/v1/sandboxes/{_valid_id(self.id, 'sandbox')}/events"
         response = await self._client._request("GET", path, params={"after": after})
         return [Event.from_dict(_obj(row)) for row in _rows(_obj(response).get("events"))]
+
+    async def request(self, method: str, path: str = "/", *, port: int, json: Any = None) -> str:
+        """Send one JSON request to a guest HTTP port without automatic retries."""
+        route = _http_path(self.id, port, path, method)
+        return await self._client._request(method, route, json=json, text=True,
+                                           max_bytes=65536, max_retries=0)
 
     async def exec(
         self, command: str | list[str] | tuple[str, ...], *, cwd: str | None = None,
