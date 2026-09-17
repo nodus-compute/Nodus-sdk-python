@@ -16,14 +16,18 @@ nodus login
 ```
 
 Create a sandbox with a container image, resource requirements, and customer
-spending limit. Customer sandboxes currently use GPU infrastructure.
+spending limit. Customer sandboxes currently use GPU infrastructure. Use a
+published image with an explicit non-root `USER`, a writable working directory
+and the programs your agent will execute. Replace
+`ghcr.io/your-org/research-agent:1` below with that image. A root-only base image
+must be rebuilt with a non-root user before submission.
 
 ```python
 import nodus
 
 client = nodus.Client()
 sandbox = client.sandboxes.create(
-    image="pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime",
+    image="ghcr.io/your-org/research-agent:1",
     name="research-agent",
     requirements={
         "gpu": "L40S",
@@ -39,7 +43,7 @@ sandbox = client.sandboxes.create(
     },
     policy={
         "network": "allowlist",
-        "egress_allow": ["api.example.com"],
+        "egress_allow": ["api.anthropic.com"],
     },
     idempotency_key="research-agent-20260913",
 )
@@ -91,6 +95,39 @@ a sequence, stream name, byte offset, raw `data`, decoded `text`, and creation
 time. `iter_output()` follows until the execution is terminal. Use
 `output(after=SEQUENCE, wait=False)` when your application manages cursors.
 
+## Read network usage and denied destinations
+
+Allowlist mode supports HTTP and HTTPS clients that respect the supplied proxy
+environment variables. Only ports 80 and 443 are supported. Direct external
+sockets remain unavailable. Use hostnames without URL schemes or paths. An exact
+name permits only that host. A leading `*.` permits its subdomains, not the bare
+parent name. Private and metadata addresses remain blocked.
+
+For direct model APIs, permit `api.anthropic.com` for the
+[Claude API](https://platform.claude.com/docs/en/api/overview) or `api.openai.com`
+for the [OpenAI API](https://platform.openai.com/docs/api-reference/introduction).
+Other API gateways and package downloads need their own exact hostnames.
+
+```python
+sandbox.refresh()
+print(sandbox.network_usage)
+
+cursor = 0
+for event in sandbox.events(after=cursor):
+    cursor = event.seq
+    if event.type == "sandbox.egress_denied":
+        print(event.payload["hostname"], event.payload["count"])
+```
+
+Keep the last `event.seq` and pass it as `after` on the next poll. Each call
+returns at most 100 events. Async handles provide the same methods with `await`.
+Denial events contain hostnames and counts, without URLs, headers or bodies.
+
+`network_usage` contains the last reported `sent_bytes` and `received_bytes`
+across sandbox generations. These are proxied HTTP and TLS stream bytes, not
+customer charges. Refresh to read newer reports. Abrupt host loss can leave the
+last unreported bytes unknown. Older API responses leave this field as `None`.
+
 ## Send stdin
 
 Set `stdin=True` when creating the execution, then write text or bytes. Send an
@@ -131,7 +168,7 @@ Its context manager terminates the sandbox when the block exits.
 ```python
 with nodus.Sandbox(
     name="research-agent",
-    image="pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime",
+    image="ghcr.io/your-org/research-agent:1",
     requirements={"gpu": "L40S", "peak_memory_gb": 32},
     budget=5,
 ) as sandbox:
@@ -155,7 +192,7 @@ finally:
 The CLI uses the same nouns and verbs.
 
 ```bash
-nodus sandbox new pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime --name research-agent --budget 5
+nodus sandbox new ghcr.io/your-org/research-agent:1 --name research-agent --budget 5
 nodus sandbox ls
 nodus sandbox exec SANDBOX_ID "python agent.py"
 nodus sandbox logs SANDBOX_ID EXEC_ID
@@ -175,7 +212,7 @@ import nodus
 async def main():
     async with nodus.AsyncClient() as client:
         sandbox = await client.sandboxes.create(
-            image="pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime",
+            image="ghcr.io/your-org/research-agent:1",
             requirements={"gpu": "L40S", "peak_memory_gb": 32},
             budget=5,
         )

@@ -79,11 +79,15 @@ def compute_label(route: Any) -> str:
             break
     if not label:
         return "Not reported"
+    count = resources.get("gpu_count")
+    multiple = isinstance(count, int) and not isinstance(count, bool) and count in (2, 4, 8)
+    if multiple:
+        label = f"{count} × {label}"
     memory = resources.get("device_memory_gb")
     if not _number(memory) or memory <= 0:
         memory = route.memory_gb if accelerator or route.compute_class == "accelerator" else 0
     if _number(memory) and memory > 0:
-        label += f" ({memory:g} GB)"
+        label += f" ({memory:g} GB{' per GPU' if multiple else ''})"
     return label
 
 
@@ -91,6 +95,8 @@ def workload_rows(workload: Any) -> list[tuple[str, str]]:
     rows = [("Run", clean(workload.id, line=True)), ("Status", status_label(workload.status)),
             ("Cost", format_cost(workload.cost_now_usd))]
     rows.append(("Compute", compute_label(workload.route)))
+    if workload.route is not None and _number(workload.route.price_usd_hour) and workload.route.price_usd_hour > 0:
+        rows.append(("Node hourly price", f"${workload.route.price_usd_hour:.4f}/hour"))
     for stage in workload.stages:
         label, fraction = stage_progress(stage)
         if fraction is not None:

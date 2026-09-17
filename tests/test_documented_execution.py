@@ -35,6 +35,7 @@ def docs_api(monkeypatch):
            "route": {"sku": "nodus:test", "region": "test-region", "expected_cost_usd": 0.01}}
     sandbox = {
         "id": "sb_docs", "state": "ready", "envelope": {}, "cost_usd": 0.01,
+        "network_usage": {"sent_bytes": 123, "received_bytes": 456},
         "url": "https://console.nodus-compute.ai/sandboxes/sb_docs",
         "created_at": "2026-09-13T12:00:00Z", "updated_at": "2026-09-13T12:00:01Z",
         "last_activity_at": "2026-09-13T12:00:01Z", "terminal_at": None,
@@ -74,6 +75,9 @@ def docs_api(monkeypatch):
                 return self.reply({"workloads": [row]})
             if path == "/v1/workloads/wl_docs":
                 return self.reply(row)
+            if path in ("/v1/sandboxes/sb_docs/events", "/v1/sandboxes/sb_example/events"):
+                after = int(parse_qs(urlsplit(self.path).query).get("after", ["0"])[0])
+                return self.reply({"events": [] if after >= 1 else [{"id": 1, "event_type": "sandbox.egress_denied", "payload": {"hostname": "example.com", "count": 2, "generation": 1}}]})
             if path in ("/v1/sandboxes/sb_docs", "/v1/sandboxes/sb_example"):
                 return self.reply({**sandbox, "id": path.rsplit("/", 1)[-1]})
             if path.endswith("/execs/sx_docs/stream"):

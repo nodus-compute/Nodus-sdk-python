@@ -54,3 +54,31 @@ Declare final model files with `outputs` when you need SDK downloads. See
 [multi-stage workloads](multi-stage-workloads.md). Nodus handles placement and
 execution. Advanced application integrations are documented separately in the
 [parameter reference](../reference/parameters/index.md).
+
+## Eight H100s for single-node pretraining
+
+Use an image containing your training code and its distributed dependencies.
+Keep the application's training arguments in your command:
+
+```python
+with nodus.Client() as client:
+    workload = client.run(
+        image="YOUR_REGISTRY/trainer:v1",
+        command=[
+            "torchrun", "--nnodes=1", "--nproc_per_node=8",
+            "/app/pretrain.py", "--config", "/app/pretrain.yaml",
+        ],
+        gpu="H100",
+        gpu_count=8,
+        peak_memory_gb=80,
+        budget=100,
+    )
+    print(workload.id)
+```
+
+This example requires eight H100s on one machine with at least 80 GB per GPU.
+The budget is illustrative and applies to the whole run. Capacity is not
+guaranteed. Eight devices do not imply NVLink, NVSwitch or pooled memory.
+Nodus preserves the distributed command and does not rewrite your training
+arguments. See [resource requirements](../reference/parameters/requirements.md)
+for count and topology validation.

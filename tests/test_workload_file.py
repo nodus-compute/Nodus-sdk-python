@@ -41,6 +41,36 @@ def test_resource_requirements_reject_invalid_numbers(tmp_path, field, value):
         load_workload_file(path)
 
 
+@pytest.mark.parametrize('prefix', [
+    'command=["python", "train.py"]\n',
+    'command=["python", "train.py"]\n[requirements]\n',
+    '[[stages]]\nid="train"\nsource={command=["python", "train.py"]}\n[stages.requirements]\n',
+], ids=['top-level', 'requirements', 'stage'])
+@pytest.mark.parametrize('count', [1, 2, 4, 8])
+def test_workload_file_preserves_exact_gpu_count(tmp_path, prefix, count):
+    path = tmp_path / 'nodus.toml'
+    path.write_text(prefix + f'gpu_count={count}\n')
+    values = load_workload_file(path)
+    if 'stages' in values:
+        values = values['stages'][0]
+    requirements = values.get('requirements', values)
+    assert requirements['gpu_count'] == count
+    assert type(requirements['gpu_count']) is int
+
+
+@pytest.mark.parametrize('prefix', [
+    'command=["python", "train.py"]\n',
+    'command=["python", "train.py"]\n[requirements]\n',
+    '[[stages]]\nid="train"\nsource={command=["python", "train.py"]}\n[stages.requirements]\n',
+], ids=['top-level', 'requirements', 'stage'])
+@pytest.mark.parametrize('count', ['0', '-1', '3', '16', 'true', '8.0', '"8"'])
+def test_workload_file_rejects_invalid_gpu_count(tmp_path, prefix, count):
+    path = tmp_path / 'nodus.toml'
+    path.write_text(prefix + f'gpu_count={count}\n')
+    with pytest.raises(ValueError, match='gpu_count must be 1, 2, 4, or 8'):
+        load_workload_file(path)
+
+
 @pytest.mark.parametrize('body', [
     'command = ["python"]\nbudget = 0',
     'command = ["python"]\nbudget = nan',

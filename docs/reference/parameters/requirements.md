@@ -4,9 +4,11 @@
 |---|---|---|---|
 | `model` | Free-text workload description | No model hint | `requirements.model` |
 | `compute_class` | `"accelerator"` for GPU workloads | Accelerator | `requirements.compute_class` |
-| `peak_memory_gb` | Positive number in GB | No explicit memory hint | `requirements.peak_memory_gb` |
+| `peak_memory_gb` | Positive number in GB per GPU | No explicit memory hint | `requirements.peak_memory_gb` |
 | `optimization` | `"automatic"`, `"lowest_cost"`, `"lower_cost"`, `"balanced"`, `"faster"`, `"fastest"`. Compatibility only | Not sent | `requirements.optimization` |
 | `gpu` | `"A100"`, `"H100"`, `"H200"`, `"B200"`, `"A10"`, `"A10G"`, `"L4"`, `"L40"`, `"L40S"`, `"T4"`, `"V100"`, `"RTX A6000"`, `"RTX 3090"`, `"RTX 4090"`, `"RTX 5090"`. [Examples and aliases](#gpu-model) | Nodus chooses | `requirements.gpu` |
+| `gpu_count` | Exactly `1`, `2`, `4`, or `8` on one machine | One GPU | `requirements.gpu_count` |
+| `gpu_interconnect` | `"any"` | No topology guarantee | `requirements.gpu_interconnect` |
 | `requirements` | Dictionary | Optional resource hints | `requirements` |
 
 The workload file uses the same argument names. You do not need to predict how
@@ -101,3 +103,21 @@ These fields do not transfer data or install dependencies.
 names, compatibility values, and numeric resource bounds for both typed and
 ordinary dictionaries before submission. Booleans and nonfinite numbers are
 not valid resource quantities. Explicit `peak_memory_gb` must be positive.
+
+## Multiple GPUs on one machine
+
+Set `gpu_count=8, gpu="H100", peak_memory_gb=80` to require eight H100s on
+one machine, each with at least 80 GB of memory. Supported counts are 1, 2, 4
+and 8. Omission retains single-GPU behavior. A smaller allocation or a group
+of machines cannot satisfy this request. Matching capacity may be unavailable.
+
+The count does not guarantee NVLink, NVSwitch or pooled device memory.
+`gpu_interconnect="any"` declares no topology constraint. Other interconnect
+values are rejected because the platform cannot yet verify that guarantee.
+Do not submit topology-dependent training until its topology is supported.
+
+The displayed node hourly price covers the whole allocation. Your budget
+covers the run, including all devices, rather than applying separately to
+each GPU. Recovery and saved-run reuse preserve the requested count.
+Nodus preserves your command arguments. Supply your own distributed launcher
+and application configuration, such as `torchrun --nnodes=1 --nproc_per_node=8`.

@@ -51,6 +51,7 @@ def test_empty_list_guidance_matches_filter(status, message, monkeypatch, capsys
     filters = {"scope": status} if status in ("mine", "team") else {"status": status}
     client.list.assert_called_once_with(limit=20, **filters)
 @pytest.mark.parametrize('data,expected', [
+    ({'resources': {'accelerator': 'H100', 'device_memory_gb': 80, 'gpu_count': 8}}, '8 × H100 (80 GB per GPU)'),
     ({'offer_id': 'nodus:compute-0-any', 'fit_class': 'compute'}, 'Not reported'),
     ({'resources': {'accelerator': '\x1b[31mRTX\n4090', 'device_memory_gb': 24}}, 'RTX 4090 (24 GB)'),
 ])
@@ -71,3 +72,13 @@ def test_status_and_list_use_same_reported_compute(data, expected, monkeypatch, 
     assert 'nodus:compute' not in output
     assert '\x1b' not in output
     client.get.assert_not_called()
+
+
+def test_status_reports_whole_node_hourly_price():
+    from nodus._terminal import workload_rows
+    from nodus.types import Route
+    route = Route.from_dict({'price_usd_hour': 16, 'resources': {'accelerator': 'H100', 'device_memory_gb': 80, 'gpu_count': 8}})
+    workload = SimpleNamespace(id='wl_fixture', status='running', route=route,
+                               cost_now_usd=0, stages=[], raw={})
+    assert dict(workload_rows(workload))['Node hourly price'] == '$16.0000/hour'
+    assert any('8 × H100 (80 GB per GPU)' in line for line in cli._fmt_route(route))

@@ -410,15 +410,11 @@ def _cmd_logs(args: argparse.Namespace) -> int:
 
 
 def _fmt_route(route: Any) -> list[str]:
-    # resources is a raw wire object: coerced, so a non-numeric value the
-    # server chose cannot crash the {mem:g} format below.
-    mem = _num((route.resources or {}).get("device_memory_gb")) or route.memory_gb
     lines = [
         f"{'catalog SKU':<22} {_safe_line(route.sku)}",
-        f"{'fit':<22} {_safe_line(route.fit_class)}"
-        + (f"  |  {mem:g} GB" if mem else "")
+        f"{'fit':<22} {compute_label(route)}"
         + (f"  |  {_safe_line(route.region)}" if getattr(route, 'region', '') else ""),
-        f"{'rate':<22} ${route.price_usd_hour:.4f}/h",
+        f"{'node rate':<22} ${route.price_usd_hour:.4f}/h",
         f"{'remaining budget':<22} ${route.remaining_budget_usd:.2f}",
     ]
     return lines
