@@ -1,0 +1,194 @@
+"""Serial replay driver using the sandbox's private local capability channel."""
+from __future__ import annotations
+
+import base64
+import contextvars
+from datetime import datetime, timezone
+import inspect
+import json
+import os
+import re
+import threading
+import uuid
+from typing import Any
+
+import httpx
+from .errors import NodusError, ValidationError, StepOutcomeUnknown, StepDefinitionConflict, StepResultExpired, StepFailed
+
+_ID = re.compile(r'^[A-Za-z0-9:_.-]{1,128}$')
+_MAX = 256 << 10
+_current = contextvars.ContextVar('nodus_agent_session', default=None)
+_step_context = contextvars.ContextVar('nodus_agent_step', default=None)
+
+
+def _id(value: Any) -> str:
+    if not isinstance(value, str) or not _ID.fullmatch(value):
+        raise ValidationError('Agent identities must contain 1 to 128 ASCII letters, digits, colon, underscore, period or hyphen')
+    return value
+
+
+def encode(value: Any) -> str:
+    def check(item):
+        if isinstance(item, dict):
+            if any(type(key) is not str for key in item):
+                raise ValidationError('Agent JSON objects require string keys')
+            for child in item.values():
+                check(child)
+        elif isinstance(item, (list, tuple)):
+            for child in item:
+                check(child)
+        elif item is not None and type(item) not in (str, int, float, bool):
+            raise ValidationError('Agent payloads must be JSON values')
+    try:
+        check(value)
+        data = json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=False, allow_nan=False).encode('utf-8')
+    except (ValueError, TypeError, UnicodeError, RecursionError) as exc:
+        raise ValidationError('Agent payload must be bounded finite JSON') from exc
+    if len(data) > _MAX:
+        raise ValidationError('Agent input or result exceeds 256 KiB')
+    return base64.b64encode(data).decode('ascii')
+
+
+def decode(value: Any) -> Any:
+    def pairs(items):
+        result = {}
+        for key, item in items:
+            if key in result:
+                raise ValueError('duplicate key')
+            result[key] = item
+        return result
+    try:
+        if not isinstance(value, str) or len(value) > ((_MAX + 2) // 3) * 4:
+            raise ValueError('invalid result')
+        data = base64.b64decode(value, validate=True)
+        if len(data) > _MAX:
+            raise ValueError('result too large')
+        decoded = json.loads(data.decode('utf-8'), object_pairs_hook=pairs, parse_constant=lambda _: (_ for _ in ()).throw(ValueError('nonfinite')))
+        encode(decoded)
+        return decoded
+    except (ValueError, TypeError, UnicodeError, RecursionError, ValidationError) as exc:
+        raise StepOutcomeUnknown('The durable result could not be verified') from exc
+
+
+class _RPC:
+    def __init__(self):
+        path = os.environ.get('NODUS_AGENT_SOCKET', '')
+        if not path or not os.path.isabs(path) or '\x00' in path:
+            raise ValidationError('Run this agent inside a sandbox with its private agent socket')
+        self.client = httpx.Client(transport=httpx.HTTPTransport(uds=path), base_url='http://agent.local',
+                                   trust_env=False, follow_redirects=False, timeout=10)
+
+    def close(self):
+        self.client.close()
+
+    def call(self, action: str, body: dict[str, Any]) -> dict[str, Any]:
+        for attempt in range(3):
+            try:
+                response = self.client.post('/' + action, json=body)
+            except httpx.TransportError:
+                if attempt == 2:
+                    raise StepOutcomeUnknown('Journal acknowledgement unavailable') from None
+                continue
+            if response.status_code >= 500:
+                if attempt == 2:
+                    raise StepOutcomeUnknown('Journal acknowledgement unavailable')
+                continue
+            try:
+                value = response.json()
+            except ValueError:
+                raise StepOutcomeUnknown('Invalid journal response') from None
+            if not isinstance(value, dict):
+                raise StepOutcomeUnknown('Invalid journal response')
+            if response.status_code >= 300:
+                code = value.get('code') or value.get('error')
+                error = {'step_definition_conflict': StepDefinitionConflict,
+                         'step_result_expired': StepResultExpired,
+                         'step_failed': StepFailed}.get(code, StepOutcomeUnknown)
+                raise error('Agent journal refused operation: ' + (code if isinstance(code, str) and _ID.fullmatch(code) else 'unavailable'))
+            return value
+        raise StepOutcomeUnknown('Journal acknowledgement unavailable')
+
+
+class _Session:
+    def __init__(self, rpc: _RPC, receipt: dict[str, Any], run_id: str):
+        token, epoch = receipt.get('session_token'), receipt.get('epoch')
+        if not isinstance(token, str) or not token or type(epoch) is not int or epoch <= 0:
+            raise StepOutcomeUnknown('Invalid session receipt')
+        self.rpc = rpc
+        self.scope = {'run_id': run_id, 'session_token': token, 'epoch': epoch}
+        self.guard = threading.Lock()
+        self.stopped = threading.Event()
+        self.failed = threading.Event()
+        self.expiry = receipt.get('expires_at')
+        self.thread = threading.Thread(target=self._renew, daemon=True)
+        self.thread.start()
+
+    def _renew(self):
+        while not self.stopped.is_set():
+            try:
+                expiry = datetime.fromisoformat(self.expiry.replace('Z', '+00:00'))
+                remaining = (expiry - datetime.now(timezone.utc)).total_seconds()
+                if remaining <= 0:
+                    self.failed.set()
+                    return
+                if self.stopped.wait(min(10, max(.05, remaining / 3))):
+                    return
+                receipt = self.rpc.call('renew', self.scope)
+                if receipt.get('epoch') != self.scope['epoch'] or receipt.get('session_token') != self.scope['session_token']:
+                    raise StepOutcomeUnknown('Session ownership changed')
+                self.expiry = receipt.get('expires_at')
+            except Exception:
+                self.failed.set()
+                return
+
+    def healthy(self):
+        if self.failed.is_set():
+            raise StepOutcomeUnknown('Agent session authority could not be renewed')
+
+    def close(self):
+        self.stopped.set()
+        self.thread.join(31)
+        self.rpc.close()
+
+
+def resume(entrypoint, *, run_id: str, version: str, name: str | None = None):
+    """Replay a registered run's completed steps using its original JSON input."""
+    if _current.get() is not None or inspect.iscoroutinefunction(entrypoint):
+        raise ValidationError('Agent resume supports one synchronous serial driver')
+    run_id, version = _id(run_id), _id(version)
+    name = _id(name or entrypoint.__name__)
+    rpc = _RPC()
+    session = None
+    context_token = None
+    try:
+        receipt = rpc.call('session', {'run_id': run_id, 'request_id': uuid.uuid4().hex})
+        run = receipt.get('run')
+        if not isinstance(run, dict) or run.get('run_id') != run_id or run.get('name') != name or run.get('version') != version:
+            raise StepDefinitionConflict('Entrypoint identity differs from the registered run')
+        if run.get('status') == 'expired':
+            raise StepResultExpired('Agent run payload expired')
+        if run.get('status') == 'completed':
+            return decode(run.get('result'))
+        if run.get('status') not in ('active', 'blocked'):
+            raise StepOutcomeUnknown('Agent run cannot resume')
+        original = decode(run.get('input'))
+        session = _Session(rpc, receipt, run_id)
+        context_token = _current.set(session)
+        result = entrypoint(original)
+        if inspect.isawaitable(result):
+            if inspect.iscoroutine(result):
+                result.close()
+            raise ValidationError('Agent entrypoint must return JSON synchronously')
+        session.healthy()
+        encoded = encode(result)
+        done = rpc.call('finish', {**session.scope, 'request_id': uuid.uuid4().hex, 'result': encoded})
+        if done.get('status') != 'completed' or done.get('result') != encoded:
+            raise StepOutcomeUnknown('Run completion was not durably acknowledged')
+        return decode(done['result'])
+    finally:
+        if context_token is not None:
+            _current.reset(context_token)
+        if session is not None:
+            session.close()
+        else:
+            rpc.close()

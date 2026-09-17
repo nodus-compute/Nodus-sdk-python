@@ -107,6 +107,7 @@ except PackageNotFoundError:
     __version__ = "0.0.0+source"
 
 __all__ = [
+    "agent", "step", "step_context", "StepOutcomeUnknown", "StepDefinitionConflict", "StepResultExpired", "StepFailed",
     "Asset",
     "Client",
     "AsyncClient",
@@ -1793,3 +1794,11 @@ class AsyncWorkload(_WorkloadState):
 
     async def cancel(self) -> None:
         await self._client.cancel(self.id)
+
+
+from . import _agent as agent
+from ._steps import step, step_context
+from .errors import StepOutcomeUnknown, StepDefinitionConflict, StepResultExpired, StepFailed
+
+from ._agent_runs import AgentRun
+__all__.append("AgentRun")

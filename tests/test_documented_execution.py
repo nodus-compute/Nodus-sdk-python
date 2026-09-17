@@ -20,6 +20,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import nodus
 import pytest
+from test_agent_steps import journal_socket
 
 ROOT = Path(__file__).parents[1]
 DATA = b'{"sum": 6, "sum_of_squares": 385, "gpu": "Synthetic GPU"}\n'
@@ -127,6 +128,8 @@ def docs_api(monkeypatch):
                 return self.reply({"id": "asset_docs", "state": "ready", "name": "fixture", "kind": "file"}, 201)
             payload = json.loads(raw or b"{}")
             calls.append(("POST", path))
+            if path == "/v1/sandboxes/sb_docs/agent-runs":
+                return self.reply({**payload, "status": "active", "epoch": 0}, 201)
             if path == "/v1/console/device/start":
                 return self.reply({"device_code": "device-test", "user_code": "ABCD-EFGH",
                     "verification_url": "https://console.nodus-compute.ai/device?code=ABCD-EFGH", "interval": 1, "expires_in": 60})
@@ -179,7 +182,7 @@ EXAMPLES = list(blocks())
 
 
 @pytest.mark.parametrize("path,number,body", EXAMPLES, ids=[f"{p.relative_to(ROOT)}:{n + 1}" for p, n, _ in EXAMPLES])
-def test_python_documentation_executes(path, number, body, docs_api, tmp_path, monkeypatch):
+def test_python_documentation_executes(path, number, body, docs_api, tmp_path, monkeypatch, request):
     if path.name == "containers-and-scripts.md" and number == 0:
         pytest.skip("container-side CUDA program requires a GPU and PyTorch image")
     monkeypatch.chdir(tmp_path)
@@ -194,6 +197,11 @@ def test_python_documentation_executes(path, number, body, docs_api, tmp_path, m
                      "workload_id": "wl_docs", "allowed_regions": ["test-region"],
                      "done": client.get("wl_docs"), "workload": client.get("wl_docs"),
                      "sandbox": sandbox_handle, "execution": execution_handle}
+        if path.name == "durable-steps.md" and number == 1:
+            journal, state = request.getfixturevalue("journal_socket")
+            state["run_id"] = "invoice:42"
+            state["input"] = {"invoice_id": 42}
+            namespace["send_to_invoice_service"] = lambda invoice_id: "synthetic-remote-7"
         exec(compile(body.replace('"YOUR_WORKLOAD_ID"', '"wl_docs"'), str(path), "exec"), namespace)
     # Compile embedded Python argv too, without pretending it ran on a GPU.
     for payload in docs_api[2]:
