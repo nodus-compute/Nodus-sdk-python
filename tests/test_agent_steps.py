@@ -196,3 +196,28 @@ async def test_async_account_run_registration_and_read():
         assert (await runs.create(run_id='run',name='main',version='1',image_digest=run['image_digest'],input=None)).run_id=='run'
         assert (await runs.get('run')).input is None
     finally: await client.aclose()
+
+
+def test_event_submission_preserves_command_and_source_identity():
+    import httpx
+    requests=[]
+    event={'source':'queue','event_id':'42','run_id':'cycle-42','exec_id':'ex_once','state':'queued','reason':'waiting_for_sandbox'}
+    def handler(request):
+        requests.append(request)
+        if request.method=='DELETE':
+            return httpx.Response(200,json={'run_id':'cycle-42','name':'main','version':'1','image_digest':'sha256:'+'a'*64,'status':'expired','epoch':1})
+        return httpx.Response(202 if request.method=='POST' else 200,json=event)
+    client=nodus.Client(api_key='nk_live_test',base_url='https://nodus.invalid')
+    client._http=httpx.Client(base_url='https://nodus.invalid',transport=httpx.MockTransport(handler))
+    try:
+        box=nodus.Sandbox(client,'sb_test')
+        got=box.agent_events.submit(source='queue',event_id='42',run_id='cycle-42',name='main',version='1',image_digest='sha256:'+'a'*64,input={'invoice':42},command=['python','agent.py','cycle-42'])
+        assert got==event
+        assert box.agent_events.get('42',source='queue')==event
+        assert box.agent_runs.delete('cycle-42').status=='expired'
+        body=json.loads(requests[0].content)
+        assert body['command']==['python','agent.py','cycle-42']
+        assert body['run']['run_id']=='cycle-42'
+        assert 'env' not in body and 'stdin' not in body
+        assert requests[1].url.params['source']=='queue'
+    finally:client.close()

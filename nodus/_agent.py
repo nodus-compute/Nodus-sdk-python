@@ -101,6 +101,8 @@ class _RPC:
                 raise StepOutcomeUnknown('Invalid journal response')
             if response.status_code >= 300:
                 code = value.get('code') or value.get('error')
+                if not isinstance(code, str):
+                    code = 'unavailable'
                 error = {'step_definition_conflict': StepDefinitionConflict,
                          'step_result_expired': StepResultExpired,
                          'step_failed': StepFailed}.get(code, StepOutcomeUnknown)

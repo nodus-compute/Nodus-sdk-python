@@ -67,3 +67,28 @@ Terminal payloads expire after 30 days. Tombstones remain and expired results
 never authorize repeating a completed effect. Snapshot recovery restores files,
 not arbitrary process memory. Restart the driver from its entry point so it can
 replay the journal.
+
+Use `sandbox.agent_runs.delete(run_id)` to erase payloads and permanently fence
+the run. Its expired tombstone prevents that identity from being executed again.
+Deletion requests cancellation of an event-owned driver. It does not terminate
+the sandbox itself.
+
+For account-authenticated events, call `sandbox.agent_events.submit` with
+`source`, `event_id`, `run_id`, `name`, `version`, `image_digest`, `input` and an
+explicit `command` argv for the driver. The driver must use that same run ID.
+The event receipt, run and command are stored before the API acknowledges the
+submission. A suspended devbox wakes through its normal admission path.
+No budget or original lifetime is extended.
+
+Repeat the same source and event ID to retrieve the same logical run. A changed
+payload or command is rejected. Read `sandbox.agent_events.get(event_id,
+source=source)` to distinguish queued, running, blocked, handled and expired
+states. Only durable run completion means handled. Unknown external effects stay
+blocked. Lost event drivers have at most three attempts against the same run.
+Queued events expire after seven days. Each sandbox admits at most 1,000 queued
+events and 64 MiB of retained event payload. The 100 active-run limit also applies.
+
+This API requires account authentication. A queue consumer must acknowledge its
+source only after receiving the committed event receipt. It must preserve the
+same source and event ID across redelivery. Public inbound webhooks and external
+queue adapters are not included in this SDK API.

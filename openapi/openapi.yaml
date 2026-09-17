@@ -1,6 +1,94 @@
 {
   "components": {
     "schemas": {
+      "AgentEvent": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source",
+          "event_id",
+          "run_id",
+          "exec_id",
+          "state",
+          "reason",
+          "created_at",
+          "expires_at"
+        ],
+        "properties": {
+          "source": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9:_.-]{1,128}$",
+            "maxLength": 128
+          },
+          "event_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9:_.-]{1,128}$",
+            "maxLength": 128
+          },
+          "run_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9:_.-]{1,128}$",
+            "maxLength": 128
+          },
+          "exec_id": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "blocked",
+              "handled",
+              "expired"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "AgentEventRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source",
+          "event_id",
+          "run",
+          "command"
+        ],
+        "properties": {
+          "source": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9:_.-]{1,128}$",
+            "maxLength": 128
+          },
+          "event_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9:_.-]{1,128}$",
+            "maxLength": 128
+          },
+          "run": {
+            "$ref": "#/components/schemas/AgentRunRequest"
+          },
+          "command": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            },
+            "description": "Explicit driver argv, validated with normal exec bounds. No environment or stdin fields are accepted. Include the run identity in the command as required by your driver."
+          }
+        }
+      },
       "AgentReceipt": {
         "type": "object",
         "additionalProperties": false,
@@ -3486,6 +3574,120 @@
         }
       }
     },
+    "/v1/sandboxes/{id}/agent-events": {
+      "post": {
+        "operationId": "submitAgentEvent",
+        "summary": "Commit an event and wake its sandbox driver",
+        "tags": [
+          "Sandboxes"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentEventRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentEvent"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Account authentication is required. Receipt, immutable run, driver exec and normal lifecycle wake intent commit atomically. Exact source and event ID replay returns the same logical run. Changed command or payload conflicts. Normal budget, deadline, capacity and cleanup gates still apply. Queued events expire after seven days. Lost drivers have at most three attempts and unknown external effects block automatic restart."
+      }
+    },
+    "/v1/sandboxes/{id}/agent-events/{event_id}": {
+      "get": {
+        "operationId": "getAgentEvent",
+        "summary": "Read event handling state",
+        "tags": [
+          "Sandboxes"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9:_.-]{1,128}$",
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9:_.-]{1,128}$",
+              "maxLength": 128
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentEvent"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Handled means the logical run durably completed. Dispatch and queue acknowledgement do not imply successful handling."
+      }
+    },
     "/v1/sandboxes/{id}/agent-runs": {
       "post": {
         "operationId": "createAgentRun",
@@ -3588,6 +3790,56 @@
             }
           }
         }
+      },
+      "delete": {
+        "operationId": "deleteAgentRun",
+        "summary": "Erase journal payloads and fence the run permanently",
+        "tags": [
+          "Sandboxes"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9:_.-]{1,128}$",
+              "maxLength": 128
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRun"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Retains an expired tombstone and digests. An identical run ID cannot authorize another execution. Cancels its queued event driver and requests cancellation of a running event driver."
       }
     },
     "/v1/sandboxes/{id}/agent-runs/{run_id}/resolve": {

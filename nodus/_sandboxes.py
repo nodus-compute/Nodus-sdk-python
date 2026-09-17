@@ -486,6 +486,11 @@ class Sandboxes:
 
 class Sandbox(_SandboxState):
     @property
+    def agent_events(self):
+        from ._agent_runs import AgentEvents
+        return AgentEvents(self._client, _valid_id(self.id, "sandbox"))
+
+    @property
     def agent_runs(self):
         from ._agent_runs import AgentRuns
         return AgentRuns(self._client, _valid_id(self.id, "sandbox"))
@@ -794,6 +799,11 @@ class AsyncSandboxes:
 
 
 class AsyncSandbox(_SandboxState):
+    @property
+    def agent_events(self):
+        from ._agent_runs import AsyncAgentEvents
+        return AsyncAgentEvents(self._client, _valid_id(self.id, "sandbox"))
+
     @property
     def agent_runs(self):
         from ._agent_runs import AsyncAgentRuns
