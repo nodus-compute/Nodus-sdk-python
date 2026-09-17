@@ -14,6 +14,7 @@ import time
 from typing import Any, AsyncIterator, Iterator
 import uuid
 
+from ._secrets import _names
 from .errors import APITimeoutError, NodusError, ValidationError
 from .types import Event, _dt, _int, _num, _obj, _rows, _text
 
@@ -115,6 +116,7 @@ def _create_payload(
     reservation: dict[str, Any] | None = None,
     continuity: dict[str, Any] | None = None,
     from_snapshot: str | None = None,
+    secrets: list[str] | None = None,
 ) -> dict[str, Any]:
     if image is not None and (not isinstance(image, str) or not image.strip()):
         raise ValidationError("image must be nonempty text")
@@ -134,6 +136,7 @@ def _create_payload(
         ("reservation", reservation),
         ("continuity", continuity),
         ("from_snapshot", from_snapshot),
+        ("secrets", _names(secrets)),
     ):
         if value is not None:
             body[key] = _wire(value)
@@ -377,13 +380,14 @@ class Sandboxes:
         reservation: dict[str, Any] | None = None,
         continuity: dict[str, Any] | None = None,
         from_snapshot: str | None = None,
+        secrets: list[str] | None = None,
         idempotency_key: str | None = None,
     ) -> "Sandbox":
         body = _create_payload(
             image=image, name=name, budget=budget, wake=wake, requirements=requirements,
             outcome=outcome, policy=policy, lifecycle=lifecycle,
             reservation=reservation, continuity=continuity,
-            from_snapshot=from_snapshot,
+            from_snapshot=from_snapshot, secrets=secrets,
         )
         headers: dict[str, str] = {}
         response = self._client._request(
@@ -456,6 +460,7 @@ class Sandbox(_SandboxState):
         reservation: dict[str, Any] | None = None,
         continuity: dict[str, Any] | None = None,
         from_snapshot: str | None = None,
+        secrets: list[str] | None = None,
         idempotency_key: str | None = None,
     ):
         if client is None and image is None and not name:
@@ -479,7 +484,7 @@ class Sandbox(_SandboxState):
                     lifecycle=lifecycle,
                     reservation=reservation,
                     continuity=continuity,
-                    from_snapshot=from_snapshot,
+                    from_snapshot=from_snapshot, secrets=secrets,
                     idempotency_key=idempotency_key,
                 )
             except BaseException:
@@ -522,6 +527,11 @@ class Sandbox(_SandboxState):
         path = f"/v1/sandboxes/{_valid_id(self.id, 'sandbox')}"
         self._absorb(self._client._one(self._client._request("GET", path), "GET", path))
         return self
+
+    def refresh_secrets(self) -> None:
+        """Bind current secret versions for subsequent commands."""
+        path = f"/v1/sandboxes/{_valid_id(self.id, 'sandbox')}/refresh-secrets"
+        self._client._request("POST", path)
 
     def events(self, *, after: int = 0) -> list[Event]:
         """Read up to 100 lifecycle and denied-host events after an event sequence."""
@@ -641,13 +651,14 @@ class AsyncSandboxes:
         reservation: dict[str, Any] | None = None,
         continuity: dict[str, Any] | None = None,
         from_snapshot: str | None = None,
+        secrets: list[str] | None = None,
         idempotency_key: str | None = None,
     ) -> "AsyncSandbox":
         body = _create_payload(
             image=image, name=name, budget=budget, wake=wake, requirements=requirements,
             outcome=outcome, policy=policy, lifecycle=lifecycle,
             reservation=reservation, continuity=continuity,
-            from_snapshot=from_snapshot,
+            from_snapshot=from_snapshot, secrets=secrets,
         )
         headers: dict[str, str] = {}
         response = await self._client._request(
@@ -716,6 +727,11 @@ class AsyncSandbox(_SandboxState):
         path = f"/v1/sandboxes/{_valid_id(self.id, 'sandbox')}"
         self._absorb(self._client._one(await self._client._request("GET", path), "GET", path))
         return self
+
+    async def refresh_secrets(self) -> None:
+        """Bind current secret versions for subsequent commands."""
+        path = f"/v1/sandboxes/{_valid_id(self.id, 'sandbox')}/refresh-secrets"
+        await self._client._request("POST", path)
 
     async def events(self, *, after: int = 0) -> list[Event]:
         """Read up to 100 lifecycle and denied-host events after an event sequence."""

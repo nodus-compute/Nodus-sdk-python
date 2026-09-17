@@ -37,6 +37,7 @@ from pathlib import Path
 
 from ._outputs import download_path, verified_file, output_destinations
 from ._assets import Asset, Assets, AsyncAssets
+from ._secrets import Secrets, AsyncSecrets
 from ._sandboxes import (
     AsyncSandbox,
     AsyncSandboxExec,
@@ -111,6 +112,8 @@ __all__ = [
     "Workload",
     "AsyncWorkload",
     "Sandboxes",
+    "Secrets",
+    "AsyncSecrets",
     "Sandbox",
     "SandboxExec",
     "AsyncSandboxes",
@@ -841,6 +844,11 @@ class Client(_Transport):
         return Assets(self)
 
     @property
+    def secrets(self) -> Secrets:
+        """Manage tenant secrets without reading their values."""
+        return Secrets(self)
+
+    @property
     def sandboxes(self) -> Sandboxes:
         """Create and reconnect to durable agent execution environments."""
         return Sandboxes(self)
@@ -1237,6 +1245,11 @@ class AsyncClient(_Transport):
     def api_key(self) -> str:
         """The configured key, redacted. What was sent is in the transport."""
         return self._api_key_shown
+
+    @property
+    def secrets(self) -> AsyncSecrets:
+        """Manage tenant secrets without reading their values."""
+        return AsyncSecrets(self)
 
     @property
     def sandboxes(self) -> AsyncSandboxes:

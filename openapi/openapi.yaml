@@ -1852,6 +1852,159 @@
         ],
         "description": "Returns up to 100 retained events in ascending ID order. Poll with after set to the last received event ID. Network denial events contain only the denied hostname, count and generation."
       }
+    },
+    "/v1/secrets": {
+      "post": {
+        "operationId": "putSecret",
+        "summary": "Write a secret version",
+        "tags": [
+          "Secrets"
+        ],
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecretMetadata"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The code, message, and fix fields describe the rejection and its remedy.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Creates a new encrypted version. Running sandboxes retain their existing bindings until refresh or wake. Retired versions are destroyed after seven days once no live generation remains bound to them.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SecretWrite"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "listSecrets",
+        "summary": "List secret names and versions",
+        "tags": [
+          "Secrets"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "secrets"
+                  ],
+                  "properties": {
+                    "secrets": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SecretMetadata"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The code, message, and fix fields describe the rejection and its remedy.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Returns current metadata only. Secret values are never returned by customer read routes."
+      }
+    },
+    "/v1/secrets/{name}": {
+      "delete": {
+        "operationId": "deleteSecret",
+        "summary": "Retire a secret",
+        "tags": [
+          "Secrets"
+        ],
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "Error. The code, message, and fix fields describe the rejection and its remedy.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Removes the name from future bindings. Existing sandbox bindings continue until refresh or expiration.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/sandboxes/{id}/refresh-secrets": {
+      "post": {
+        "operationId": "refreshSandboxSecrets",
+        "summary": "Refresh sandbox secret bindings",
+        "tags": [
+          "Secrets"
+        ],
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "Error. The code, message, and fix fields describe the rejection and its remedy.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Binds current versions for subsequent commands. Already running processes keep their environment. Output redaction covers both current and previously bound versions. Possible split-frame fragments at frame edges are conservatively redacted.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -3226,6 +3379,16 @@
           "from_snapshot": {
             "type": "string",
             "description": "Optional Nodus snapshot identifier used to restore a compatible sandbox."
+          },
+          "secrets": {
+            "type": "array",
+            "maxItems": 32,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
+            },
+            "description": "Tenant secret names bound to current versions at boot. The NODUS_ prefix is reserved. Values are available to commands as environment variables and files in NODUS_SECRETS_DIR."
           }
         },
         "additionalProperties": false
@@ -3470,6 +3633,16 @@
           },
           "from_snapshot": {
             "type": "string"
+          },
+          "secrets": {
+            "type": "array",
+            "maxItems": 32,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
+            },
+            "description": "Tenant secret names bound to current versions at boot. The NODUS_ prefix is reserved. Values are available to commands as environment variables and files in NODUS_SECRETS_DIR."
           }
         }
       },
@@ -3604,7 +3777,7 @@
             "additionalProperties": {
               "type": "string"
             },
-            "description": "Environment values for this process."
+            "description": "Nonsecret environment values. Values equal to any retained tenant secret are rejected. Use sandbox secrets for confidential values."
           },
           "timeout_s": {
             "type": "integer",
@@ -3923,6 +4096,50 @@
         },
         "x-go-source": "internal/models/unit_metrics.go",
         "x-go-type": "UnitMetrics"
+      },
+      "SecretMetadata": {
+        "type": "object",
+        "required": [
+          "name",
+          "version",
+          "created_at"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "x-go-source": "internal/store/sandbox_secrets.go",
+        "x-go-type": "SecretMetadata"
+      },
+      "SecretWrite": {
+        "type": "object",
+        "required": [
+          "name",
+          "value"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096,
+            "writeOnly": true,
+            "description": "Nonempty UTF-8 secret with at most 4096 encoded bytes and no NUL characters."
+          }
+        }
       }
     }
   },
