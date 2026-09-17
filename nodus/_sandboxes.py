@@ -696,7 +696,7 @@ class SandboxExec(_SandboxExecState):
                     cursor = frame.sequence
                     yield frame
             cursor = max(cursor, page.next_sequence)
-            if page.done or not follow:
+            if (page.done and page.complete) or not follow:
                 return
 
     def write(
@@ -936,7 +936,7 @@ class AsyncSandboxExec(_SandboxExecState):
                     cursor = frame.sequence
                     yield frame
             cursor = max(cursor, page.next_sequence)
-            if page.done or not follow:
+            if (page.done and page.complete) or not follow:
                 return
 
     async def write(

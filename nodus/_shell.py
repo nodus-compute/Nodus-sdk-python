@@ -61,7 +61,7 @@ def shell(box: Any, command: list[str] | None = None) -> int:
                         view = view[count:]
                     cursor = frame.sequence
             cursor = max(cursor, page.next_sequence)
-            if page.done:
+            if page.done and page.complete:
                 done = True
                 execution.refresh()
                 return execution.exit_code if execution.exit_code is not None else 1
