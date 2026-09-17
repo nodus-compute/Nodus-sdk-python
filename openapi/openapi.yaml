@@ -2296,6 +2296,197 @@
         ],
         "description": "Read-only and available to account members. Defaults to the last 168 complete hours, ending at the current UTC hour. From is inclusive and to is exclusive. Both must align to UTC hours and the window must be positive and at most 31 days. Future or incomplete hours are rejected. Day buckets follow UTC calendar boundaries and may have shorter first or last buckets. The response includes current hosts without evidence and removed hosts with retained history. Queries never read raw telemetry. Requests over 100000 device-hour rows or host buckets return 422 instead of partial totals. Narrow the time window to retry."
       }
+    },
+    "/v1/pools/{id}/forecast": {
+      "get": {
+        "operationId": "getPoolForecast",
+        "summary": "Read a pool forecast and its calibration",
+        "tags": [
+          "Pools"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifier returned by Nodus."
+          },
+          {
+            "name": "horizon",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "enum": [
+                7,
+                30
+              ],
+              "default": 30
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Read a pool forecast and its calibration.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolForecastResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Snapshot is null until the first refresh. Cached data remains readable while disabled or paused. Forecast availability is separate from empirical calibration availability."
+      }
+    },
+    "/v1/pools/{id}/recommendations": {
+      "get": {
+        "operationId": "getPoolRecommendations",
+        "summary": "Read advisory pool recommendations",
+        "tags": [
+          "Pools"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifier returned by Nodus."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 100
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 2048
+            },
+            "description": "Opaque next_cursor returned for the same pool and state filter."
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "open",
+                "done",
+                "expired"
+              ]
+            },
+            "description": "Optional lifecycle filter. Open records that have passed their expiry are treated as expired."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Read advisory pool recommendations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolRecommendationsResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Read advice and human-reported outcomes for this customer-owned pool. Results use keyset pagination in descending creation order. No execution or automatic action is performed."
+      }
+    },
+    "/v1/pools/{id}/recommendations/{rid}/done": {
+      "post": {
+        "operationId": "completePoolRecommendation",
+        "summary": "Record a manual recommendation outcome",
+        "tags": [
+          "Pools"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifier returned by Nodus."
+          },
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Record a manual recommendation outcome.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolRecommendationOutcome"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PoolRecommendationDone"
+              }
+            }
+          }
+        },
+        "description": "Requires an admin. Replaying the same outcome returns the original result. A conflicting replay or an expired recommendation returns 409. This records a customer action and does not execute infrastructure changes."
+      }
     }
   },
   "components": {
@@ -4380,7 +4571,7 @@
           "created_at",
           "updated_at"
         ],
-        "description": "Customer-owned capacity registered for free, read-only measurement. Predict, Route and sandbox execution are unavailable. Policy fields are inactive until the corresponding capabilities become available.",
+        "description": "Customer infrastructure pool with free read-only measurement and optional account-priced Predict. Route and sandbox execution are not available in this phase. Owned cost is an advisory input and does not create a charge.",
         "x-go-source": "internal/models/pools.go",
         "x-go-type": "PrivatePool"
       },
@@ -4415,12 +4606,24 @@
             "format": "int64",
             "minimum": 0,
             "maximum": 9223372036854775807
+          },
+          "predict_enabled": {
+            "type": "boolean"
+          },
+          "accepted_predict_rate_version": {
+            "type": "string"
+          },
+          "accepted_predict_monthly_micros": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9223372036854775807
           }
         },
         "additionalProperties": false,
         "minProperties": 1,
         "x-go-source": "internal/api/pools.go",
-        "x-go-type": "poolPatchRequest"
+        "x-go-type": "poolPatchRequest",
+        "description": "Change Predict separately from other settings. Enabling requires explicit accepted_predict_rate_version predict-account-monthly-v1 and accepted_predict_monthly_micros 99000000. Disabling requires only predict_enabled false and stops future refresh and renewal after the last enabled pool is disabled. Cached views remain readable."
       },
       "PoolEnrollmentTokenRequest": {
         "type": "object",
@@ -4899,6 +5102,1042 @@
         ],
         "x-go-source": "internal/api/pools_utilization.go",
         "x-go-type": "poolUtilizationResponse"
+      },
+      "PoolPredictSubscription": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "disabled",
+              "paused_credits",
+              "paused_cap",
+              "paused_payment",
+              "consent_required"
+            ]
+          },
+          "rate_version": {
+            "type": "string"
+          },
+          "monthly_micros": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "period_start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "period_end": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "paid_current_period": {
+            "type": "boolean"
+          },
+          "enabled_pool_count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "status",
+          "rate_version",
+          "monthly_micros",
+          "period_start",
+          "period_end",
+          "paid_current_period",
+          "enabled_pool_count"
+        ],
+        "x-go-source": "internal/store/pools_predict_billing.go",
+        "x-go-type": "PoolPredictSubscription",
+        "description": "Fixed USD 99 per account per UTC calendar month, independent of device and pool count. The first activation charges the full current month. paid_current_period means funded by credits or accepted postpaid receivable, not that a postpaid invoice has been paid."
+      },
+      "PoolForecastBand": {
+        "type": "object",
+        "properties": {
+          "hour": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "p10": {
+            "type": "number",
+            "minimum": 0
+          },
+          "p50": {
+            "type": "number",
+            "minimum": 0
+          },
+          "p90": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "hour",
+          "p10",
+          "p50",
+          "p90"
+        ],
+        "x-go-source": "internal/finops/forecast.go",
+        "x-go-type": "Band"
+      },
+      "PoolForecast": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "insufficient_history"
+            ]
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "horizon_days": {
+            "type": "integer",
+            "enum": [
+              7,
+              30
+            ]
+          },
+          "history_from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "history_hours": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "required_history_hours": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PoolForecastBand"
+            }
+          }
+        },
+        "required": [
+          "model",
+          "status",
+          "as_of",
+          "horizon_days",
+          "history_from",
+          "history_hours",
+          "required_history_hours",
+          "points"
+        ],
+        "x-go-source": "internal/finops/forecast.go",
+        "x-go-type": "Forecast",
+        "description": "Allocated device-hour demand including foreign allocations. A seasonal baseline requires 672 complete hourly observations. Unknown demand is not replaced with zero. No learned model is claimed unless its registry promotion was verified."
+      },
+      "PoolForecastEvaluation": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "no_data",
+              "partial",
+              "complete"
+            ]
+          },
+          "expected_hours": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "forecast_hours": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "evaluated_hours": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "covered_hours": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "hourly_coverage": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pinball_p10": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pinball_p50": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pinball_p90": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "complete_days": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "covered_days": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "daily_coverage": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "status",
+          "expected_hours",
+          "forecast_hours",
+          "evaluated_hours",
+          "covered_hours",
+          "hourly_coverage",
+          "pinball_p10",
+          "pinball_p50",
+          "pinball_p90",
+          "complete_days",
+          "covered_days",
+          "daily_coverage"
+        ],
+        "x-go-source": "internal/finops/forecast.go",
+        "x-go-type": "ForecastEvaluation",
+        "description": "Last 30 completed UTC days scored only against forecasts issued before the target hour. Missing actuals are excluded and denominators are explicit. Daily coverage is the fraction of complete days with every hour covered, not a nominal 80 percent daily interval."
+      },
+      "PoolAdvisoryPrice": {
+        "type": "object",
+        "properties": {
+          "rate_micros_per_device_hour": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "basis": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "rate_micros_per_device_hour",
+          "observed_at",
+          "basis"
+        ],
+        "x-go-source": "internal/store/pools_predict.go",
+        "x-go-type": "PoolAdvisoryPrice",
+        "description": "Fresh compatible available market configuration observed with the customer markup. Device-fit hourly advisory only, not a workload completion quote or an executable reservation."
+      },
+      "PoolForecastSnapshot": {
+        "type": "object",
+        "properties": {
+          "pool_id": {
+            "type": "string"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "forecast": {
+            "$ref": "#/components/schemas/PoolForecast"
+          },
+          "calibration": {
+            "$ref": "#/components/schemas/PoolForecastEvaluation"
+          },
+          "owned_devices": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "advisory_burst_price": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PoolAdvisoryPrice"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "pool_id",
+          "generated_at",
+          "forecast",
+          "calibration",
+          "owned_devices",
+          "advisory_burst_price"
+        ],
+        "x-go-source": "internal/store/pools_predict.go",
+        "x-go-type": "PoolForecastSnapshot"
+      },
+      "PoolRecommendationOutcome": {
+        "type": "object",
+        "properties": {
+          "recorded_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "reported_saving_micros": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "recorded_at",
+          "outcome",
+          "reported_saving_micros"
+        ],
+        "x-go-source": "internal/store/pools_predict.go",
+        "x-go-type": "PoolRecommendationOutcome",
+        "description": "Immutable customer-reported manual outcome. reported_saving_micros is optional customer testimony, not measured or verified savings. No action is executed by recording an outcome."
+      },
+      "PoolRecommendationDone": {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "reported_saving_micros": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "outcome"
+        ],
+        "x-go-source": "internal/store/pools_predict.go",
+        "x-go-type": "PoolRecommendationDone",
+        "additionalProperties": false
+      },
+      "PoolRecommendation": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "pool_id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "rightsize",
+              "idle_reclaim",
+              "drain_window",
+              "defragment"
+            ]
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "open",
+              "done",
+              "expired"
+            ]
+          },
+          "recommendation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PoolRightSizeRecommendation"
+              },
+              {
+                "$ref": "#/components/schemas/PoolIdleRecommendation"
+              },
+              {
+                "$ref": "#/components/schemas/PoolDrainRecommendation"
+              },
+              {
+                "$ref": "#/components/schemas/PoolDefragmentRecommendation"
+              }
+            ]
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PoolRecommendationOutcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "pool_id",
+          "kind",
+          "generated_at",
+          "expires_at",
+          "state",
+          "recommendation",
+          "outcome"
+        ],
+        "x-go-source": "internal/store/pools_predict.go",
+        "x-go-type": "PoolRecommendation"
+      },
+      "PoolForecastResponse": {
+        "type": "object",
+        "properties": {
+          "pool_id": {
+            "type": "string"
+          },
+          "predict_enabled": {
+            "type": "boolean"
+          },
+          "refresh_status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "disabled",
+              "awaiting_refresh",
+              "stale",
+              "paused_credits",
+              "paused_cap",
+              "paused_payment",
+              "consent_required"
+            ]
+          },
+          "subscription": {
+            "$ref": "#/components/schemas/PoolPredictSubscription"
+          },
+          "snapshot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PoolForecastSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "pool_id",
+          "predict_enabled",
+          "refresh_status",
+          "subscription",
+          "snapshot"
+        ],
+        "x-go-source": "internal/api/pools_predict.go",
+        "x-go-type": "poolForecastResponse"
+      },
+      "PoolRecommendationsResponse": {
+        "type": "object",
+        "properties": {
+          "pool_id": {
+            "type": "string"
+          },
+          "predict_enabled": {
+            "type": "boolean"
+          },
+          "refresh_status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "disabled",
+              "awaiting_refresh",
+              "stale",
+              "paused_credits",
+              "paused_cap",
+              "paused_payment",
+              "consent_required"
+            ]
+          },
+          "recommendations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PoolRecommendation"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Opaque continuation cursor or null when no older records remain. Reuse the same state filter."
+          }
+        },
+        "required": [
+          "pool_id",
+          "predict_enabled",
+          "refresh_status",
+          "recommendations",
+          "next_cursor"
+        ],
+        "x-go-source": "internal/api/pools_predict.go",
+        "x-go-type": "poolRecommendationsResponse",
+        "description": "One page of advice and recorded human outcomes, newest first. Follow next_cursor to read older records. Use state=open for current actionable advice."
+      },
+      "PoolRightSizeRecommendation": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "rightsize"
+            ]
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "recommend"
+            ]
+          },
+          "risk": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "recommended_devices": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "expected_savings_micros": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/PoolRightSizeEvidence"
+          }
+        },
+        "required": [
+          "kind",
+          "level",
+          "risk",
+          "recommended_devices",
+          "expected_savings_micros",
+          "evidence"
+        ],
+        "x-go-source": "internal/finops/optimize.go",
+        "x-go-type": "Recommendation"
+      },
+      "PoolRightSizeEvidence": {
+        "type": "object",
+        "properties": {
+          "method": {
+            "type": "string"
+          },
+          "history_from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "history_to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "history_hours": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "horizon_from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "horizon_to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "horizon_hours": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "scenarios_per_hour": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "current_devices": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "released_devices": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "owned_micros_per_device_hour": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "burst_micros_per_device_hour": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "critical_fractile": {
+            "type": "number",
+            "minimum": 0
+          },
+          "expected_burst_device_hours": {
+            "type": "number",
+            "minimum": 0
+          },
+          "expected_burst_micros": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "released_owned_micros": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "advisory_price": {
+            "type": "boolean"
+          },
+          "demand_distribution": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PoolDemandMass"
+            }
+          }
+        },
+        "required": [
+          "method",
+          "history_from",
+          "history_to",
+          "history_hours",
+          "horizon_from",
+          "horizon_to",
+          "horizon_hours",
+          "scenarios_per_hour",
+          "current_devices",
+          "released_devices",
+          "owned_micros_per_device_hour",
+          "burst_micros_per_device_hour",
+          "critical_fractile",
+          "expected_burst_device_hours",
+          "expected_burst_micros",
+          "released_owned_micros",
+          "advisory_price",
+          "demand_distribution"
+        ],
+        "x-go-source": "internal/finops/optimize.go",
+        "x-go-type": "RightSizeEvidence",
+        "description": "Recomputable prospective scenario costs in USD micros. Uses allocated demand and the observed hourly market price. Expected savings are not measured outcomes or guaranteed cost to completion."
+      },
+      "PoolDemandMass": {
+        "type": "object",
+        "properties": {
+          "device_hours": {
+            "type": "number",
+            "minimum": 0
+          },
+          "scenario_count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "device_hours",
+          "scenario_count"
+        ],
+        "x-go-source": "internal/finops/optimize.go",
+        "x-go-type": "DemandMass"
+      },
+      "PoolIdleRecommendation": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "idle_reclaim"
+            ]
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "recommend"
+            ]
+          },
+          "risk": {
+            "type": "string",
+            "enum": [
+              "high"
+            ]
+          },
+          "advisory_only": {
+            "type": "boolean",
+            "const": true
+          },
+          "host_id": {
+            "type": "string"
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "device_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "expected_savings_micros": {
+            "type": "null"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/PoolIdleEvidence"
+          }
+        },
+        "required": [
+          "kind",
+          "level",
+          "risk",
+          "advisory_only",
+          "host_id",
+          "device_id",
+          "device_index",
+          "expected_savings_micros",
+          "expires_at",
+          "evidence"
+        ],
+        "x-go-source": "internal/finops/idle.go",
+        "x-go-type": "IdleRecommendation",
+        "description": "Advisory device allocation with SM below 5 percent for an uninterrupted 30 minutes, supported by one week of observed hourly history. Foreign is only a boolean. No process identity or measured savings are inferred. Evidence expires after three minutes."
+      },
+      "PoolIdleEvidence": {
+        "type": "object",
+        "properties": {
+          "method": {
+            "type": "string"
+          },
+          "sm_util_below_pct": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "trigger_from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "trigger_to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "consecutive_seconds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "observed_through": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "foreign": {
+            "type": "boolean"
+          },
+          "history_from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "history_to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "historical_observed_hours": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "method",
+          "sm_util_below_pct",
+          "trigger_from",
+          "trigger_to",
+          "consecutive_seconds",
+          "observed_through",
+          "foreign",
+          "history_from",
+          "history_to",
+          "historical_observed_hours"
+        ],
+        "x-go-source": "internal/finops/idle.go",
+        "x-go-type": "IdleReclaimEvidence"
+      },
+      "PoolDrainRecommendation": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "drain_window"
+            ]
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "recommend"
+            ]
+          },
+          "risk": {
+            "type": "string",
+            "enum": [
+              "high"
+            ]
+          },
+          "advisory_only": {
+            "type": "boolean",
+            "const": true
+          },
+          "host_id": {
+            "type": "string"
+          },
+          "expected_savings_micros": {
+            "type": "null"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/PoolDrainEvidence"
+          }
+        },
+        "required": [
+          "kind",
+          "level",
+          "risk",
+          "advisory_only",
+          "host_id",
+          "expected_savings_micros",
+          "expires_at",
+          "evidence"
+        ],
+        "x-go-source": "internal/finops/drain.go",
+        "x-go-type": "DrainRecommendation",
+        "description": "Advisory maintenance window from complete host-specific history. At least three future hours have forecast p90 below one device. This is not a guarantee that draining is safe and does not execute a drain. Savings remain unknown."
+      },
+      "PoolDrainEvidence": {
+        "type": "object",
+        "properties": {
+          "method": {
+            "type": "string"
+          },
+          "window_from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "window_to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "consecutive_hours": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "threshold_devices": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_p90_device_hours": {
+            "type": "number",
+            "minimum": 0
+          },
+          "history_from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "history_to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "history_hours": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "model": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "method",
+          "window_from",
+          "window_to",
+          "consecutive_hours",
+          "threshold_devices",
+          "max_p90_device_hours",
+          "history_from",
+          "history_to",
+          "history_hours",
+          "model"
+        ],
+        "x-go-source": "internal/finops/drain.go",
+        "x-go-type": "DrainWindowEvidence"
+      },
+      "PoolDefragmentEvidence": {
+        "type": "object",
+        "properties": {
+          "method": {
+            "type": "string"
+          },
+          "history_from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "history_to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "observed_hours": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "fragmentation_wait_seconds": {
+            "type": "number",
+            "minimum": 0
+          },
+          "threshold_seconds": {
+            "type": "number",
+            "minimum": 0
+          },
+          "packing_policy": {
+            "type": "string"
+          },
+          "foreign_jobs_movable": {
+            "type": "boolean",
+            "const": false
+          }
+        },
+        "required": [
+          "method",
+          "history_from",
+          "history_to",
+          "observed_hours",
+          "fragmentation_wait_seconds",
+          "threshold_seconds",
+          "packing_policy",
+          "foreign_jobs_movable"
+        ],
+        "x-go-source": "internal/finops/defragment.go",
+        "x-go-type": "DefragmentEvidence"
+      },
+      "PoolDefragmentRecommendation": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "defragment"
+            ]
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "recommend"
+            ]
+          },
+          "risk": {
+            "type": "string",
+            "enum": [
+              "high"
+            ]
+          },
+          "advisory_only": {
+            "type": "boolean",
+            "const": true
+          },
+          "expected_savings_micros": {
+            "type": "null"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/PoolDefragmentEvidence"
+          }
+        },
+        "required": [
+          "kind",
+          "level",
+          "risk",
+          "advisory_only",
+          "expected_savings_micros",
+          "expires_at",
+          "evidence"
+        ],
+        "x-go-source": "internal/finops/defragment.go",
+        "x-go-type": "DefragmentRecommendation",
+        "description": "Manual placement advice from 336 fully observed Route hours. No advice is produced from missing placement observations. Foreign jobs are never proposed for movement and savings are not inferred."
       }
     }
   },

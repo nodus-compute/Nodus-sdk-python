@@ -69,6 +69,16 @@ def docs_api(monkeypatch):
             calls.append(("GET", path))
             if self.headers.get("Authorization") != "Bearer nk_docs":
                 return self.reply({"error": "unauthorized"}, 401)
+            if path == "/v1/pools/pool_docs/recommendations":
+                query = parse_qs(urlsplit(self.path).query)
+                if query.get("limit") != ["25"] or query.get("state") != ["expired"]:
+                    return self.reply({"error": "invalid_query"}, 400)
+                cursor = query.get("cursor", [None])[0]
+                if cursor not in (None, "docs_next"):
+                    return self.reply({"error": "invalid_cursor"}, 400)
+                return self.reply({"pool_id": "pool_docs", "predict_enabled": False,
+                    "refresh_status": "disabled", "recommendations": [],
+                    "next_cursor": "docs_next" if cursor is None else None})
             if path == "/v1/assets":
                 return self.reply({"assets": [], "max_import_bytes": 1048576})
             if path == "/v1/workloads":
@@ -191,7 +201,7 @@ def test_python_documentation_executes(path, number, body, docs_api, tmp_path, m
         sandbox_handle = client.sandboxes.from_id("sb_docs")
         execution_handle = sandbox_handle.exec(["python", "agent.py"], stdin=True)
         namespace = {"__name__": "__docs__", "client": client, "nodus": nodus,
-                     "workload_id": "wl_docs", "allowed_regions": ["test-region"],
+                     "workload_id": "wl_docs", "pool_id": "pool_docs", "allowed_regions": ["test-region"],
                      "done": client.get("wl_docs"), "workload": client.get("wl_docs"),
                      "sandbox": sandbox_handle, "execution": execution_handle}
         exec(compile(body.replace('"YOUR_WORKLOAD_ID"', '"wl_docs"'), str(path), "exec"), namespace)

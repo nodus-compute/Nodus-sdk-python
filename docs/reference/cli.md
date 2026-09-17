@@ -1,7 +1,8 @@
 # Terminal commands
 
 Use `nodus --help` for command groups and `nodus COMMAND --help` for options.
-Replace `ID` with a workload ID. These commands describe SDK 0.3.x.
+Replace `ID` with a workload ID. Use the installed command help to confirm
+which capabilities your SDK version provides.
 
 ## Setup
 
@@ -66,6 +67,24 @@ other settings unchanged to avoid submitting duplicate work.
 | `nodus assets` | List stored assets |
 
 See [code and datasets](../guides/assets.md) for imports and attaching assets to work.
+
+## Customer-owned compute
+
+| Command | What it does |
+|---|---|
+| `nodus pools create NAME` | Register a customer-owned host pool |
+| `nodus pools token POOL_ID` | Print a secret single-use enrollment token |
+| `nodus pools hosts POOL_ID` | Inspect enrolled hosts |
+| `nodus pools utilization POOL_ID --json` | Read measured utilization and host buckets |
+| `nodus pools forecast POOL_ID --horizon 7 --json` | Read cached forecast evidence and the subscription rate |
+| `nodus pools recommendations POOL_ID --state open --limit 25 --json` | Read one page of advice, following `--cursor` for older records |
+| `nodus pools predict POOL_ID off` | Disable paid refresh for one pool |
+| `nodus pools mark-done POOL_ID RECOMMENDATION_ID --outcome TEXT` | Record a manual outcome without executing a host action |
+
+Observe is free. Predict activation requires explicit consent to its account
+monthly charge. See [customer-owned pools](../guides/pools.md) for activation,
+renewal, cached reads while paused, and optional reported savings. Enrollment
+tokens are secrets and must not be written to shared logs.
 
 ## Advanced diagnostics
 

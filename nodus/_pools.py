@@ -9,6 +9,7 @@ from typing import Any
 
 import httpx
 
+from ._pool_predict import PoolForecast, PoolRecommendations, RecommendationOutcome, predict_patch, done_payload, horizon_query, recommendation_query
 from .errors import APIConnectionError, APIError, APITimeoutError, ValidationError
 
 
@@ -16,6 +17,19 @@ def _row(value: Any, strings: tuple[str, ...]) -> dict[str, Any]:
     if not isinstance(value, dict) or any(not isinstance(value.get(k), str) or not value[k] for k in strings):
         raise APIError("The API returned an invalid pool response")
     return value
+
+
+def _predict_result(value: Any, pool_id: str, field: str = "pool_id") -> Any:
+    if not isinstance(value, dict) or value.get(field) != pool_id:
+        raise APIError("The API returned Predict data for a different pool")
+    return value
+
+
+def _reported_result(value: Any, outcome: str, saving: int | None) -> RecommendationOutcome:
+    result = RecommendationOutcome.from_dict(value)
+    if result.outcome != outcome or result.reported_saving_micros != saving:
+        raise APIError("The API did not confirm the submitted manual outcome. Refresh before trying again")
+    return result
 
 
 @dataclass(frozen=True)
@@ -370,6 +384,27 @@ class Pools:
         """List a pool's hosts and their device inventory."""
         return _rows(self._request("GET", _path(pool_id) + "/hosts"), "hosts", PoolHost)
 
+    def set_predict(self, pool_id: str, enabled: bool, *, accepted_rate_version: str | None = None,
+                          accepted_monthly_micros: int | None = None) -> Pool:
+        """Set Predict with explicit consent to the account-wide monthly rate when enabling."""
+        return Pool.from_dict(_predict_result(self._request("PATCH", _path(pool_id),
+            json=predict_patch(enabled, accepted_rate_version, accepted_monthly_micros)), pool_id, "id"))
+
+    def forecast(self, pool_id: str, *, horizon: int | None = None) -> PoolForecast:
+        """Read cached hourly bands, issued calibration, and subscription refresh state."""
+        return PoolForecast.from_dict(_predict_result(self._request("GET", _path(pool_id) + "/forecast", params=horizon_query(horizon)), pool_id))
+
+    def recommendations(self, pool_id: str, *, limit: int | None = None, cursor: str | None = None,
+                        state: str | None = None) -> PoolRecommendations:
+        """Read one page of advice, following next_cursor with the same pool and state."""
+        return PoolRecommendations.from_dict(_predict_result(self._request("GET", _path(pool_id) + "/recommendations", params=recommendation_query(limit, cursor, state)), pool_id))
+
+    def recommendation_done(self, pool_id: str, recommendation_id: str, outcome: str, *,
+                                   reported_saving_micros: int | None = None) -> RecommendationOutcome:
+        """Record a manual action without treating a predicted saving as measured."""
+        return _reported_result(self._request("POST", _path(pool_id) + "/recommendations/" +
+            _id(recommendation_id, "rec") + "/done", json=done_payload(outcome, reported_saving_micros)), outcome, reported_saving_micros)
+
     def utilization(self, pool_id: str, *, from_: str | None = None,
                           to: str | None = None, bucket: str | None = None) -> PoolUtilization:
         """Read measured utilization with optional RFC 3339 bounds and hour or day buckets."""
@@ -426,6 +461,27 @@ class AsyncPools:
     async def hosts(self, pool_id: str) -> list[PoolHost]:
         """List a pool's hosts and their device inventory."""
         return _rows(await self._request("GET", _path(pool_id) + "/hosts"), "hosts", PoolHost)
+
+    async def set_predict(self, pool_id: str, enabled: bool, *, accepted_rate_version: str | None = None,
+                          accepted_monthly_micros: int | None = None) -> Pool:
+        """Set Predict with explicit consent to the account-wide monthly rate when enabling."""
+        return Pool.from_dict(_predict_result(await self._request("PATCH", _path(pool_id),
+            json=predict_patch(enabled, accepted_rate_version, accepted_monthly_micros)), pool_id, "id"))
+
+    async def forecast(self, pool_id: str, *, horizon: int | None = None) -> PoolForecast:
+        """Read cached hourly bands, issued calibration, and subscription refresh state."""
+        return PoolForecast.from_dict(_predict_result(await self._request("GET", _path(pool_id) + "/forecast", params=horizon_query(horizon)), pool_id))
+
+    async def recommendations(self, pool_id: str, *, limit: int | None = None, cursor: str | None = None,
+                        state: str | None = None) -> PoolRecommendations:
+        """Read one page of advice, following next_cursor with the same pool and state."""
+        return PoolRecommendations.from_dict(_predict_result(await self._request("GET", _path(pool_id) + "/recommendations", params=recommendation_query(limit, cursor, state)), pool_id))
+
+    async def recommendation_done(self, pool_id: str, recommendation_id: str, outcome: str, *,
+                                   reported_saving_micros: int | None = None) -> RecommendationOutcome:
+        """Record a manual action without treating a predicted saving as measured."""
+        return _reported_result(await self._request("POST", _path(pool_id) + "/recommendations/" +
+            _id(recommendation_id, "rec") + "/done", json=done_payload(outcome, reported_saving_micros)), outcome, reported_saving_micros)
 
     async def utilization(self, pool_id: str, *, from_: str | None = None,
                           to: str | None = None, bucket: str | None = None) -> PoolUtilization:

@@ -229,6 +229,42 @@ def _cmd_pools(args: argparse.Namespace) -> int:
             print(_safe_line(client.pools.create(args.name).id))
         elif args.pools_cmd == "token":
             print(client.pools.enrollment_token(args.pool_id).token)
+        elif args.pools_cmd == "predict":
+            pool = client.pools.set_predict(args.pool_id, args.setting == "on",
+                accepted_rate_version=args.accept_rate_version, accepted_monthly_micros=args.accept_monthly_micros)
+            print(_safe_line(f"{pool.id}: Predict {'enabled' if pool.predict_enabled else 'disabled'}"))
+        elif args.pools_cmd == "forecast":
+            forecast = client.pools.forecast(args.pool_id, horizon=args.horizon)
+            if args.json:
+                print(json.dumps(forecast.raw, indent=2))
+            else:
+                print(_safe_line(f"Refresh: {forecast.refresh_status}. Account monthly rate: {forecast.subscription.monthly_micros} USD micros."))
+                if forecast.snapshot is None:
+                    print("No forecast cached.")
+                else:
+                    snapshot = forecast.snapshot
+                    calibration = snapshot.calibration
+                    print(_safe_line(f"Model: {snapshot.forecast.model}. Generated: {snapshot.generated_at}. Owned devices: {snapshot.owned_devices}."))
+                    print("Issued hourly coverage: " + ("Not available" if calibration.hourly_coverage is None else f"{calibration.hourly_coverage:.1%}"))
+                    show_table(["UTC hour", "p10 device-hours", "p50 device-hours", "p90 device-hours"],
+                        [[point.hour, str(point.p10), str(point.p50), str(point.p90)] for point in snapshot.forecast.points],
+                        empty="Insufficient measured history for a forecast.", plain=args.plain)
+        elif args.pools_cmd == "recommendations":
+            advice = client.pools.recommendations(args.pool_id, limit=args.limit, cursor=args.cursor, state=args.state)
+            if args.json:
+                print(json.dumps(advice.raw, indent=2))
+            else:
+                print(_safe_line(f"Refresh: {advice.refresh_status}. Savings below are estimates, not measured outcomes."))
+                show_table(["Recommendation", "Kind", "Risk", "Estimated savings (USD micros)", "State"],
+                    [[item.id, item.kind, item.recommendation["risk"], ("Not available" if item.recommendation["expected_savings_micros"] is None else str(item.recommendation["expected_savings_micros"])), item.state]
+                     for item in advice.recommendations], empty="No recommendations available.", plain=args.plain)
+                if advice.next_cursor:
+                    print(_safe_line("Next cursor: " + advice.next_cursor))
+        elif args.pools_cmd == "mark-done":
+            outcome = client.pools.recommendation_done(args.pool_id, args.recommendation_id, args.outcome,
+                reported_saving_micros=args.reported_saving_micros)
+            print(_safe_line("Customer-reported outcome: " + outcome.outcome))
+            print("Customer-reported saving (USD micros): " + ("Not provided" if outcome.reported_saving_micros is None else str(outcome.reported_saving_micros)))
         elif args.pools_cmd == "utilization":
             ledger = client.pools.utilization(args.pool_id, from_=args.from_, to=args.to, bucket=args.bucket)
             if args.json:
@@ -713,6 +749,26 @@ Use nodus COMMAND --help for command options.""",
     pools_token.add_argument("pool_id")
     pools_hosts = pools_sub.add_parser("hosts", help="list enrolled hosts and health")
     pools_hosts.add_argument("pool_id")
+    pools_predict = pools_sub.add_parser("predict", help="set paid account-wide Predict with explicit rate consent")
+    pools_predict.add_argument("pool_id")
+    pools_predict.add_argument("setting", choices=("on", "off"))
+    pools_predict.add_argument("--accept-rate-version", default=None)
+    pools_predict.add_argument("--accept-monthly-micros", type=int, default=None, help="explicitly accept the full current calendar-month account charge in USD micros")
+    pools_forecast = pools_sub.add_parser("forecast", help="read cached forecast bands and calibration")
+    pools_forecast.add_argument("pool_id")
+    pools_forecast.add_argument("--horizon", type=int, choices=(7, 30), default=None)
+    pools_forecast.add_argument("--json", action="store_true")
+    pools_recommendations = pools_sub.add_parser("recommendations", help="read advisory recommendations and evidence")
+    pools_recommendations.add_argument("pool_id")
+    pools_recommendations.add_argument("--json", action="store_true")
+    pools_recommendations.add_argument("--limit", type=int, default=None)
+    pools_recommendations.add_argument("--cursor", default=None)
+    pools_recommendations.add_argument("--state", choices=("open", "done", "expired"), default=None)
+    pools_done = pools_sub.add_parser("mark-done", help="record a manual outcome without executing an action")
+    pools_done.add_argument("pool_id")
+    pools_done.add_argument("recommendation_id")
+    pools_done.add_argument("--outcome", required=True)
+    pools_done.add_argument("--reported-saving-micros", type=int, default=None, help="optional customer-reported saving, not the recommendation estimate")
     pools_utilization = pools_sub.add_parser("utilization", help="show measured utilization and unknown coverage")
     pools_utilization.add_argument("pool_id")
     pools_utilization.add_argument("--from", dest="from_", default=None, help="inclusive RFC 3339 start, aligned to a UTC hour")
