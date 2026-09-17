@@ -57,3 +57,9 @@ def test_freeze_cli_reports_unknown_storage_without_zero(monkeypatch, capsys):
     assert cli.main(["freeze-status", "wl_test"]) == 0
     output = capsys.readouterr().out
     assert "1024 bytes" in output and "not separately metered" in output and "$0" not in output
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("state", ["resuming", "resumed", "failed"])
+def test_freeze_ack_must_confirm_freeze_intent(asynchronous, state):
+    with pytest.raises(nodus.APIError):
+        exercise(asynchronous, lambda req: httpx.Response(202, json={**FREEZE, "state": state}), lambda c: c.freeze("wl_test"))

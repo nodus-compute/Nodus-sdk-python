@@ -938,7 +938,10 @@ class Client(_Transport):
 
     def freeze(self, workload_id: str) -> WorkloadFreeze:
         """Request saved-file freeze. Completion waits for checkpoint and exact cleanup."""
-        return WorkloadFreeze.from_dict(self._request("POST", f"/v1/workloads/{_valid_id(workload_id)}/freeze", json={}), workload_id)
+        result = WorkloadFreeze.from_dict(self._request("POST", f"/v1/workloads/{_valid_id(workload_id)}/freeze", json={}), workload_id)
+        if result.state not in {"requested", "releasing", "frozen"}:
+            raise APIError("The API did not confirm workload freeze intent")
+        return result
 
     def freeze_status(self, workload_id: str) -> WorkloadFreeze:
         """Read retained checkpoint bytes without inferring a storage price."""
@@ -1543,7 +1546,10 @@ class AsyncClient(_Transport):
 
     async def freeze(self, workload_id: str) -> WorkloadFreeze:
         """Request saved-file freeze. Completion waits for checkpoint and exact cleanup."""
-        return WorkloadFreeze.from_dict(await self._request("POST", f"/v1/workloads/{_valid_id(workload_id)}/freeze", json={}), workload_id)
+        result = WorkloadFreeze.from_dict(await self._request("POST", f"/v1/workloads/{_valid_id(workload_id)}/freeze", json={}), workload_id)
+        if result.state not in {"requested", "releasing", "frozen"}:
+            raise APIError("The API did not confirm workload freeze intent")
+        return result
 
     async def freeze_status(self, workload_id: str) -> WorkloadFreeze:
         """Read retained checkpoint bytes without inferring a storage price."""
