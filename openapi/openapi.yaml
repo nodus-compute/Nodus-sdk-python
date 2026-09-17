@@ -4167,20 +4167,11 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "integer"
-            },
-            "description": "Exclusive numeric event ID cursor. At most 100 events per response."
-          },
-          {
-            "name": "after",
-            "in": "query",
-            "required": false,
-            "schema": {
               "type": "integer",
               "format": "int64",
               "minimum": 0
             },
-            "description": "Return events after this event ID."
+            "description": "Exclusive numeric event ID cursor. At most 100 events per response."
           },
           {
             "name": "latest",
