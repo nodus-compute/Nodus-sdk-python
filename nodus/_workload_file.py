@@ -98,7 +98,7 @@ def _requirements(value: Any, name: str) -> None:
             _number(item, field)
         elif key in {'disk_gb', 'vcpus'}:
             _number(item, field, zero=True)
-        elif key == 'optimization':
+        elif key in {'optimization', 'gpu_count'}:
             continue
         elif key == 'compute_class':
             if item not in ('vm', 'accelerator'):
