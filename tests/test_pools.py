@@ -185,3 +185,159 @@ def test_token_response_cannot_inject_terminal_controls(asynchronous):
             "mode": "observe", "expires_at": "2026-09-18T12:00:00Z"})
     with pytest.raises(nodus.APIError):
         exercise(handler, asynchronous, lambda pools: pools.enrollment_token("pool_test"))
+
+
+METRICS = {
+    "capacity_seconds": 3600, "unknown_seconds": 0, "allocated_seconds": 1800,
+    "busy_seconds": 900, "idle_allocated_seconds": 900, "stranded_seconds": 1800,
+    "foreign_seconds": 1800, "allocation_pct": 50, "busy_pct": 25,
+    "busy_of_allocated_pct": 50, "fragmentation_seconds": None,
+    "queued_seconds": None, "burst_seconds": None, "data_status": "complete",
+}
+UTILIZATION = {
+    "pool_id": "pool_test", "from": "2026-09-10T12:00:00Z", "to": "2026-09-10T13:00:00Z",
+    "bucket": "hour", "summary": METRICS,
+    "hosts": [{"host_id": "host_test", "name": "Research", "device_count": 1,
+        "summary": METRICS, "buckets": [{"start": "2026-09-10T12:00:00Z",
+            "end": "2026-09-10T13:00:00Z", "metrics": METRICS,
+            "foreign_device_ids": ["device_test"]}]}],
+}
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("status", ["complete", "partial", "no_data"])
+def test_utilization_preserves_known_zero_unknown_and_foreign_identity(asynchronous, status):
+    import copy
+    body = copy.deepcopy(UTILIZATION)
+    if status != "complete":
+        metrics = {key: None for key in METRICS}
+        metrics.update(capacity_seconds=3600 if status == "partial" else 0,
+                       unknown_seconds=3600 if status == "partial" else 0, data_status=status)
+        body["summary"] = metrics
+        body["hosts"][0]["summary"] = metrics
+        body["hosts"][0]["buckets"][0]["metrics"] = metrics
+        if status == "no_data":
+            body["hosts"][0]["buckets"][0]["foreign_device_ids"] = []
+    else:
+        body["summary"].update(busy_pct=0, busy_seconds=0, idle_allocated_seconds=1800, busy_of_allocated_pct=0)
+    def handler(req):
+        assert (req.method, req.url.path) == ("GET", "/v1/pools/pool_test/utilization")
+        assert dict(req.url.params) == {"from": "2026-09-10T12:00:00+00:00", "to": UTILIZATION["to"], "bucket": "hour"}
+        assert req.headers["Authorization"] == "Bearer nk_test"
+        return httpx.Response(200, json=body)
+    result = exercise(handler, asynchronous, lambda pools: pools.utilization("pool_test",
+        from_="2026-09-10T12:00:00+00:00", to=UTILIZATION["to"], bucket="hour"))
+    assert isinstance(result, nodus.PoolUtilization)
+    assert result.from_ == UTILIZATION["from"]
+    assert result.summary.busy_pct == (0 if status == "complete" else None)
+    assert result.summary.data_status == status
+    assert result.summary.fragmentation_seconds is None
+    assert result.hosts[0].buckets[0].foreign_device_ids == ([] if status == "no_data" else ["device_test"])
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_utilization_defaults_are_server_owned(asynchronous):
+    def handler(req):
+        assert not req.url.params
+        return httpx.Response(200, json={**UTILIZATION, "hosts": []})
+    assert exercise(handler, asynchronous, lambda pools: pools.utilization("pool_test")).hosts == []
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("kwargs", [{"bucket": "minute"}, {"from_": 42}, {"to": ""}])
+def test_invalid_utilization_query_is_refused(asynchronous, kwargs):
+    def handler(req):
+        pytest.fail("invalid query reached the network")
+    with pytest.raises(nodus.ValidationError):
+        exercise(handler, asynchronous, lambda pools: pools.utilization("pool_test", **kwargs))
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("metric,value", [("busy_pct", "0"), ("busy_pct", 101), ("capacity_seconds", None),
+    ("unknown_seconds", -1), ("allocated_seconds", True), ("data_status", "idle")])
+def test_malformed_utilization_metrics_raise_sdk_error(asynchronous, metric, value):
+    body = {**UTILIZATION, "summary": {**METRICS, metric: value}}
+    with pytest.raises(nodus.APIError):
+        exercise(lambda req: httpx.Response(200, json=body), asynchronous,
+                 lambda pools: pools.utilization("pool_test"))
+
+
+def test_utilization_cli_preserves_nulls_and_query(monkeypatch, capsys):
+    def factory(**kwargs):
+        client = nodus.Client(api_key="nk_test", base_url="https://nodus.invalid")
+        def handler(req):
+            assert req.url.path == "/v1/pools/pool_test/utilization"
+            assert dict(req.url.params) == {"from": UTILIZATION["from"], "to": UTILIZATION["to"], "bucket": "hour"}
+            return httpx.Response(200, json=UTILIZATION)
+        client._http = httpx.Client(base_url="https://nodus.invalid", transport=httpx.MockTransport(handler))
+        return client
+    monkeypatch.setattr(cli, "Client", factory)
+    arguments = ["pools", "utilization", "pool_test", "--from", UTILIZATION["from"], "--to", UTILIZATION["to"], "--bucket", "hour"]
+    assert cli.main([*arguments, "--json"]) == 0
+    assert json.loads(capsys.readouterr().out) == UTILIZATION
+    assert cli.main(["--plain", *arguments]) == 0
+    output = capsys.readouterr().out
+    assert "25%" in output and "50%" in output and "complete" in output
+    assert "Not available" in output
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("updates", [
+    {"unknown_seconds": 3600}, {"data_status": "partial", "unknown_seconds": 1},
+    {"data_status": "no_data"}, {"allocated_seconds": 3601}, {"busy_seconds": 1801},
+    {"idle_allocated_seconds": 1}, {"stranded_seconds": 1}, {"foreign_seconds": 1801},
+    {"allocation_pct": 0}, {"busy_of_allocated_pct": None},
+])
+def test_contradictory_utilization_metrics_fail_closed(asynchronous, updates):
+    body = {**UTILIZATION, "summary": {**METRICS, **updates}}
+    with pytest.raises(nodus.APIError):
+        exercise(lambda req: httpx.Response(200, json=body), asynchronous,
+                 lambda pools: pools.utilization("pool_test"))
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("field,value", [("from", "not-a-timestamp"), ("from", "2026-09-10T12:00:00"),
+    ("from", "2026-09-10T12:30:00Z"), ("from", "2026-09-10T13:00:00+00:60"), ("from", "2026-09-10T14:00:00Z"),
+    ("from", "2026-07-10T12:00:00Z"), ("to", "2026-09-10T13:00:00.000000001Z")])
+def test_utilization_response_window_must_be_valid(asynchronous, field, value):
+    with pytest.raises(nodus.APIError):
+        exercise(lambda req: httpx.Response(200, json={**UTILIZATION, field: value}), asynchronous,
+                 lambda pools: pools.utilization("pool_test"))
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("change", ["missing", "out_of_window", "invalid_time"])
+def test_host_buckets_must_cover_the_reported_window(asynchronous, change):
+    import copy
+    body = copy.deepcopy(UTILIZATION)
+    buckets = body["hosts"][0]["buckets"]
+    if change == "missing":
+        buckets.clear()
+    elif change == "out_of_window":
+        buckets[0]["end"] = "2026-09-10T14:00:00Z"
+    else:
+        buckets[0]["start"] = "tomorrow"
+    with pytest.raises(nodus.APIError):
+        exercise(lambda req: httpx.Response(200, json=body), asynchronous,
+                 lambda pools: pools.utilization("pool_test"))
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_daily_utilization_accepts_partial_day_boundaries(asynchronous):
+    def handler(req):
+        assert dict(req.url.params) == {"bucket": "day"}
+        return httpx.Response(200, json={**UTILIZATION, "bucket": "day"})
+    result = exercise(handler, asynchronous, lambda pools: pools.utilization("pool_test", bucket="day"))
+    assert result.hosts[0].buckets[0].start == UTILIZATION["from"]
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_complete_zero_capacity_has_no_percentage_denominator(asynchronous):
+    metrics = {key: (0 if key.endswith("_seconds") and key not in
+        ("fragmentation_seconds", "queued_seconds", "burst_seconds") else None) for key in METRICS}
+    metrics["data_status"] = "complete"
+    body = {**UTILIZATION, "summary": metrics, "hosts": []}
+    result = exercise(lambda req: httpx.Response(200, json=body), asynchronous,
+                      lambda pools: pools.utilization("pool_test"))
+    assert result.summary.busy_seconds == 0
+    assert result.summary.busy_pct is None

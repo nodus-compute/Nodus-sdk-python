@@ -229,6 +229,24 @@ def _cmd_pools(args: argparse.Namespace) -> int:
             print(_safe_line(client.pools.create(args.name).id))
         elif args.pools_cmd == "token":
             print(client.pools.enrollment_token(args.pool_id).token)
+        elif args.pools_cmd == "utilization":
+            ledger = client.pools.utilization(args.pool_id, from_=args.from_, to=args.to, bucket=args.bucket)
+            if args.json:
+                print(json.dumps(ledger.raw, indent=2))
+            else:
+                print(_safe_line(f"{ledger.from_} to {ledger.to} ({ledger.bucket}, UTC)"))
+                rows = []
+                for label, metrics in [("Pool", ledger.summary), *[(host.name, host.summary) for host in ledger.hosts]]:
+                    percentages = ["Unknown" if value is None else f"{value:g}%" for value in
+                                   (metrics.allocation_pct, metrics.busy_pct, metrics.busy_of_allocated_pct)]
+                    rows.append([label, metrics.data_status, *percentages])
+                show_table(["Scope", "Data", "Allocated", "Busy", "Busy / allocated"], rows, empty="No utilization data.", plain=args.plain)
+                show_table(["Metric", "Device seconds"],
+                           [[name.replace("_seconds", "").replace("_", " ").capitalize(),
+                             str(value) if value is not None else ("Not available" if name in
+                             ("fragmentation_seconds", "queued_seconds", "burst_seconds") else "Unknown")]
+                            for name in ledger.summary.__dataclass_fields__ if name.endswith("_seconds")
+                            for value in [getattr(ledger.summary, name)]], empty="No utilization data.", plain=args.plain)
         else:
             hosts = client.pools.hosts(args.pool_id)
             show_table(["Host", "Name", "Health", "Mode", "Devices"],
@@ -695,6 +713,12 @@ Use nodus COMMAND --help for command options.""",
     pools_token.add_argument("pool_id")
     pools_hosts = pools_sub.add_parser("hosts", help="list enrolled hosts and health")
     pools_hosts.add_argument("pool_id")
+    pools_utilization = pools_sub.add_parser("utilization", help="show measured utilization and unknown coverage")
+    pools_utilization.add_argument("pool_id")
+    pools_utilization.add_argument("--from", dest="from_", default=None, help="inclusive RFC 3339 start, aligned to a UTC hour")
+    pools_utilization.add_argument("--to", default=None, help="exclusive RFC 3339 end, aligned to a UTC hour")
+    pools_utilization.add_argument("--bucket", choices=("hour", "day"), default=None)
+    pools_utilization.add_argument("--json", action="store_true", help="include host buckets and foreign device IDs")
 
     sandbox = sub.add_parser("sandbox", help="create and use agent sandboxes")
     sandbox_sub = sandbox.add_subparsers(dest="sandbox_cmd", required=True, metavar="COMMAND")

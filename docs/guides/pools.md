@@ -11,8 +11,8 @@ to issue an observe enrollment token. This command prints a secret. Keep the
 token out of shared logs and source control. Each token can enroll one host
 and expires after 24 hours.
 
-Use the Compute enrollment panel's installation instructions on the NVIDIA
-host. After enrollment, `nodus pools hosts POOL_ID` shows each host's ID, name,
+Use the Compute enrollment panel's installation instructions on your Linux
+host from your infrastructure provider or data center. After enrollment, `nodus pools hosts POOL_ID` shows each host's ID, name,
 health, agent mode, and device count. Hosts become lost when their heartbeat
 has been absent for three minutes. Use the console to inspect their devices.
 
@@ -28,6 +28,7 @@ on the asynchronous client. IDs always come from the server.
 | `get(pool_id)` | A `Pool` with its current configuration |
 | `update(pool_id, name=..., owned_cost_micros_per_hour=...)` | Updated `Pool`. Supply at least one setting |
 | `enrollment_token(pool_id)` | An `EnrollmentToken` with `id`, `token`, `mode`, and `expires_at` |
+| `utilization(pool_id, from_=..., to=..., bucket=...)` | `PoolUtilization` with a summary, host summaries, and time buckets |
 | `hosts(pool_id)` | `PoolHost` objects with health, inventory, and `HostDevice` objects |
 | `drain_host(pool_id, host_id)` | The host marked draining, without stopping customer processes |
 | `remove_host(pool_id, host_id)` | Revokes the host credential and removes the host, preserving historical measurements |
@@ -43,3 +44,31 @@ uncertain create response, inspect the pool list before creating another.
 An uncertain token response may have issued a token whose secret was lost.
 Issue a new token only when you intend to create another credential. Host
 removal does not uninstall the agent or stop programs on the machine.
+
+
+## Read the utilization ledger
+
+Run `nodus pools utilization POOL_ID` to see measured allocated, busy, and
+busy-of-allocated percentages. Add `--json` for host buckets and observed
+foreign device IDs. All durations are device-seconds, except the Route-only
+queued duration. Unknown readings are `None` in Python and `null` in JSON.
+A measured zero is distinct from an unknown reading.
+
+The default window is the last seven days of complete UTC hours. Use `--from`
+and `--to` with RFC 3339 timestamps to choose a window of at most 31 days.
+Both boundaries must align to a UTC hour. The end is exclusive. Use
+`--bucket hour` or `--bucket day` to choose the grouping. The corresponding
+Python keywords are `from_`, `to`, and `bucket`. Omitting them leaves defaults
+to the server.
+
+`PoolUtilization.summary` contains `UtilizationMetrics`. Each entry in
+`hosts` contains a host summary and `buckets`. Every bucket carries `start`,
+`end`, `metrics`, and `foreign_device_ids`. The response's `from_`, `to`, and
+`bucket` identify the measured window. The unchanged JSON is in `raw`.
+
+`data_status` is `complete`, `partial`, or `no_data`. Partial coverage hides
+derived totals and percentages. Foreign device IDs still identify allocation
+observed during a partial bucket. Summaries cover retained ready device time. A complete summary does not claim
+continuous coverage of every host hour. Empty buckets report `no_data`.
+Missing history is never counted as idle.
+Fragmentation, queued, and burst metrics are unavailable without Route.

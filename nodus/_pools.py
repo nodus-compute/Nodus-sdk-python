@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+import math
 import re
 from typing import Any
 
@@ -111,6 +113,171 @@ class EnrollmentToken:
         return cls(row["id"], row["token"], row["mode"], row["expires_at"])
 
 
+@dataclass(frozen=True)
+class UtilizationMetrics:
+    """Server-measured device seconds and percentages, with unknown values preserved."""
+
+    capacity_seconds: int
+    unknown_seconds: int
+    allocated_seconds: int | None
+    busy_seconds: int | None
+    idle_allocated_seconds: int | None
+    stranded_seconds: int | None
+    foreign_seconds: int | None
+    allocation_pct: float | None
+    busy_pct: float | None
+    busy_of_allocated_pct: float | None
+    fragmentation_seconds: int | None
+    queued_seconds: int | None
+    burst_seconds: int | None
+    data_status: str
+
+    @classmethod
+    def from_dict(cls, value: Any) -> UtilizationMetrics:
+        row = _row(value, ("data_status",))
+        if row["data_status"] not in ("complete", "partial", "no_data"):
+            raise APIError("The API returned an invalid utilization status")
+        for key in cls.__dataclass_fields__:
+            if key == "data_status":
+                continue
+            number = row.get(key)
+            if key not in row or (number is None and key in ("capacity_seconds", "unknown_seconds")):
+                raise APIError("The API returned an invalid utilization metric")
+            if number is None:
+                continue
+            if key.endswith("_pct"):
+                valid = type(number) in (int, float) and 0 <= number <= 100
+            else:
+                valid = type(number) is int and 0 <= number <= 2**63 - 1
+            if not valid:
+                raise APIError("The API returned an invalid utilization metric")
+        capacity, unknown = row["capacity_seconds"], row["unknown_seconds"]
+        duration_fields = ("allocated_seconds", "busy_seconds", "idle_allocated_seconds", "stranded_seconds", "foreign_seconds")
+        percent_fields = ("allocation_pct", "busy_pct", "busy_of_allocated_pct")
+        invalid = unknown > capacity
+        if row["data_status"] == "complete":
+            invalid |= unknown != 0 or any(row[key] is None for key in duration_fields)
+            if not invalid:
+                allocated, busy, idle, stranded, foreign = (row[key] for key in duration_fields)
+                invalid |= not (busy <= allocated <= capacity and foreign <= allocated and idle == allocated - busy and stranded == capacity - allocated)
+                for key, numerator, denominator in (("allocation_pct", allocated, capacity),
+                        ("busy_pct", busy, capacity), ("busy_of_allocated_pct", busy, allocated)):
+                    actual = row[key]
+                    if denominator == 0:
+                        invalid |= actual is not None
+                    else:
+                        invalid |= actual is None or not math.isclose(actual, 100 * numerator / denominator, rel_tol=1e-9, abs_tol=1e-9)
+        else:
+            invalid |= any(row[key] is not None for key in (*duration_fields, *percent_fields))
+            if row["data_status"] == "partial":
+                invalid |= unknown == 0
+            else:
+                invalid |= capacity != 0 or unknown != 0
+        if invalid:
+            raise APIError("The API returned contradictory utilization metrics")
+        return cls(**{key: row[key] for key in cls.__dataclass_fields__})
+
+
+def _utilization_time(value: Any) -> datetime:
+    match = re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.(\d{1,9}))?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)", value) if isinstance(value, str) else None
+    try:
+        if not match or (match.group(1) and any(digit != "0" for digit in match.group(1))):
+            raise ValueError
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
+        if parsed.minute or parsed.second or parsed.microsecond:
+            raise ValueError
+        return parsed
+    except (ValueError, OverflowError):
+        raise APIError("The API returned an invalid utilization timestamp") from None
+
+
+@dataclass(frozen=True)
+class UtilizationBucket:
+    """One UTC time bucket with observed foreign device identities."""
+
+    start: str
+    end: str
+    metrics: UtilizationMetrics
+    foreign_device_ids: list[str]
+
+    @classmethod
+    def from_dict(cls, value: Any) -> UtilizationBucket:
+        row = _row(value, ("start", "end"))
+        if _utilization_time(row["start"]) >= _utilization_time(row["end"]):
+            raise APIError("The API returned an invalid utilization bucket window")
+        devices = row.get("foreign_device_ids")
+        if not isinstance(devices, list) or any(not isinstance(item, str) or not item for item in devices):
+            raise APIError("The API returned invalid foreign device IDs")
+        return cls(row["start"], row["end"], UtilizationMetrics.from_dict(row.get("metrics")), list(devices))
+
+
+@dataclass(frozen=True)
+class HostUtilization:
+    """One host's summary and time buckets."""
+
+    host_id: str
+    name: str
+    device_count: int
+    summary: UtilizationMetrics
+    buckets: list[UtilizationBucket]
+
+    @classmethod
+    def from_dict(cls, value: Any) -> HostUtilization:
+        row = _row(value, ("host_id", "name"))
+        if type(row.get("device_count")) is not int or row["device_count"] < 0:
+            raise APIError("The API returned an invalid utilization device count")
+        return cls(row["host_id"], row["name"], row["device_count"],
+                   UtilizationMetrics.from_dict(row.get("summary")), _rows(row, "buckets", UtilizationBucket))
+
+
+@dataclass(frozen=True)
+class PoolUtilization:
+    """A pool's measured ledger over the server-reported time window."""
+
+    pool_id: str
+    from_: str
+    to: str
+    bucket: str
+    summary: UtilizationMetrics
+    hosts: list[HostUtilization]
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def from_dict(cls, value: Any) -> PoolUtilization:
+        row = _row(value, ("pool_id", "from", "to", "bucket"))
+        if row["bucket"] not in ("hour", "day"):
+            raise APIError("The API returned an invalid utilization bucket")
+        start, end = _utilization_time(row["from"]), _utilization_time(row["to"])
+        if not timedelta(0) < end - start <= timedelta(days=31):
+            raise APIError("The API returned an invalid utilization window")
+        hosts = _rows(row, "hosts", HostUtilization)
+        for host in hosts:
+            expected = start
+            for bucket in host.buckets:
+                bucket_start, bucket_end = _utilization_time(bucket.start), _utilization_time(bucket.end)
+                interval = timedelta(hours=1 if row["bucket"] == "hour" else 24 - expected.hour)
+                expected_end = expected + min(interval, end - expected)
+                if bucket_start != expected or bucket_end != expected_end:
+                    raise APIError("The API returned noncontiguous utilization buckets")
+                expected = bucket_end
+            if expected != end:
+                raise APIError("The API returned incomplete utilization buckets")
+        return cls(row["pool_id"], row["from"], row["to"], row["bucket"],
+                   UtilizationMetrics.from_dict(row.get("summary")), hosts, dict(row))
+
+
+def _utilization_query(from_: str | None, to: str | None, bucket: str | None) -> dict[str, str]:
+    params = {}
+    for key, value in (("from", from_), ("to", to), ("bucket", bucket)):
+        if value is not None:
+            if not isinstance(value, str) or not value.strip():
+                raise ValidationError("Utilization query values must be nonempty strings")
+            params[key] = value
+    if bucket is not None and bucket not in ("hour", "day"):
+        raise ValidationError("Utilization bucket must be hour or day")
+    return params
+
+
 def _id(value: str, prefix: str) -> str:
     if not isinstance(value, str) or not re.fullmatch(prefix + r"_[A-Za-z0-9_-]{1,128}", value):
         raise ValidationError(f"Use a {prefix} ID returned by Nodus")
@@ -203,6 +370,12 @@ class Pools:
         """List a pool's hosts and their device inventory."""
         return _rows(self._request("GET", _path(pool_id) + "/hosts"), "hosts", PoolHost)
 
+    def utilization(self, pool_id: str, *, from_: str | None = None,
+                          to: str | None = None, bucket: str | None = None) -> PoolUtilization:
+        """Read measured utilization with optional RFC 3339 bounds and hour or day buckets."""
+        return PoolUtilization.from_dict(self._request("GET", _path(pool_id) + "/utilization",
+            params=_utilization_query(from_, to, bucket)))
+
     def drain_host(self, pool_id: str, host_id: str) -> PoolHost:
         """Request that a host drain without stopping customer processes."""
         return PoolHost.from_dict(self._request("POST", _path(pool_id, host_id) + "/drain"))
@@ -253,6 +426,12 @@ class AsyncPools:
     async def hosts(self, pool_id: str) -> list[PoolHost]:
         """List a pool's hosts and their device inventory."""
         return _rows(await self._request("GET", _path(pool_id) + "/hosts"), "hosts", PoolHost)
+
+    async def utilization(self, pool_id: str, *, from_: str | None = None,
+                          to: str | None = None, bucket: str | None = None) -> PoolUtilization:
+        """Read measured utilization with optional RFC 3339 bounds and hour or day buckets."""
+        return PoolUtilization.from_dict(await self._request("GET", _path(pool_id) + "/utilization",
+            params=_utilization_query(from_, to, bucket)))
 
     async def drain_host(self, pool_id: str, host_id: str) -> PoolHost:
         """Request that a host drain without stopping customer processes."""

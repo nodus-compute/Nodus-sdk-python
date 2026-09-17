@@ -2202,6 +2202,100 @@
         ],
         "description": "Returns up to 100 retained events in ascending ID order. Poll with after set to the last received event ID. Network denial events contain only the denied hostname, count and generation."
       }
+    },
+    "/v1/pools/{id}/utilization": {
+      "get": {
+        "operationId": "getPoolUtilization",
+        "summary": "Read customer pool utilization from retained device hours",
+        "tags": [
+          "Pools"
+        ],
+        "responses": {
+          "200": {
+            "description": "Retained utilization and explicit measurement availability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolUtilization"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed, duplicate or unsupported query fields or invalid time range.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Result exceeds the full-response bound. Narrow the time window.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifier returned by Nodus."
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Inclusive RFC3339 UTC-hour boundary. Defaults to 168 hours before to."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Exclusive RFC3339 UTC-hour boundary. Defaults to the current UTC hour."
+          },
+          {
+            "name": "bucket",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "hour",
+                "day"
+              ],
+              "default": "hour"
+            },
+            "description": "Group retained hours by hour or UTC calendar day."
+          }
+        ],
+        "description": "Read-only and available to account members. Defaults to the last 168 complete hours, ending at the current UTC hour. From is inclusive and to is exclusive. Both must align to UTC hours and the window must be positive and at most 31 days. Future or incomplete hours are rejected. Day buckets follow UTC calendar boundaries and may have shorter first or last buckets. The response includes current hosts without evidence and removed hosts with retained history. Queries never read raw telemetry. Requests over 100000 device-hour rows or host buckets return 422 instead of partial totals. Narrow the time window to retry."
+      }
     }
   },
   "components": {
@@ -4579,6 +4673,232 @@
         "required": [
           "hosts"
         ]
+      },
+      "PoolUtilizationMetrics": {
+        "type": "object",
+        "properties": {
+          "capacity_seconds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "unknown_seconds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "allocated_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "busy_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "idle_allocated_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "stranded_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "foreign_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "fragmentation_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "queued_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "burst_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "allocation_pct": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100
+          },
+          "busy_pct": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100
+          },
+          "busy_of_allocated_pct": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100
+          },
+          "data_status": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "partial",
+              "no_data"
+            ]
+          }
+        },
+        "required": [
+          "capacity_seconds",
+          "unknown_seconds",
+          "allocated_seconds",
+          "busy_seconds",
+          "idle_allocated_seconds",
+          "stranded_seconds",
+          "foreign_seconds",
+          "fragmentation_seconds",
+          "queued_seconds",
+          "burst_seconds",
+          "allocation_pct",
+          "busy_pct",
+          "busy_of_allocated_pct",
+          "data_status"
+        ],
+        "x-go-source": "internal/finops/ledger.go",
+        "x-go-type": "Metrics",
+        "description": "Totals cover retained ready-device hourly rows only. Complete means all represented ready seconds have activity evidence, not that the pool existed throughout the requested range. Partial means some ready seconds lack observations and all activity totals and percentages are null. No data means no retained rows. Zero capacity has null percentages. Missing activity is never counted as idle or stranded. Fragmentation, queued and burst are unavailable without Route and remain null in the observe ledger."
+      },
+      "PoolUtilizationBucket": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "end": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/PoolUtilizationMetrics"
+          },
+          "foreign_device_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "metrics",
+          "foreign_device_ids"
+        ],
+        "x-go-source": "internal/api/pools_utilization.go",
+        "x-go-type": "poolUtilizationBucket",
+        "description": "Half-open UTC bucket. Empty buckets have no_data metrics. Foreign device IDs identify positive observed foreign allocation even when other activity is unknown."
+      },
+      "PoolUtilizationHost": {
+        "type": "object",
+        "properties": {
+          "host_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "device_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "summary": {
+            "$ref": "#/components/schemas/PoolUtilizationMetrics"
+          },
+          "buckets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PoolUtilizationBucket"
+            }
+          }
+        },
+        "required": [
+          "host_id",
+          "name",
+          "device_count",
+          "summary",
+          "buckets"
+        ],
+        "x-go-source": "internal/api/pools_utilization.go",
+        "x-go-type": "poolUtilizationHost"
+      },
+      "PoolUtilization": {
+        "type": "object",
+        "properties": {
+          "pool_id": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "bucket": {
+            "type": "string",
+            "enum": [
+              "hour",
+              "day"
+            ]
+          },
+          "summary": {
+            "$ref": "#/components/schemas/PoolUtilizationMetrics"
+          },
+          "hosts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PoolUtilizationHost"
+            }
+          }
+        },
+        "required": [
+          "pool_id",
+          "from",
+          "to",
+          "bucket",
+          "summary",
+          "hosts"
+        ],
+        "x-go-source": "internal/api/pools_utilization.go",
+        "x-go-type": "poolUtilizationResponse"
       }
     }
   },

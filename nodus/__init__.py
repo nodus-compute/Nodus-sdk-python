@@ -37,7 +37,7 @@ from pathlib import Path
 
 from ._outputs import download_path, verified_file, output_destinations
 from ._assets import Asset, Assets, AsyncAssets
-from ._pools import Pool, PoolHost, HostDevice, EnrollmentToken, Pools, AsyncPools
+from ._pools import Pool, PoolHost, HostDevice, EnrollmentToken, Pools, AsyncPools, PoolUtilization, HostUtilization, UtilizationBucket, UtilizationMetrics
 from ._sandboxes import (
     AsyncSandbox,
     AsyncSandboxExec,
@@ -112,6 +112,10 @@ __all__ = [
     "EnrollmentToken",
     "Pools",
     "AsyncPools",
+    "PoolUtilization",
+    "HostUtilization",
+    "UtilizationBucket",
+    "UtilizationMetrics",
     "Client",
     "AsyncClient",
     "Workload",
