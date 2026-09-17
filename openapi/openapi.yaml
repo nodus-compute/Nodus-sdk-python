@@ -3023,7 +3023,8 @@
           "billing_status": {
             "type": "string",
             "enum": [
-              "disabled_no_approved_storage_rate"
+              "disabled_no_approved_storage_rate",
+              "metered_subject_to_account_limits"
             ]
           }
         }

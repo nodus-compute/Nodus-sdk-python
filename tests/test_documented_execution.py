@@ -142,6 +142,14 @@ def docs_api(monkeypatch):
                 if not self.headers.get("Idempotency-Key") or not payload.get("outcome", {}).get("max_cost_usd"):
                     return self.reply({"error": "invalid_brief"}, 400)
                 return self.reply({"id": "wl_docs", "workload_id": "wl_docs", "status": "accepted", "revision": 1}, 202)
+            if path == "/v1/workspaces":
+                assert payload == {"name": "research", "size_gb": 0.1}
+                return self.reply({
+                    "id": "ws_docs", "name": "research", "size_gb": 0.1,
+                    "holder_id": None, "saved_at": None, "stored_bytes": None,
+                    "last_error": "", "saving_for_termination": False,
+                    "billing_status": "disabled_no_approved_storage_rate",
+                }, 201)
             if path == "/v1/sandboxes":
                 return self.reply(sandbox, 202)
             if path in ("/v1/sandboxes/sb_docs/exec", "/v1/sandboxes/sb_example/exec"):
