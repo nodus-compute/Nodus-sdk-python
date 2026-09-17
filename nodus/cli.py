@@ -258,6 +258,21 @@ def _cmd_pools(args: argparse.Namespace) -> int:
                     show_table(["UTC hour", "p10 device-hours", "p50 device-hours", "p90 device-hours"],
                         [[point.hour, str(point.p10), str(point.p50), str(point.p90)] for point in snapshot.forecast.points],
                         empty="Insufficient measured history for a forecast.", plain=args.plain)
+        elif args.pools_cmd == "proposals":
+            page = client.pools.proposals(args.pool_id, limit=args.limit, cursor=args.cursor, state=args.state)
+            if args.json:
+                print(json.dumps(page.raw, indent=2))
+            else:
+                show_table(["Proposal", "Workload", "Proposed cost (USD micros)", "State", "Reason"],
+                    [[item.id, item.workload_id, str(item.expected_cost_micros), item.state, item.reason] for item in page.proposals],
+                    empty="No burst proposals.", plain=args.plain)
+                if page.next_cursor:
+                    print(_safe_line("Next cursor: " + page.next_cursor))
+        elif args.pools_cmd in ("approve", "reject"):
+            method = client.pools.approve_proposal if args.pools_cmd == "approve" else client.pools.reject_proposal
+            proposal = method(args.pool_id, args.proposal_id)
+            print(_safe_line(f"{proposal.id}: {proposal.state}. Proposed cost: {proposal.expected_cost_micros} USD micros."))
+            print("Approval records intent and does not itself rent capacity. Only applied records an observed winning execution.")
         elif args.pools_cmd == "recommendations":
             advice = client.pools.recommendations(args.pool_id, limit=args.limit, cursor=args.cursor, state=args.state)
             if args.json:
@@ -778,6 +793,16 @@ Use nodus COMMAND --help for command options.""",
     pools_forecast.add_argument("pool_id")
     pools_forecast.add_argument("--horizon", type=int, choices=(7, 30), default=None)
     pools_forecast.add_argument("--json", action="store_true")
+    pools_proposals = pools_sub.add_parser("proposals", help="read burst approval intent and retained outcomes")
+    pools_proposals.add_argument("pool_id")
+    pools_proposals.add_argument("--json", action="store_true")
+    pools_proposals.add_argument("--limit", type=int, default=None)
+    pools_proposals.add_argument("--cursor", default=None)
+    pools_proposals.add_argument("--state", choices=("pending", "approved", "rejected", "expired", "no_op", "applying", "applied"), default=None)
+    for action in ("approve", "reject"):
+        decision = pools_sub.add_parser(action, help=action + " the retained burst proposal amount")
+        decision.add_argument("pool_id")
+        decision.add_argument("proposal_id")
     pools_recommendations = pools_sub.add_parser("recommendations", help="read advisory recommendations and evidence")
     pools_recommendations.add_argument("pool_id")
     pools_recommendations.add_argument("--json", action="store_true")

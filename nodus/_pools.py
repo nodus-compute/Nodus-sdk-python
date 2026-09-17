@@ -9,6 +9,7 @@ from typing import Any
 
 import httpx
 
+from ._pool_proposals import PoolProposal, PoolProposals, proposal_query, proposal_decision
 from ._pool_route import route_settings, route_patch, route_result
 from ._pool_predict import PoolForecast, PoolRecommendations, RecommendationOutcome, predict_patch, done_payload, horizon_query, recommendation_query
 from .errors import APIConnectionError, APIError, APITimeoutError, ValidationError
@@ -444,6 +445,22 @@ class Pools:
         """Read cached hourly bands, issued calibration, and subscription refresh state."""
         return PoolForecast.from_dict(_predict_result(self._request("GET", _path(pool_id) + "/forecast", params=horizon_query(horizon)), pool_id))
 
+    def proposals(self, pool_id: str, *, limit: int | None = None, cursor: str | None = None,
+                        state: str | None = None) -> PoolProposals:
+        """Read burst intent states. Follow next_cursor with the same pool and state."""
+        return PoolProposals.from_dict(self._request("GET", _path(pool_id) + "/proposals",
+            params=proposal_query(limit, cursor, state)), pool_id)
+
+    def approve_proposal(self, pool_id: str, proposal_id: str) -> PoolProposal:
+        """Approve the immutable proposed amount. Approval does not itself rent capacity."""
+        return proposal_decision(self._request("POST", _path(pool_id) + "/proposals/" +
+            _id(proposal_id, "prop") + "/approve", json={}), pool_id, proposal_id, True)
+
+    def reject_proposal(self, pool_id: str, proposal_id: str) -> PoolProposal:
+        """Reject a pending proposal without changing prior resource cleanup."""
+        return proposal_decision(self._request("POST", _path(pool_id) + "/proposals/" +
+            _id(proposal_id, "prop") + "/reject", json={}), pool_id, proposal_id, False)
+
     def recommendations(self, pool_id: str, *, limit: int | None = None, cursor: str | None = None,
                         state: str | None = None) -> PoolRecommendations:
         """Read one page of advice, following next_cursor with the same pool and state."""
@@ -543,6 +560,22 @@ class AsyncPools:
     async def forecast(self, pool_id: str, *, horizon: int | None = None) -> PoolForecast:
         """Read cached hourly bands, issued calibration, and subscription refresh state."""
         return PoolForecast.from_dict(_predict_result(await self._request("GET", _path(pool_id) + "/forecast", params=horizon_query(horizon)), pool_id))
+
+    async def proposals(self, pool_id: str, *, limit: int | None = None, cursor: str | None = None,
+                        state: str | None = None) -> PoolProposals:
+        """Read burst intent states. Follow next_cursor with the same pool and state."""
+        return PoolProposals.from_dict(await self._request("GET", _path(pool_id) + "/proposals",
+            params=proposal_query(limit, cursor, state)), pool_id)
+
+    async def approve_proposal(self, pool_id: str, proposal_id: str) -> PoolProposal:
+        """Approve the immutable proposed amount. Approval does not itself rent capacity."""
+        return proposal_decision(await self._request("POST", _path(pool_id) + "/proposals/" +
+            _id(proposal_id, "prop") + "/approve", json={}), pool_id, proposal_id, True)
+
+    async def reject_proposal(self, pool_id: str, proposal_id: str) -> PoolProposal:
+        """Reject a pending proposal without changing prior resource cleanup."""
+        return proposal_decision(await self._request("POST", _path(pool_id) + "/proposals/" +
+            _id(proposal_id, "prop") + "/reject", json={}), pool_id, proposal_id, False)
 
     async def recommendations(self, pool_id: str, *, limit: int | None = None, cursor: str | None = None,
                         state: str | None = None) -> PoolRecommendations:

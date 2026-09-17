@@ -271,3 +271,32 @@ GPU requirements, spending controls, and output selection still apply.
 Unavailable, disabled, or inaccessible explicit pools are rejected. Accepted
 submission does not mean execution has started. Observe progress and retrieve
 results as for other workloads. The same arguments work with `AsyncClient`.
+
+## Burst approval inbox
+
+A burst proposal requests market fallback for one submitted workload stage and
+execution generation. It requires Route, but not Predict. An account admin can
+approve or reject the immutable proposed amount. Approval records intent and
+does not itself rent capacity. Nodus rechecks the current quote, Route authority,
+spending controls, and original expiry before admitting new work. The quoted
+expected cost is not an absolute billing cap. Workload spending controls remain
+separate.
+
+```python
+page = client.pools.proposals(pool_id, state="pending", limit=25)
+for proposal in page.proposals:
+    print(proposal.id, proposal.expected_cost_micros, proposal.expires_at)
+```
+
+Follow `page.next_cursor` with the same pool and state filter to read older
+proposals. Amounts use USD micros. Review the server-reported amount before
+calling `client.pools.approve_proposal(pool_id, proposal_id)` or
+`client.pools.reject_proposal(pool_id, proposal_id)`.
+
+`approved` means recorded intent. `applying` means the same execution generation
+claimed that approval. Only `applied` means a matching winning execution was
+observed. `expired`, `rejected`, and `no_op` retain their reason and do not silently
+renew approval. An execution dispatched before expiry may be observed afterward.
+A timeout does not prove a decision failed. Refresh the inbox before retrying.
+
+The same methods are available on `AsyncClient.pools` with `await`.

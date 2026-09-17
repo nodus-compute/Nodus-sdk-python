@@ -115,3 +115,15 @@ Replace `nodus get ID` with `nodus status ID`, and `nodus get ID --wait` with
 `nodus wait ID`. Submission flags have moved into workload files. Use `nodus run`
 to submit and wait, or `nodus submit` to return immediately. Python `client.get()`
 and `client.run()` keep their existing behavior.
+
+### Burst proposals
+
+`nodus pools proposals POOL_ID` reads retained burst intent. Optional `--limit`
+accepts 1 to 100, `--cursor` follows the returned continuation, and `--state`
+filters `pending`, `approved`, `rejected`, `expired`, `no_op`, `applying`, or
+`applied`. Use `--json` for the typed public response.
+
+`nodus pools approve POOL_ID PROPOSAL_ID` approves the immutable proposed amount.
+`nodus pools reject POOL_ID PROPOSAL_ID` rejects pending intent. These commands
+require a current account admin. Approval does not itself rent capacity and does
+not change the original expiry. Inspect the amount with `proposals` first.

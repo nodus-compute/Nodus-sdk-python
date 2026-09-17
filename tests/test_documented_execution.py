@@ -69,6 +69,11 @@ def docs_api(monkeypatch):
             calls.append(("GET", path))
             if self.headers.get("Authorization") != "Bearer nk_docs":
                 return self.reply({"error": "unauthorized"}, 401)
+            if path == "/v1/pools/pool_docs/proposals":
+                query = parse_qs(urlsplit(self.path).query)
+                if query != {"limit": ["25"], "state": ["pending"]}:
+                    return self.reply({"error": "invalid_query"}, 400)
+                return self.reply({"pool_id": "pool_docs", "proposals": [], "next_cursor": None})
             if path == "/v1/pools/pool_docs/recommendations":
                 query = parse_qs(urlsplit(self.path).query)
                 if query.get("limit") != ["25"] or query.get("state") != ["expired"]:

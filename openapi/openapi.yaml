@@ -2487,6 +2487,211 @@
         },
         "description": "Requires an admin. Replaying the same outcome returns the original result. A conflicting replay or an expired recommendation returns 409. This records a customer action and does not execute infrastructure changes."
       }
+    },
+    "/v1/pools/{id}/proposals": {
+      "get": {
+        "operationId": "listPoolProposals",
+        "summary": "Read retained burst proposals",
+        "tags": [
+          "Pools"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifier returned by Nodus."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 100
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 2048
+            },
+            "description": "Opaque next_cursor returned for the same pool and state filter."
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "approved",
+                "rejected",
+                "expired",
+                "no_op",
+                "applying",
+                "applied"
+              ]
+            },
+            "description": "Optional lifecycle filter. Active records that passed their expiry are returned as expired."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Retained burst proposals.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolProposalsResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Read burst intent for this customer-owned pool, including expired and no-op outcomes. Reads do not require Predict. Keyset pagination uses descending creation order. Follow next_cursor with the same pool and state filter."
+      }
+    },
+    "/v1/pools/{id}/proposals/{pid}/approve": {
+      "post": {
+        "operationId": "approvePoolProposal",
+        "summary": "Approve a burst proposal",
+        "tags": [
+          "Pools"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifier returned by Nodus."
+          },
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Confirmed retained proposal decision.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolProposal"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "maxProperties": 0
+              }
+            }
+          }
+        },
+        "description": "Requires a current account admin and active Route authorization. Send an empty object or omit the body. The proposed amount cannot be changed. The decision is retained atomically. Replays return the same confirmed decision. Expired, no-op, or conflicting decisions return 409. Approval records intent only and does not itself rent capacity. New admission must revalidate the current quote against the approved amount and original expiry."
+      }
+    },
+    "/v1/pools/{id}/proposals/{pid}/reject": {
+      "post": {
+        "operationId": "rejectPoolProposal",
+        "summary": "Reject a burst proposal",
+        "tags": [
+          "Pools"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifier returned by Nodus."
+          },
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Confirmed retained proposal decision.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolProposal"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "maxProperties": 0
+              }
+            }
+          }
+        },
+        "description": "Requires a current account admin and active Route authorization. Send an empty object or omit the body. The proposed amount cannot be changed. The decision is retained atomically. Replays return the same confirmed decision. Expired, no-op, or conflicting decisions return 409. Approval records intent only and does not itself rent capacity. New admission must revalidate the current quote against the approved amount and original expiry."
+      }
     }
   },
   "components": {
@@ -6310,6 +6515,151 @@
         "description": "Choose exactly one customer pool or prefer any eligible market capacity. Omit placement to prefer eligible private capacity.",
         "x-go-source": "internal/models/placement.go",
         "x-go-type": "Placement"
+      },
+      "PoolProposal": {
+        "type": "object",
+        "required": [
+          "id",
+          "pool_id",
+          "workload_id",
+          "stage_id",
+          "reason",
+          "kind",
+          "state",
+          "envelope_version",
+          "generation",
+          "device_count",
+          "expected_cost_micros",
+          "approved_cost_micros",
+          "created_at",
+          "expires_at",
+          "decided_at",
+          "applied_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "pool_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "workload_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "stage_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "burst"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected",
+              "expired",
+              "no_op",
+              "applying",
+              "applied"
+            ]
+          },
+          "envelope_version": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 9223372036854775807
+          },
+          "generation": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 9223372036854775807
+          },
+          "device_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 9223372036854775807
+          },
+          "expected_cost_micros": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 9223372036854775807
+          },
+          "approved_cost_micros": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 9223372036854775807,
+            "description": "Null until approval. Once approved, equals the immutable expected_cost_micros."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "decided_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "applied_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "description": "Retained burst approval intent for one submitted workload stage and generation. Approved records intent, applying means that generation claimed the approval, and applied requires an observed winning execution. Expiry blocks new dispatch but does not erase a winner dispatched before expiry. No supplier identity or quote secrets are returned."
+      },
+      "PoolProposalsResponse": {
+        "type": "object",
+        "required": [
+          "pool_id",
+          "proposals",
+          "next_cursor"
+        ],
+        "properties": {
+          "pool_id": {
+            "type": "string"
+          },
+          "proposals": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/PoolProposal"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2048
+          }
+        }
       }
     }
   },
