@@ -2266,6 +2266,16 @@
           },
           "meter": {
             "$ref": "#/components/schemas/Meter"
+          },
+          "unit_metrics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UnitMetrics"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "x-go-source": "internal/models/models.go",
@@ -3875,6 +3885,44 @@
             "format": "uri"
           }
         }
+      },
+      "UnitMetrics": {
+        "type": "object",
+        "properties": {
+          "units_completed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "p50_ms": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "p95_ms": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "cost_per_unit_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Posted workload charges divided by observed unique completed units. Excludes unsettled charges."
+          },
+          "dropped_observations": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Runner queue overflow observations. A nonzero value means measurements are incomplete."
+          }
+        },
+        "x-go-source": "internal/models/unit_metrics.go",
+        "x-go-type": "UnitMetrics"
       }
     }
   },

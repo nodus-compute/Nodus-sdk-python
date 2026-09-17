@@ -24,6 +24,7 @@ __all__ = [
     "MEDIA_TAR",
     "Route",
     "StageRun",
+    "UnitMetrics",
     "ManifestFile",
     "Artifact",
     "Event",
@@ -508,3 +509,33 @@ class Meter:
             as_of=_dt(d.get("as_of")),
             raw=d,
         )
+
+
+@dataclass
+class UnitMetrics:
+    """Server-observed unit latency and posted cost per completed unit."""
+
+    units_completed: int | None = None
+    p50_ms: float | None = None
+    p95_ms: float | None = None
+    cost_per_unit_usd: float | None = None
+    dropped_observations: int | None = None
+
+    @classmethod
+    def from_dict(cls, value: Any) -> "UnitMetrics | None":
+        if not isinstance(value, dict) or not value:
+            return None
+        def number(name: str) -> float | None:
+            item = value.get(name)
+            if type(item) not in (int, float):
+                return None
+            try:
+                parsed = float(item)
+            except OverflowError:
+                return None
+            return parsed if math.isfinite(parsed) and parsed >= 0 else None
+        def count(name: str) -> int | None:
+            item = value.get(name)
+            return item if type(item) is int and item >= 0 else None
+        return cls(count("units_completed"), number("p50_ms"), number("p95_ms"),
+                   number("cost_per_unit_usd"), count("dropped_observations"))

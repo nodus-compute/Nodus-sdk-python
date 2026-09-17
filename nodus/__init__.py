@@ -91,6 +91,7 @@ from .types import (
     Route,
     Settlement,
     StageRun,
+    UnitMetrics,
     WorkloadStatus,
 )
 
@@ -122,6 +123,7 @@ __all__ = [
     "SandboxInputReceipt",
     "Route",
     "StageRun",
+    "UnitMetrics",
     "Output",
     "Source",
     "Requirements",
@@ -455,6 +457,7 @@ class _WorkloadState:
     meter: Meter | None = None
     revision: int = 1
     stages: list[StageRun] = field(default_factory=list)
+    unit_metrics: UnitMetrics | None = None
     #: True when the control plane answered from an idempotency record: the
     #: submission already existed, this call did not create a second run.
     replayed: bool = False
@@ -493,6 +496,8 @@ class _WorkloadState:
         if ceiling is not None:
             self.budget_usd = _num(ceiling, self.budget_usd)
         self.revision = _int(d.get("revision"), self.revision) or self.revision
+        if "unit_metrics" in d:
+            self.unit_metrics = UnitMetrics.from_dict(d["unit_metrics"])
         if "stages" in d:
             self.stages = [StageRun.from_dict(s) for s in _rows(d.get("stages"))]
         self.created_at = _dt(d.get("created_at")) or self.created_at

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Expose server-reported per-unit latency and posted cost through `workload.unit_metrics`.
 - Expose reported sandbox network bytes through `network_usage`.
 - Read sandbox lifecycle and denied-host events with `sandbox.events(after=...)`.
 - Preserve failure guidance and network usage on directly created handles.
