@@ -136,11 +136,14 @@ def _create_payload(
     from_snapshot: str | None = None,
     secrets: list[str] | None = None,
     service: dict[str, Any] | None = None,
+    stuck_after_s: int | None = None,
 ) -> dict[str, Any]:
     if image is not None and (not isinstance(image, str) or not image.strip()):
         raise ValidationError("image must be nonempty text")
     if image is None and not name:
         raise ValidationError("image or name is required")
+    if stuck_after_s is not None and (type(stuck_after_s) is not int or not 30 <= stuck_after_s <= 604800):
+        raise ValidationError("stuck_after_s must be an integer from 30 through 604800")
     body: dict[str, Any] = {}
     if image is not None:
         body["image"] = image
@@ -159,6 +162,7 @@ def _create_payload(
         ("from_snapshot", from_snapshot),
         ("secrets", _names(secrets)),
         ("service", service),
+        ("stuck_after_s", stuck_after_s),
     ):
         if value is not None:
             body[key] = _wire(value)
@@ -417,13 +421,14 @@ class Sandboxes:
         from_snapshot: str | None = None,
         secrets: list[str] | None = None,
         service: dict[str, Any] | None = None,
+        stuck_after_s: int | None = None,
         idempotency_key: str | None = None,
     ) -> "Sandbox":
         body = _create_payload(
             image=image, name=name, profile=profile, budget=budget, wake=wake, requirements=requirements,
             outcome=outcome, policy=policy, lifecycle=lifecycle,
             reservation=reservation, continuity=continuity,
-            from_snapshot=from_snapshot, secrets=secrets, service=service,
+            from_snapshot=from_snapshot, secrets=secrets, service=service, stuck_after_s=stuck_after_s,
         )
         headers: dict[str, str] = {}
         response = self._client._request(
@@ -504,6 +509,7 @@ class Sandbox(_SandboxState):
         from_snapshot: str | None = None,
         secrets: list[str] | None = None,
         service: dict[str, Any] | None = None,
+        stuck_after_s: int | None = None,
         idempotency_key: str | None = None,
     ):
         if client is None and image is None and not name:
@@ -528,7 +534,7 @@ class Sandbox(_SandboxState):
                     lifecycle=lifecycle,
                     reservation=reservation,
                     continuity=continuity,
-                    from_snapshot=from_snapshot, secrets=secrets, service=service,
+                    from_snapshot=from_snapshot, secrets=secrets, service=service, stuck_after_s=stuck_after_s,
                     idempotency_key=idempotency_key,
                 )
             except BaseException:
@@ -576,6 +582,11 @@ class Sandbox(_SandboxState):
         """Bind current secret versions for subsequent commands."""
         path = f"/v1/sandboxes/{_valid_id(self.id, 'sandbox')}/refresh-secrets"
         self._client._request("POST", path)
+
+    def metrics(self) -> dict[str, Any]:
+        """Read actual measurements and 24 hour history. Missing measurements are None."""
+        path = f"/v1/sandboxes/{_valid_id(self.id, 'sandbox')}/metrics"
+        return _obj(self._client._request("GET", path))
 
     def events(self, *, after: int = 0) -> list[Event]:
         """Read up to 100 lifecycle and denied-host events after an event sequence."""
@@ -721,13 +732,14 @@ class AsyncSandboxes:
         from_snapshot: str | None = None,
         secrets: list[str] | None = None,
         service: dict[str, Any] | None = None,
+        stuck_after_s: int | None = None,
         idempotency_key: str | None = None,
     ) -> "AsyncSandbox":
         body = _create_payload(
             image=image, name=name, profile=profile, budget=budget, wake=wake, requirements=requirements,
             outcome=outcome, policy=policy, lifecycle=lifecycle,
             reservation=reservation, continuity=continuity,
-            from_snapshot=from_snapshot, secrets=secrets, service=service,
+            from_snapshot=from_snapshot, secrets=secrets, service=service, stuck_after_s=stuck_after_s,
         )
         headers: dict[str, str] = {}
         response = await self._client._request(
@@ -806,6 +818,11 @@ class AsyncSandbox(_SandboxState):
         """Bind current secret versions for subsequent commands."""
         path = f"/v1/sandboxes/{_valid_id(self.id, 'sandbox')}/refresh-secrets"
         await self._client._request("POST", path)
+
+    async def metrics(self) -> dict[str, Any]:
+        """Read actual measurements and 24 hour history. Missing measurements are None."""
+        path = f"/v1/sandboxes/{_valid_id(self.id, 'sandbox')}/metrics"
+        return _obj(await self._client._request("GET", path))
 
     async def events(self, *, after: int = 0) -> list[Event]:
         """Read up to 100 lifecycle and denied-host events after an event sequence."""

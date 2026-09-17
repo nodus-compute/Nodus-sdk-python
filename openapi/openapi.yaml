@@ -1362,31 +1362,30 @@
         "additionalProperties": false
       },
       "SandboxCreateRequest": {
+        "additionalProperties": false,
+        "description": "Creates a sandbox, or reconnects to an active name within the authenticated account. New sandboxes require an image. Omitted fields on a reconnect preserve existing configuration.",
         "properties": {
-          "wake": {
-            "type": "string",
-            "enum": [
-              "auto",
-              "instant",
-              "fast",
-              "cheap"
-            ],
-            "default": "auto",
-            "description": "Startup preference expressed as an outcome. Nodus still chooses the infrastructure."
-          },
-          "image": {
-            "type": "string",
-            "description": "Container image reference. Nodus resolves tags to an immutable Linux amd64 digest before placement."
+          "continuity": {
+            "$ref": "#/components/schemas/SandboxContinuity"
           },
           "from_snapshot": {
             "type": "string",
             "description": "Optional Nodus snapshot identifier used to restore a compatible sandbox."
           },
+          "image": {
+            "type": "string",
+            "description": "Container image reference. Nodus resolves tags to an immutable Linux amd64 digest before placement."
+          },
           "lifecycle": {
             "$ref": "#/components/schemas/SandboxLifecycle"
           },
-          "reservation": {
-            "$ref": "#/components/schemas/SandboxReservation"
+          "name": {
+            "type": "string",
+            "maxLength": 128,
+            "description": "Optional stable customer label used when listing sandboxes."
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/SandboxOutcome"
           },
           "policy": {
             "$ref": "#/components/schemas/SandboxPolicy"
@@ -1398,6 +1397,12 @@
             ],
             "description": "Optional server preset. Devbox supplies a 7 day maximum lifetime, 30 minute idle suspend, 5 minute snapshot interval, 2 vCPUs, 4 GB memory, 20 GB disk, a 10 USD budget, and package-host egress. Explicit fields override preset defaults. Preview deployments only."
           },
+          "requirements": {
+            "$ref": "#/components/schemas/SandboxRequirements"
+          },
+          "reservation": {
+            "$ref": "#/components/schemas/SandboxReservation"
+          },
           "secrets": {
             "type": "array",
             "maxItems": 32,
@@ -1408,40 +1413,47 @@
             },
             "description": "Tenant secret names bound to current versions at boot. The NODUS_ prefix is reserved. Values are available to commands as environment variables and files in NODUS_SECRETS_DIR."
           },
-          "name": {
-            "type": "string",
-            "maxLength": 128,
-            "description": "Optional stable customer label used when listing sandboxes."
-          },
-          "outcome": {
-            "$ref": "#/components/schemas/SandboxOutcome"
-          },
-          "continuity": {
-            "$ref": "#/components/schemas/SandboxContinuity"
-          },
-          "requirements": {
-            "$ref": "#/components/schemas/SandboxRequirements"
-          },
           "service": {
             "$ref": "#/components/schemas/SandboxService"
+          },
+          "stuck_after_s": {
+            "type": "integer",
+            "minimum": 30,
+            "maximum": 604800,
+            "description": "Alert after an active command produces no output for this many seconds. Defaults to 1800. Alerts do not stop the command."
+          },
+          "wake": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "instant",
+              "fast",
+              "cheap"
+            ],
+            "default": "auto",
+            "description": "Startup preference expressed as an outcome. Nodus still chooses the infrastructure."
           }
         },
-        "additionalProperties": false,
-        "description": "Creates a sandbox, or reconnects to an active name within the authenticated account. New sandboxes require an image. Omitted fields on a reconnect preserve existing configuration.",
         "required": null,
         "type": "object"
       },
       "SandboxEnvelope": {
         "properties": {
+          "continuity": {
+            "type": "object",
+            "additionalProperties": true
+          },
           "from_snapshot": {
             "type": "string"
           },
           "lifecycle": {
             "$ref": "#/components/schemas/SandboxLifecycle"
           },
-          "reservation": {
-            "type": "object",
-            "additionalProperties": true
+          "name": {
+            "type": "string"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/SandboxOutcome"
           },
           "policy": {
             "$ref": "#/components/schemas/SandboxPolicy"
@@ -1453,6 +1465,14 @@
             ],
             "description": "Applied sandbox preset, when one was requested."
           },
+          "requirements": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "reservation": {
+            "type": "object",
+            "additionalProperties": true
+          },
           "secrets": {
             "type": "array",
             "maxItems": 32,
@@ -1463,11 +1483,8 @@
             },
             "description": "Tenant secret names bound to current versions at boot. The NODUS_ prefix is reserved. Values are available to commands as environment variables and files in NODUS_SECRETS_DIR."
           },
-          "name": {
-            "type": "string"
-          },
-          "outcome": {
-            "$ref": "#/components/schemas/SandboxOutcome"
+          "service": {
+            "$ref": "#/components/schemas/SandboxService"
           },
           "source": {
             "type": "object",
@@ -1484,19 +1501,13 @@
             },
             "additionalProperties": false
           },
-          "requirements": {
-            "type": "object",
-            "additionalProperties": true
-          },
-          "service": {
-            "$ref": "#/components/schemas/SandboxService"
-          },
-          "continuity": {
-            "type": "object",
-            "additionalProperties": true
+          "stuck_after_s": {
+            "type": "integer",
+            "minimum": 30,
+            "maximum": 604800,
+            "description": "Alert after an active command produces no output for this many seconds. Defaults to 1800. Alerts do not stop the command."
           }
         },
-        "type": "object",
         "required": [
           "source",
           "requirements",
@@ -1505,7 +1516,8 @@
           "lifecycle",
           "reservation",
           "continuity"
-        ]
+        ],
+        "type": "object"
       },
       "SandboxError": {
         "type": "object",
@@ -1726,6 +1738,171 @@
           }
         },
         "additionalProperties": false
+      },
+      "SandboxMetricObservation": {
+        "type": "object",
+        "properties": {
+          "sequence": {
+            "type": "integer"
+          },
+          "generation": {
+            "type": "integer"
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cpu_seconds": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "rss_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "disk_used_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "egress_sent_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "egress_received_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "active_execs": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "sequence",
+          "generation",
+          "observed_at",
+          "cpu_seconds",
+          "rss_bytes",
+          "disk_used_bytes",
+          "egress_sent_bytes",
+          "egress_received_bytes",
+          "active_execs"
+        ],
+        "description": "Server timestamp and current runtime generation. CPU is a cumulative runtime counter. RSS sums guest process resident pages and can double count shared pages. Disk measures regular file logical bytes under the workspace. Missing or failed measurements remain null."
+      },
+      "SandboxMetricReport": {
+        "type": "object",
+        "properties": {
+          "latest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SandboxMetricObservation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SandboxMetricObservation"
+            }
+          },
+          "rollup_24h": {
+            "$ref": "#/components/schemas/SandboxMetricRollup"
+          },
+          "last_output_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "meter": {
+            "$ref": "#/components/schemas/Meter"
+          }
+        },
+        "required": [
+          "latest",
+          "history",
+          "rollup_24h",
+          "last_output_at",
+          "meter"
+        ]
+      },
+      "SandboxMetricRollup": {
+        "type": "object",
+        "properties": {
+          "samples": {
+            "type": "integer"
+          },
+          "peak_rss_bytes": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "average_rss_bytes": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "peak_disk_used_bytes": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "peak_active_execs": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "cpu_seconds": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "egress_sent_bytes": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "egress_received_bytes": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "samples",
+          "peak_rss_bytes",
+          "average_rss_bytes",
+          "peak_disk_used_bytes",
+          "peak_active_execs",
+          "cpu_seconds",
+          "egress_sent_bytes",
+          "egress_received_bytes"
+        ],
+        "description": "Measured 24 hour peaks and average RSS. CPU and egress are differences between the oldest and newest available samples within each runtime generation. No estimate fills gaps or single-sample intervals."
       },
       "SandboxOutcome": {
         "type": "object",
@@ -3614,6 +3791,14 @@
               "minimum": 0
             },
             "description": "Return events after this event ID."
+          },
+          {
+            "name": "latest",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Return the most recent 100 events in descending order. Cannot be combined with a nonzero after cursor."
           }
         ],
         "description": "Returns up to 100 retained events in ascending ID order. Poll with after set to the last received event ID. Network denial events contain only the denied hostname, count and generation."
@@ -4016,6 +4201,49 @@
             }
           }
         }
+      }
+    },
+    "/v1/sandboxes/{id}/metrics": {
+      "get": {
+        "operationId": "getSandboxMetrics",
+        "summary": "Read sandbox measurements and 24 hour resource history",
+        "tags": [
+          "Sandboxes"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxMetricReport"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "id"
+          }
+        ],
+        "description": "Samples arrive approximately every 30 seconds while authorized runtime authority is active. Raw samples are retained for 7 days. Latest is the newest retained sample and can be stale, so inspect observed_at. History covers the last 24 hours. Resource measurements never create billing authority."
       }
     },
     "/v1/sandboxes/{id}/ports/{port}/{path}": {
