@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Expose reported sandbox network bytes through `network_usage`.
+- Read sandbox lifecycle and denied-host events with `sandbox.events(after=...)`.
+- Preserve failure guidance and network usage on directly created handles.
+- Document non-root sandbox images and allowlisted HTTP destinations.
+
 ## 0.4.0
 
 - Add a first-class Sandbox API for long-lived agent execution environments.

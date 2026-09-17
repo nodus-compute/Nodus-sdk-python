@@ -15,7 +15,7 @@ from typing import Any, AsyncIterator, Iterator
 import uuid
 
 from .errors import APITimeoutError, NodusError, ValidationError
-from .types import _dt, _int, _num, _obj, _rows, _text
+from .types import Event, _dt, _int, _num, _obj, _rows, _text
 
 __all__ = [
     "SandboxState",
@@ -239,6 +239,7 @@ class SandboxInputReceipt:
 
 
 class _SandboxState:
+    network_usage: dict[str, int] | None
     failure: dict[str, Any] | None
     id: str
     state: Any
@@ -263,10 +264,13 @@ class _SandboxState:
         self.terminal_at = None
         self.replayed = False
         self.failure = None
+        self.network_usage = None
 
     def _absorb(self, value: dict[str, Any] | None) -> None:
         body = _obj(value)
         self.id = _text(body.get("id")) or self.id
+        usage = body.get("network_usage")
+        self.network_usage = dict(usage) if isinstance(usage, dict) else None
         failure = body.get("failure")
         self.failure = dict(failure) if isinstance(failure, dict) else None
         if "state" in body:
@@ -486,6 +490,8 @@ class Sandbox(_SandboxState):
                 "state": getattr(created.state, "value", created.state),
                 "envelope": created.envelope,
                 "cost_usd": created.cost_usd,
+                "failure": created.failure,
+                "network_usage": created.network_usage,
                 "url": created.url,
                 "created_at": created.created_at,
                 "updated_at": created.updated_at,
@@ -516,6 +522,12 @@ class Sandbox(_SandboxState):
         path = f"/v1/sandboxes/{_valid_id(self.id, 'sandbox')}"
         self._absorb(self._client._one(self._client._request("GET", path), "GET", path))
         return self
+
+    def events(self, *, after: int = 0) -> list[Event]:
+        """Read up to 100 lifecycle and denied-host events after an event sequence."""
+        path = f"/v1/sandboxes/{_valid_id(self.id, 'sandbox')}/events"
+        response = self._client._request("GET", path, params={"after": after})
+        return [Event.from_dict(_obj(row)) for row in _rows(_obj(response).get("events"))]
 
     def exec(
         self, command: str | list[str] | tuple[str, ...], *, cwd: str | None = None,
@@ -704,6 +716,12 @@ class AsyncSandbox(_SandboxState):
         path = f"/v1/sandboxes/{_valid_id(self.id, 'sandbox')}"
         self._absorb(self._client._one(await self._client._request("GET", path), "GET", path))
         return self
+
+    async def events(self, *, after: int = 0) -> list[Event]:
+        """Read up to 100 lifecycle and denied-host events after an event sequence."""
+        path = f"/v1/sandboxes/{_valid_id(self.id, 'sandbox')}/events"
+        response = await self._client._request("GET", path, params={"after": after})
+        return [Event.from_dict(_obj(row)) for row in _rows(_obj(response).get("events"))]
 
     async def exec(
         self, command: str | list[str] | tuple[str, ...], *, cwd: str | None = None,
