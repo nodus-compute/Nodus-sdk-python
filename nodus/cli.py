@@ -272,6 +272,149 @@ def _cmd_devbox(args: argparse.Namespace) -> int:
                        empty="No devboxes yet.", plain=args.plain)
         return 0
 
+def _cmd_freeze(args: argparse.Namespace) -> int:
+    with Client(base_url=args.base_url) as client:
+        method = {"freeze": client.freeze, "freeze-status": client.freeze_status, "resume": client.resume}[args.cmd]
+        result = method(args.workload_id)
+        print(_safe_line(f"{result.workload_id}: {result.state}. Retained checkpoint: {result.retained_bytes} bytes."))
+        print("Retained storage is not separately metered. No storage charge is reported.")
+        print("Resume restarts the command with saved files. Your program must load its checkpoint.")
+    return 0
+
+
+def _cmd_pools(args: argparse.Namespace) -> int:
+    with Client(base_url=args.base_url) as client:
+        if args.pools_cmd == "create":
+            print(_safe_line(client.pools.create(args.name).id))
+        elif args.pools_cmd == "token":
+            print(client.pools.enrollment_token(args.pool_id, mode=args.mode, host_id=args.host_id).token)
+        elif args.pools_cmd in ("route", "route-settings"):
+            settings = {name: getattr(args, name) for name in ("wait_policy", "wait_alpha", "waiting_budget_pct", "burst_approval", "burst_threshold_micros", "burst_timeout_behaviour")}
+            if args.pools_cmd == "route":
+                pool = client.pools.set_route(args.pool_id, args.setting == "on",
+                    accepted_rate_version=args.accept_rate_version, accepted_rate_micros=args.accept_rate_micros, **settings)
+                print(_safe_line(f"{pool.id}: Route {'enabled' if pool.route_enabled else 'disabled'}"))
+            else:
+                pool = client.pools.update_route_settings(args.pool_id, **settings)
+                print(_safe_line(f"{pool.id}: Route settings updated"))
+        elif args.pools_cmd == "predict":
+            pool = client.pools.set_predict(args.pool_id, args.setting == "on",
+                accepted_rate_version=args.accept_rate_version, accepted_monthly_micros=args.accept_monthly_micros)
+            print(_safe_line(f"{pool.id}: Predict {'enabled' if pool.predict_enabled else 'disabled'}"))
+        elif args.pools_cmd == "forecast":
+            forecast = client.pools.forecast(args.pool_id, horizon=args.horizon)
+            if args.json:
+                print(json.dumps(forecast.raw, indent=2))
+            else:
+                print(_safe_line(f"Refresh: {forecast.refresh_status}. Account monthly rate: {forecast.subscription.monthly_micros} USD micros."))
+                if forecast.snapshot is None:
+                    print("No forecast cached.")
+                else:
+                    snapshot = forecast.snapshot
+                    calibration = snapshot.calibration
+                    print(_safe_line(f"Model: {snapshot.forecast.model}. Generated: {snapshot.generated_at}. Owned devices: {snapshot.owned_devices}."))
+                    print("Issued hourly coverage: " + ("Not available" if calibration.hourly_coverage is None else f"{calibration.hourly_coverage:.1%}"))
+                    show_table(["UTC hour", "p10 device-hours", "p50 device-hours", "p90 device-hours"],
+                        [[point.hour, str(point.p10), str(point.p50), str(point.p90)] for point in snapshot.forecast.points],
+                        empty="Insufficient measured history for a forecast.", plain=args.plain)
+        elif args.pools_cmd in ("action-policies", "action-policy", "act-kill-switch"):
+            if args.pools_cmd == "action-policy":
+                settings = client.pools.set_action_policy(args.pool_id, kind=args.kind, level=args.level,
+                    window_cron=args.window_cron, parallelism_cap=args.parallelism_cap)
+            elif args.pools_cmd == "act-kill-switch":
+                settings = client.pools.set_act_kill_switch(args.pool_id, args.setting == "on")
+            else:
+                settings = client.pools.action_policies(args.pool_id)
+            print(_safe_line(f"Act kill switch: {'on' if settings.kill_switch else 'off'}"))
+            show_table(["Kind", "Level", "UTC window", "Parallelism", "Shadow qualified"],
+                [[p.kind, p.level, p.window_cron, str(p.parallelism_cap), str(p.shadow_qualified)] for p in settings.policies], empty="No action policies returned.", plain=args.plain)
+        elif args.pools_cmd == "start-shadow":
+            run = client.pools.start_shadow(args.pool_id, kind=args.kind, level=args.level,
+                window_cron=args.window_cron, parallelism_cap=args.parallelism_cap)
+            print(_safe_line(f"{run.id}: {run.state}. Shadow observations do not execute actions."))
+        elif args.pools_cmd == "shadows":
+            page = client.pools.shadow_runs(args.pool_id, limit=args.limit, cursor=args.cursor, kind=args.kind)
+            if args.json:
+                print(json.dumps(page.raw, indent=2))
+            else:
+                show_table(["Run", "Kind", "Trusted hours", "Elapsed gaps", "Would have acted", "Qualified"],
+                    [[r.id, r.kind, f"{r.trusted_hours}/168", str(r.gap_hours), str(r.would_have_acted), str(r.qualifies_auto)] for r in page.runs],
+                    empty="No shadow runs. Automatic actions are not qualified.", plain=args.plain)
+                if page.next_cursor:
+                    print(_safe_line("Next cursor: " + page.next_cursor))
+        elif args.pools_cmd == "action-proposals":
+            page = client.pools.action_proposals(args.pool_id, limit=args.limit, cursor=args.cursor, kind=args.kind)
+            if args.json:
+                print(json.dumps(page.raw, indent=2))
+            else:
+                show_table(["Action", "Kind", "State", "Observed outcome"],
+                    [[p.id, p.kind, p.state, p.outcome.result if p.outcome else "Not available"] for p in page.proposals],
+                    empty="No Act proposals.", plain=args.plain)
+                if page.next_cursor:
+                    print(_safe_line("Next cursor: " + page.next_cursor))
+        elif args.pools_cmd in ("approve-action", "reject-action"):
+            method = client.pools.approve_action_proposal if args.pools_cmd == "approve-action" else client.pools.reject_action_proposal
+            proposal = method(args.pool_id, args.proposal_id)
+            print(_safe_line(f"{proposal.id}: {proposal.state}. Approval alone does not confirm application or savings."))
+        elif args.pools_cmd == "proposals":
+            page = client.pools.proposals(args.pool_id, limit=args.limit, cursor=args.cursor, state=args.state)
+            if args.json:
+                print(json.dumps(page.raw, indent=2))
+            else:
+                show_table(["Proposal", "Workload", "Proposed cost (USD micros)", "State", "Reason"],
+                    [[item.id, item.workload_id, str(item.expected_cost_micros), item.state, item.reason] for item in page.proposals],
+                    empty="No burst proposals.", plain=args.plain)
+                if page.next_cursor:
+                    print(_safe_line("Next cursor: " + page.next_cursor))
+        elif args.pools_cmd in ("approve", "reject"):
+            method = client.pools.approve_proposal if args.pools_cmd == "approve" else client.pools.reject_proposal
+            proposal = method(args.pool_id, args.proposal_id)
+            print(_safe_line(f"{proposal.id}: {proposal.state}. Proposed cost: {proposal.expected_cost_micros} USD micros."))
+            print("Approval records intent and does not itself rent capacity. Only applied records an observed winning execution.")
+        elif args.pools_cmd == "recommendations":
+            advice = client.pools.recommendations(args.pool_id, limit=args.limit, cursor=args.cursor, state=args.state)
+            if args.json:
+                print(json.dumps(advice.raw, indent=2))
+            else:
+                print(_safe_line(f"Refresh: {advice.refresh_status}. Savings below are estimates, not measured outcomes."))
+                show_table(["Recommendation", "Kind", "Risk", "Estimated savings (USD micros)", "State"],
+                    [[item.id, item.kind, item.recommendation["risk"], ("Not available" if item.recommendation["expected_savings_micros"] is None else str(item.recommendation["expected_savings_micros"])), item.state]
+                     for item in advice.recommendations], empty="No recommendations available.", plain=args.plain)
+                if advice.next_cursor:
+                    print(_safe_line("Next cursor: " + advice.next_cursor))
+        elif args.pools_cmd == "mark-done":
+            outcome = client.pools.recommendation_done(args.pool_id, args.recommendation_id, args.outcome,
+                reported_saving_micros=args.reported_saving_micros)
+            print(_safe_line("Customer-reported outcome: " + outcome.outcome))
+            print("Customer-reported saving (USD micros): " + ("Not provided" if outcome.reported_saving_micros is None else str(outcome.reported_saving_micros)))
+        elif args.pools_cmd == "utilization":
+            ledger = client.pools.utilization(args.pool_id, from_=args.from_, to=args.to, bucket=args.bucket)
+            if args.json:
+                print(json.dumps(ledger.raw, indent=2))
+            else:
+                print(_safe_line(f"{ledger.from_} to {ledger.to} ({ledger.bucket}, UTC)"))
+                rows = []
+                for label, metrics in [("Pool", ledger.summary), *[(host.name, host.summary) for host in ledger.hosts]]:
+                    percentages = ["Unknown" if value is None else f"{value:g}%" for value in
+                                   (metrics.allocation_pct, metrics.busy_pct, metrics.busy_of_allocated_pct)]
+                    rows.append([label, metrics.data_status, *percentages])
+                show_table(["Scope", "Data", "Allocated", "Busy", "Busy / allocated"], rows, empty="No utilization data.", plain=args.plain)
+                show_table(["Metric", "Seconds"],
+                           [[name.replace("_seconds", "").replace("_", " ").capitalize(),
+                             str(value) if value is not None else ("Not available" if name in
+                             ("fragmentation_seconds", "queued_seconds", "burst_seconds") else "Unknown")]
+                            for name in ledger.summary.__dataclass_fields__ if name.endswith("_seconds")
+                            for value in [getattr(ledger.summary, name)]], empty="No utilization data.", plain=args.plain)
+                cost = ledger.summary.burst_cost_micros
+                print("Settled burst cost (USD micros): " + ("Not available" if cost is None else str(cost)))
+                print("Queued and fragmentation values use workload-seconds. Burst uses device-seconds.")
+        else:
+            hosts = client.pools.hosts(args.pool_id)
+            show_table(["Host", "Name", "Health", "Mode", "Devices"],
+                       [[host.id, host.name, host.state, host.agent_mode, str(len(host.devices))]
+                        for host in hosts], empty="No enrolled hosts yet.", plain=args.plain)
+    return 0
+
 
 def _cmd_sandbox(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
@@ -648,7 +791,7 @@ class _CommandHelpFormatter(argparse.RawDescriptionHelpFormatter):
                 ("Run", ("run", "submit", "sandbox", "devbox")),
                 ("Monitor", ("list", "status", "wait", "logs", "cancel")),
                 ("Results", ("download",)),
-                ("Advanced", ("upload", "assets", "events", "artifacts", "ledger", "explain")),
+                ("Advanced", ("upload", "assets", "pools", "events", "artifacts", "ledger", "explain")),
             )
             return "\n".join(
                 f"  {title}:\n" + "".join(
@@ -743,6 +886,96 @@ Use nodus COMMAND --help for command options.""",
     benchmark_get = benchmark_sub.add_parser("get", help="show a benchmark report")
     benchmark_get.add_argument("benchmark_id")
 
+    pools = sub.add_parser("pools", help="measure customer-owned GPU hosts")
+    pools_sub = pools.add_subparsers(dest="pools_cmd", required=True, metavar="COMMAND")
+    pools_create = pools_sub.add_parser("create", help="create a pool")
+    pools_create.add_argument("name")
+    pools_token = pools_sub.add_parser("token", help="print a secret single-use host enrollment token")
+    pools_token.add_argument("pool_id")
+    pools_token.add_argument("--mode", choices=("observe", "execute"), default="observe")
+    pools_token.add_argument("--host-id", default=None, help="existing host ID required for explicit execute reenrollment")
+    for command in ("route", "route-settings"):
+        route = pools_sub.add_parser(command, help="set Route activation and future placement policy")
+        route.add_argument("pool_id")
+        if command == "route":
+            route.add_argument("setting", choices=("on", "off"))
+            route.add_argument("--accept-rate-version", default=None)
+            route.add_argument("--accept-rate-micros", type=int, default=None, help="explicit rate per active customer device-hour in USD micros")
+        route.add_argument("--wait-policy", choices=("never", "after_wait", "cheaper"), default=None)
+        route.add_argument("--wait-alpha", type=float, default=None)
+        route.add_argument("--waiting-budget-pct", type=float, default=None)
+        route.add_argument("--burst-approval", choices=("auto", "above_threshold", "always"), default=None)
+        route.add_argument("--burst-threshold-micros", type=int, default=None)
+        route.add_argument("--burst-timeout-behaviour", choices=("keep_waiting", "cancel"), default=None)
+    pools_hosts = pools_sub.add_parser("hosts", help="list enrolled hosts and health")
+    pools_hosts.add_argument("pool_id")
+    pools_predict = pools_sub.add_parser("predict", help="set paid account-wide Predict with explicit rate consent")
+    pools_predict.add_argument("pool_id")
+    pools_predict.add_argument("setting", choices=("on", "off"))
+    pools_predict.add_argument("--accept-rate-version", default=None)
+    pools_predict.add_argument("--accept-monthly-micros", type=int, default=None, help="explicitly accept the full current calendar-month account charge in USD micros")
+    pools_forecast = pools_sub.add_parser("forecast", help="read cached forecast bands and calibration")
+    pools_forecast.add_argument("pool_id")
+    pools_forecast.add_argument("--horizon", type=int, choices=(7, 30), default=None)
+    pools_forecast.add_argument("--json", action="store_true")
+    action_kinds = ("idle_reclaim", "defragment", "drain_window", "wait_tuning")
+    action_levels = ("off", "recommend", "approve", "auto")
+    policies = pools_sub.add_parser("action-policies", help="read action policy and shadow readiness")
+    policies.add_argument("pool_id")
+    for command in ("action-policy", "start-shadow"):
+        action = pools_sub.add_parser(command, help="save a policy" if command == "action-policy" else "start a future 168-hour shadow cycle")
+        action.add_argument("pool_id")
+        action.add_argument("kind", choices=action_kinds)
+        action.add_argument("level", choices=action_levels)
+        action.add_argument("--window-cron", required=True, help="weekly UTC minute hour * * weekday, without steps")
+        action.add_argument("--parallelism-cap", type=int, required=True)
+    kill = pools_sub.add_parser("act-kill-switch", help="stop new Act authorization while preserving cleanup")
+    kill.add_argument("pool_id")
+    kill.add_argument("setting", choices=("on", "off"))
+    shadows = pools_sub.add_parser("shadows", help="read actual trusted shadow coverage and gaps")
+    shadows.add_argument("pool_id")
+    shadows.add_argument("--kind", choices=action_kinds, default=None)
+    shadows.add_argument("--limit", type=int, default=None)
+    shadows.add_argument("--cursor", default=None)
+    shadows.add_argument("--json", action="store_true")
+    actions = pools_sub.add_parser("action-proposals", help="read Act intent and observed outcomes")
+    actions.add_argument("pool_id")
+    actions.add_argument("--kind", choices=action_kinds, default=None)
+    actions.add_argument("--limit", type=int, default=None)
+    actions.add_argument("--cursor", default=None)
+    actions.add_argument("--json", action="store_true")
+    for command in ("approve-action", "reject-action"):
+        decision = pools_sub.add_parser(command, help="decide retained Act evidence without inventing a result")
+        decision.add_argument("pool_id")
+        decision.add_argument("proposal_id")
+    pools_proposals = pools_sub.add_parser("proposals", help="read burst approval intent and retained outcomes")
+    pools_proposals.add_argument("pool_id")
+    pools_proposals.add_argument("--json", action="store_true")
+    pools_proposals.add_argument("--limit", type=int, default=None)
+    pools_proposals.add_argument("--cursor", default=None)
+    pools_proposals.add_argument("--state", choices=("pending", "approved", "rejected", "expired", "no_op", "applying", "applied"), default=None)
+    for action in ("approve", "reject"):
+        decision = pools_sub.add_parser(action, help=action + " the retained burst proposal amount")
+        decision.add_argument("pool_id")
+        decision.add_argument("proposal_id")
+    pools_recommendations = pools_sub.add_parser("recommendations", help="read advisory recommendations and evidence")
+    pools_recommendations.add_argument("pool_id")
+    pools_recommendations.add_argument("--json", action="store_true")
+    pools_recommendations.add_argument("--limit", type=int, default=None)
+    pools_recommendations.add_argument("--cursor", default=None)
+    pools_recommendations.add_argument("--state", choices=("open", "done", "expired"), default=None)
+    pools_done = pools_sub.add_parser("mark-done", help="record a manual outcome without executing an action")
+    pools_done.add_argument("pool_id")
+    pools_done.add_argument("recommendation_id")
+    pools_done.add_argument("--outcome", required=True)
+    pools_done.add_argument("--reported-saving-micros", type=int, default=None, help="optional customer-reported saving, not the recommendation estimate")
+    pools_utilization = pools_sub.add_parser("utilization", help="show measured utilization and unknown coverage")
+    pools_utilization.add_argument("pool_id")
+    pools_utilization.add_argument("--from", dest="from_", default=None, help="inclusive RFC 3339 start, aligned to a UTC hour")
+    pools_utilization.add_argument("--to", default=None, help="exclusive RFC 3339 end, aligned to a UTC hour")
+    pools_utilization.add_argument("--bucket", choices=("hour", "day"), default=None)
+    pools_utilization.add_argument("--json", action="store_true", help="include host buckets and foreign device IDs")
+
     sandbox = sub.add_parser("sandbox", help="create and use agent sandboxes")
     sandbox_sub = sandbox.add_subparsers(dest="sandbox_cmd", required=True, metavar="COMMAND")
     sandbox_new = sandbox_sub.add_parser("new", help="create or reattach to a sandbox")
@@ -772,6 +1005,10 @@ Use nodus COMMAND --help for command options.""",
 
     a = sub.add_parser("artifacts", help="verified manifests")
     a.add_argument("workload_id")
+
+    for command, help_text in (("freeze", "request a saved-file freeze"), ("freeze-status", "read retained state and cleanup progress"), ("resume", "resume the command with saved checkpoint files")):
+        freeze = sub.add_parser(command, help=help_text)
+        freeze.add_argument("workload_id")
 
     c = sub.add_parser("cancel", help="request a safe stop")
     c.add_argument("workload_id")
@@ -809,6 +1046,7 @@ def main(argv: list[str] | None = None) -> int:
         "download": lambda: _cmd_download(args),
         "upload": lambda: _cmd_upload(args),
         "assets": lambda: _cmd_assets(args),
+        "pools": lambda: _cmd_pools(args),
         "sandbox": lambda: _cmd_sandbox(args),
         "devbox": lambda: _cmd_devbox(args),
         "benchmark": lambda: _cmd_benchmark(args),
@@ -818,6 +1056,9 @@ def main(argv: list[str] | None = None) -> int:
         "events": lambda: _cmd_events(args),
         "artifacts": lambda: _cmd_artifacts(args),
         "cancel": lambda: _cmd_cancel(args),
+        "freeze": lambda: _cmd_freeze(args),
+        "freeze-status": lambda: _cmd_freeze(args),
+        "resume": lambda: _cmd_freeze(args),
         "ledger": lambda: _cmd_ledger(args),
         "logs": lambda: _cmd_logs(args),
         "explain": lambda: _cmd_explain(args),

@@ -168,6 +168,7 @@ Choose an image with your dependencies and pass its command to `client.run()`.
 - [Train or fine-tune a model](https://nodus-compute.ai/docs/guides/gpu-workloads/)
 - [Read logs and download results](https://nodus-compute.ai/docs/guides/monitoring-and-outputs/)
 - [Use Nodus with a coding agent](https://nodus-compute.ai/docs/guides/agents/)
+- [Measure customer-owned GPU hosts](https://nodus-compute.ai/docs/guides/pools/)
 - [Run tool-driven agents in sandboxes](https://nodus-compute.ai/docs/guides/agent-sandboxes/)
 
 For individual options, use the [Python reference](https://nodus-compute.ai/docs/reference/python/client/)
@@ -188,3 +189,72 @@ The server divides one total cap into fixed cell allocations. Unused allocations
 `nodus benchmark run request.json --idempotency-key customer-attempt` accepts the API JSON shape with `workload`, `matrix` and `budget_usd`. `nodus benchmark get bm_ID` prints the report. These commands require a backend with the benchmark API.
 
 See [durable steps](https://github.com/nodus-compute/Nodus-sdk-python/blob/main/docs/durable-steps.md) for serial recorded-result replay on deployments with the capability enabled.
+
+### Action policies and shadow readiness
+
+`client.pools.action_policies(pool_id)` reads all four per-kind settings and the
+Act kill switch. Use `set_action_policy` with explicit `kind`, `level`,
+`window_cron` and `parallelism_cap` to save one policy. The sync and async clients
+support the same methods. The CLI provides `pools action-policies`,
+`pools action-policy` and `pools act-kill-switch`.
+
+Approve and auto require funded Predict and active Route with current consent.
+The kill switch remains available after entitlement loss. Enabling it blocks new
+Act authorization while preserving cleanup. Saving a policy does not execute an
+action. Predict is needed to produce recommendations.
+
+`start_shadow` starts a future 168-hour observation cycle for an explicit policy.
+`shadow_runs` and `pools shadows` expose trusted hours, elapsed gaps and
+counterfactual action counts. Follow `next_cursor` with the same pool and kind.
+The response reports which action kinds currently have a trusted shadow
+producer. Missing observations remain gaps. Generic completed evidence does not qualify automatic actions.
+A qualified cycle is evidence readiness, not permission to execute, and
+counterfactual counts are neither measured savings nor completed actions.
+
+UTC maintenance windows use five fields. Day-of-month and month must be `*`.
+Minute, hour and weekday accept integers, lists, inclusive ranges or `*`.
+Weekday 0 means Sunday. Steps, names and macros are unsupported.
+
+### Act approvals and observed outcomes
+
+`client.pools.action_proposals(pool_id)` reads retained Act proposals with optional
+`kind`, `limit` and `cursor`. `approve_action_proposal` and
+`reject_action_proposal` submit only the proposal identity. The CLI equivalents
+are `pools action-proposals`, `pools approve-action` and `pools reject-action`.
+Burst approvals remain under `pools proposals`.
+
+Approval records intent. Dispatch checks current permissions, funding, policy,
+expiry and evidence again. The inbox preserves pending, approved, applying,
+uncertain, applied, failed, no-op and expired states. Only a server-observed
+outcome confirms application. Measured savings remain null when unavailable and
+are distinct from customer-reported savings. Default policies become approve
+when funded Predict and Route are active, while explicit per-kind overrides stay
+in force. Auto still requires a recent matching trusted shadow cycle.
+
+The Route `cheaper` waiting policy needs funded Predict and current forecast
+evidence of lower expected market completion cost. Missing evidence keeps the
+workload waiting. Wait-tuning advice uses complete Route coverage and settled
+execution outcomes to suggest bounded changes for future waits. It makes no
+saving or completion-time guarantee.
+
+### Freeze and resume saved work
+
+`client.freeze(workload_id)` requests a freeze of checkpointed batch work with a
+useful saved checkpoint and a compatible runner. `client.freeze_status` reports
+whether saving and exact compute cleanup have completed. `client.resume` starts
+resumption only after the workload is frozen. Each method is also available on a
+`Workload` and through the async client. The CLI provides `freeze`,
+`freeze-status` and `resume` with a workload ID.
+
+The workload states `freezing` and `frozen` are nonterminal. A freeze request does
+not immediately stop billing for an unresolved compute resource. The response
+reports retained checkpoint bytes. Retained storage is not separately metered,
+so `storage_charge_micros` is null, not an inferred zero.
+
+Resume restarts the same customer command with saved checkpoint files. Your
+training program must load its model, optimizer and progress from those files.
+This does not restore arbitrary process memory or add guessed resume flags.
+
+Observed Act monetary outcomes identify their `measurement_basis`. The basis
+`observed_platform_fee_reduction_30m_v1` compares Route platform fees over equal
+30-minute windows. It is not total infrastructure saving or a causal estimate.

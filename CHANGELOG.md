@@ -6,6 +6,12 @@
 - Add registered sandbox services, bounded HTTP requests and a scheduled micro-batch example.
 
 - Expose server-reported per-unit latency and posted cost through `workload.unit_metrics`.
+
+- Read pool forecasts, issued calibration, and paginated advisory recommendations with sync and async clients.
+- Require explicit account monthly price consent before enabling Predict.
+- Record manual recommendation outcomes without turning estimates into measured savings.
+- Add pool forecast, recommendation, Predict, and manual outcome CLI commands.
+
 - Expose reported sandbox network bytes through `network_usage`.
 - Read sandbox lifecycle and denied-host events with `sandbox.events(after=...)`.
 - Preserve failure guidance and network usage on directly created handles.

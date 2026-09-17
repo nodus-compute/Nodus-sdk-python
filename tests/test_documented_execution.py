@@ -70,6 +70,21 @@ def docs_api(monkeypatch):
             calls.append(("GET", path))
             if self.headers.get("Authorization") != "Bearer nk_docs":
                 return self.reply({"error": "unauthorized"}, 401)
+            if path == "/v1/pools/pool_docs/proposals":
+                query = parse_qs(urlsplit(self.path).query)
+                if query != {"limit": ["25"], "state": ["pending"]}:
+                    return self.reply({"error": "invalid_query"}, 400)
+                return self.reply({"pool_id": "pool_docs", "proposals": [], "next_cursor": None})
+            if path == "/v1/pools/pool_docs/recommendations":
+                query = parse_qs(urlsplit(self.path).query)
+                if query.get("limit") != ["25"] or query.get("state") != ["expired"]:
+                    return self.reply({"error": "invalid_query"}, 400)
+                cursor = query.get("cursor", [None])[0]
+                if cursor not in (None, "docs_next"):
+                    return self.reply({"error": "invalid_cursor"}, 400)
+                return self.reply({"pool_id": "pool_docs", "predict_enabled": False,
+                    "refresh_status": "disabled", "recommendations": [],
+                    "next_cursor": "docs_next" if cursor is None else None})
             if path == "/v1/assets":
                 return self.reply({"assets": [], "max_import_bytes": 1048576})
             if path == "/v1/workloads":
@@ -108,6 +123,19 @@ def docs_api(monkeypatch):
                 return self.reply(responses[suffix])
             return self.reply({"error": "not_found", "message": path}, 404)
 
+        def do_PATCH(self):
+            path = urlsplit(self.path).path
+            payload = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+            calls.append(("PATCH", path))
+            if self.headers.get("Authorization") != "Bearer nk_docs":
+                return self.reply({"error": "unauthorized"}, 401)
+            if path != "/v1/pools/pool_docs":
+                return self.reply({"error": "not_found"}, 404)
+            if payload.get("route_enabled") is True and (payload.get("accepted_route_rate_version") != "route-platform-v1" or payload.get("accepted_route_rate_micros") != 20000):
+                return self.reply({"error": "route_rate_consent"}, 409)
+            return self.reply({"id": "pool_docs", "name": "Research", "kind": "hosts", "state": "active",
+                "route_enabled": True, "platform_rate_micros": 20000, **payload})
+
         def do_POST(self):
             path = urlsplit(self.path).path
             if self.headers.get("Transfer-Encoding") == "chunked":
@@ -137,6 +165,10 @@ def docs_api(monkeypatch):
                 return self.reply({"api_key": "nk_docs", "base_url": address, "tenant": "docs-test"})
             if self.headers.get("Authorization") != "Bearer nk_docs":
                 return self.reply({"error": "unauthorized"}, 401)
+            if path == "/v1/pools/pool_docs/enrollment-tokens":
+                if payload != {"mode": "execute", "host_id": "host_docs"}:
+                    return self.reply({"error": "invalid_enrollment"}, 400)
+                return self.reply({"id": "pet_docs", "mode": "execute", "token": "synthetic-token", "expires_at": "2026-09-18T12:00:00Z"}, 201)
             if path == "/v1/workloads":
                 submissions.append(payload)
                 if not self.headers.get("Idempotency-Key") or not payload.get("outcome", {}).get("max_cost_usd"):
@@ -202,7 +234,7 @@ def test_python_documentation_executes(path, number, body, docs_api, tmp_path, m
         sandbox_handle = client.sandboxes.from_id("sb_docs")
         execution_handle = sandbox_handle.exec(["python", "agent.py"], stdin=True)
         namespace = {"__name__": "__docs__", "client": client, "nodus": nodus,
-                     "workload_id": "wl_docs", "allowed_regions": ["test-region"],
+                     "workload_id": "wl_docs", "pool_id": "pool_docs", "host_id": "host_docs", "allowed_regions": ["test-region"],
                      "done": client.get("wl_docs"), "workload": client.get("wl_docs"),
                      "sandbox": sandbox_handle, "execution": execution_handle}
         if path.name == "durable-steps.md" and number == 1:

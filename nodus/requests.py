@@ -11,7 +11,7 @@ from typing import Literal, TypedDict
 
 from .types import ComputeClass, ContinuityMode
 
-__all__ = ["Source", "Requirements", "Policy", "ContinuitySpec", "StageInput", "StageSpec"]
+__all__ = ["Source", "Requirements", "Placement", "Policy", "ContinuitySpec", "StageInput", "StageSpec"]
 
 
 class Source(TypedDict, total=False):
@@ -44,6 +44,16 @@ class Requirements(TypedDict, total=False):
     disk_gb: float
     vcpus: float
     notes: str
+
+
+class Placement(TypedDict, total=False):
+    """Select one customer pool or skip private pools with prefer="any".
+
+    Use exactly one field. Omission lets Nodus prefer eligible private capacity.
+    """
+
+    pool: str
+    prefer: Literal["any"]
 
 
 class Policy(TypedDict, total=False):
