@@ -9,6 +9,7 @@ from typing import Any
 
 import httpx
 
+from ._pool_act_proposals import PoolActProposal, PoolActProposals, act_decision
 from ._pool_actions import PoolActionSettings, PoolShadowRun, PoolShadowRuns, action_policy, shadow_query, policy_ack, kill_payload, kill_ack, shadow_ack
 from ._pool_proposals import PoolProposal, PoolProposals, proposal_query, proposal_decision
 from ._pool_route import route_settings, route_patch, route_result
@@ -446,6 +447,18 @@ class Pools:
         """Read cached hourly bands, issued calibration, and subscription refresh state."""
         return PoolForecast.from_dict(_predict_result(self._request("GET", _path(pool_id) + "/forecast", params=horizon_query(horizon)), pool_id))
 
+    def action_proposals(self, pool_id: str, *, limit: int | None = None, cursor: str | None = None, kind: str | None = None) -> PoolActProposals:
+        """Read Act intent and outcomes, following next_cursor with the same kind."""
+        return PoolActProposals.from_dict(self._request("GET", _path(pool_id) + "/action-proposals", params=shadow_query(limit, cursor, kind)), pool_id)
+
+    def approve_action_proposal(self, pool_id: str, proposal_id: str) -> PoolActProposal:
+        """Approve retained evidence. Dispatch independently rechecks current authority."""
+        return act_decision(self._request("POST", _path(pool_id) + "/action-proposals/" + _id(proposal_id, "act") + "/approve", json={}), pool_id, proposal_id, True)
+
+    def reject_action_proposal(self, pool_id: str, proposal_id: str) -> PoolActProposal:
+        """Reject a pending Act proposal without altering existing cleanup."""
+        return act_decision(self._request("POST", _path(pool_id) + "/action-proposals/" + _id(proposal_id, "act") + "/reject", json={}), pool_id, proposal_id, False)
+
     def action_policies(self, pool_id: str) -> PoolActionSettings:
         """Read configured action levels and matching trusted shadow readiness."""
         return PoolActionSettings.from_dict(self._request("GET", _path(pool_id) + "/action-policies"), pool_id)
@@ -583,6 +596,18 @@ class AsyncPools:
     async def forecast(self, pool_id: str, *, horizon: int | None = None) -> PoolForecast:
         """Read cached hourly bands, issued calibration, and subscription refresh state."""
         return PoolForecast.from_dict(_predict_result(await self._request("GET", _path(pool_id) + "/forecast", params=horizon_query(horizon)), pool_id))
+
+    async def action_proposals(self, pool_id: str, *, limit: int | None = None, cursor: str | None = None, kind: str | None = None) -> PoolActProposals:
+        """Read Act intent and outcomes, following next_cursor with the same kind."""
+        return PoolActProposals.from_dict(await self._request("GET", _path(pool_id) + "/action-proposals", params=shadow_query(limit, cursor, kind)), pool_id)
+
+    async def approve_action_proposal(self, pool_id: str, proposal_id: str) -> PoolActProposal:
+        """Approve retained evidence. Dispatch independently rechecks current authority."""
+        return act_decision(await self._request("POST", _path(pool_id) + "/action-proposals/" + _id(proposal_id, "act") + "/approve", json={}), pool_id, proposal_id, True)
+
+    async def reject_action_proposal(self, pool_id: str, proposal_id: str) -> PoolActProposal:
+        """Reject a pending Act proposal without altering existing cleanup."""
+        return act_decision(await self._request("POST", _path(pool_id) + "/action-proposals/" + _id(proposal_id, "act") + "/reject", json={}), pool_id, proposal_id, False)
 
     async def action_policies(self, pool_id: str) -> PoolActionSettings:
         """Read configured action levels and matching trusted shadow readiness."""

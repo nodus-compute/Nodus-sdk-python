@@ -96,6 +96,8 @@ class WorkloadStatus(_WireEnum):
     PROVISIONING = "provisioning"
     RUNNING = "running"
     RECOVERING = "recovering"
+    FREEZING = "freezing"
+    FROZEN = "frozen"
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"

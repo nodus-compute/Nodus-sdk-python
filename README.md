@@ -203,3 +203,47 @@ counterfactual counts are neither measured savings nor completed actions.
 UTC maintenance windows use five fields. Day-of-month and month must be `*`.
 Minute, hour and weekday accept integers, lists, inclusive ranges or `*`.
 Weekday 0 means Sunday. Steps, names and macros are unsupported.
+
+### Act approvals and observed outcomes
+
+`client.pools.action_proposals(pool_id)` reads retained Act proposals with optional
+`kind`, `limit` and `cursor`. `approve_action_proposal` and
+`reject_action_proposal` submit only the proposal identity. The CLI equivalents
+are `pools action-proposals`, `pools approve-action` and `pools reject-action`.
+Burst approvals remain under `pools proposals`.
+
+Approval records intent. Dispatch checks current permissions, funding, policy,
+expiry and evidence again. The inbox preserves pending, approved, applying,
+uncertain, applied, failed, no-op and expired states. Only a server-observed
+outcome confirms application. Measured savings remain null when unavailable and
+are distinct from customer-reported savings. Default policies become approve
+when funded Predict and Route are active, while explicit per-kind overrides stay
+in force. Auto still requires a recent matching trusted shadow cycle.
+
+The Route `cheaper` waiting policy needs funded Predict and current forecast
+evidence of lower expected market completion cost. Missing evidence keeps the
+workload waiting. Wait-tuning advice uses complete Route coverage and settled
+execution outcomes to suggest bounded changes for future waits. It makes no
+saving or completion-time guarantee.
+
+### Freeze and resume saved work
+
+`client.freeze(workload_id)` requests a freeze of checkpointed batch work with a
+useful saved checkpoint and a compatible runner. `client.freeze_status` reports
+whether saving and exact compute cleanup have completed. `client.resume` starts
+resumption only after the workload is frozen. Each method is also available on a
+`Workload` and through the async client. The CLI provides `freeze`,
+`freeze-status` and `resume` with a workload ID.
+
+The workload states `freezing` and `frozen` are nonterminal. A freeze request does
+not immediately stop billing for an unresolved compute resource. The response
+reports retained checkpoint bytes. Retained storage is not separately metered,
+so `storage_charge_micros` is null, not an inferred zero.
+
+Resume restarts the same customer command with saved checkpoint files. Your
+training program must load its model, optimizer and progress from those files.
+This does not restore arbitrary process memory or add guessed resume flags.
+
+Observed Act monetary outcomes identify their `measurement_basis`. The basis
+`observed_platform_fee_reduction_30m_v1` compares Route platform fees over equal
+30-minute windows. It is not total infrastructure saving or a causal estimate.

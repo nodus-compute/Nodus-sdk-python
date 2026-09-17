@@ -13,7 +13,7 @@ def route_settings(*, wait_policy: str | None = None, wait_alpha: float | None =
     values = dict(wait_policy=wait_policy, wait_alpha=wait_alpha, waiting_budget_pct=waiting_budget_pct,
                   burst_approval=burst_approval, burst_threshold_micros=burst_threshold_micros,
                   burst_timeout_behaviour=burst_timeout_behaviour)
-    for key, choices in (("wait_policy", ("never", "after_wait")),
+    for key, choices in (("wait_policy", ("never", "after_wait", "cheaper")),
                          ("burst_approval", ("auto", "above_threshold", "always")),
                          ("burst_timeout_behaviour", ("keep_waiting", "cancel"))):
         if values[key] is not None and values[key] not in choices:

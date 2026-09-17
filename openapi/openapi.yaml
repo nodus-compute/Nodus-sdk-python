@@ -2959,6 +2959,329 @@
           }
         }
       }
+    },
+    "/v1/pools/{id}/action-proposals": {
+      "get": {
+        "operationId": "listPoolActionProposals",
+        "summary": "Read Act intent and observed outcomes",
+        "description": "Members may read retained action proposals. Follow next_cursor with the same pool and kind. Approval is not evidence that an action was applied. Internal claims, actor identities and source hashes are omitted.",
+        "tags": [
+          "Pools"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 100
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 2048
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "idle_reclaim",
+                "defragment",
+                "drain_window",
+                "wait_tuning"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Retained Act proposals.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolActProposals"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/pools/{id}/action-proposals/{pid}/approve": {
+      "post": {
+        "operationId": "approvePoolActionProposal",
+        "summary": "Approve a retained Act proposal",
+        "tags": [
+          "Pools"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifier returned by Nodus."
+          },
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Retained Act decision.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolActProposal"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "maxProperties": 0
+              }
+            }
+          }
+        },
+        "description": "Requires an account admin. Send an empty object or omit the body. The server retains immutable action evidence. Approval rechecks funded Predict, Route, policy and expiry. Dispatch rechecks authority separately. A stale proposal records no-op or expired state and returns a conflict. Rejection does not apply an action."
+      }
+    },
+    "/v1/pools/{id}/action-proposals/{pid}/reject": {
+      "post": {
+        "operationId": "rejectPoolActionProposal",
+        "summary": "Reject a retained Act proposal",
+        "tags": [
+          "Pools"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifier returned by Nodus."
+          },
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Retained Act decision.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolActProposal"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "maxProperties": 0
+              }
+            }
+          }
+        },
+        "description": "Requires an account admin. Send an empty object or omit the body. The server retains immutable action evidence. Approval rechecks funded Predict, Route, policy and expiry. Dispatch rechecks authority separately. A stale proposal records no-op or expired state and returns a conflict. Rejection does not apply an action."
+      }
+    },
+    "/v1/workloads/{id}/freeze": {
+      "post": {
+        "operationId": "freezeWorkload",
+        "summary": "Request saved-file workload freeze",
+        "description": "Requires a running checkpointed batch workload with useful saved state and a compatible runner. Freeze returns intent until checkpoint and exact compute cleanup are confirmed. Resume requires completed cleanup, preserves selected saved files and restarts the same customer command. Storage bytes are reported separately from unknown storage charges.",
+        "tags": [
+          "Workloads"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Request saved-file workload freeze",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkloadFreeze"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "getWorkloadFreeze",
+        "summary": "Read retained checkpoint and freeze state",
+        "description": "Read retained freeze state for a workload on your account. Retained storage is not separately metered and no storage charge is reported.",
+        "tags": [
+          "Workloads"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Read retained checkpoint and freeze state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkloadFreeze"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workloads/{id}/resume": {
+      "post": {
+        "operationId": "resumeWorkload",
+        "summary": "Resume the command with retained checkpoint files",
+        "description": "Requires a running checkpointed batch workload with useful saved state and a compatible runner. Freeze returns intent until checkpoint and exact compute cleanup are confirmed. Resume requires completed cleanup, preserves selected saved files and restarts the same customer command. Storage bytes are reported separately from unknown storage charges.",
+        "tags": [
+          "Workloads"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Resume the command with retained checkpoint files",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkloadFreeze"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4703,7 +5026,9 @@
           "resuming",
           "recovering",
           "terminated",
-          "failed"
+          "failed",
+          "freezing",
+          "frozen"
         ]
       },
       "SandboxExecRequest": {
@@ -5027,7 +5352,13 @@
             "type": "string"
           },
           "wait_policy": {
-            "type": "string"
+            "type": "string",
+            "enum": [
+              "never",
+              "after_wait",
+              "cheaper"
+            ],
+            "description": "never keeps waiting for private capacity without market fallback. after_wait permits fallback after the retained wait. cheaper requires funded Predict and a current forecast showing lower expected market completion cost. Missing evidence keeps waiting."
           },
           "burst_approval": {
             "type": "string",
@@ -5175,9 +5506,10 @@
             "type": "string",
             "enum": [
               "never",
-              "after_wait"
+              "after_wait",
+              "cheaper"
             ],
-            "description": "Never use market fallback and keep waiting for private capacity, or allow market fallback after waiting. The cheaper policy is not supported."
+            "description": "never keeps waiting for private capacity without market fallback. after_wait permits fallback after the retained wait. cheaper requires funded Predict and a current forecast showing lower expected market completion cost. Missing evidence keeps waiting."
           },
           "wait_alpha": {
             "type": "number",
@@ -6097,7 +6429,8 @@
               "rightsize",
               "idle_reclaim",
               "drain_window",
-              "defragment"
+              "defragment",
+              "wait_tuning"
             ]
           },
           "generated_at": {
@@ -6129,6 +6462,9 @@
               },
               {
                 "$ref": "#/components/schemas/PoolDefragmentRecommendation"
+              },
+              {
+                "$ref": "#/components/schemas/PoolWaitTuningRecommendation"
               }
             ]
           },
@@ -6584,7 +6920,7 @@
         ],
         "x-go-source": "internal/finops/drain.go",
         "x-go-type": "DrainRecommendation",
-        "description": "Advisory maintenance window from complete host-specific history. At least three future hours have forecast p90 below one device. This is not a guarantee that draining is safe and does not execute a drain. Savings remain unknown."
+        "description": "A retained UTC drain window with at least three hours remaining at generation. The window may start in the current hour. Expiry is no later than window_to and 24 hours after generation. No measured or estimated saving is invented."
       },
       "PoolDrainEvidence": {
         "type": "object",
@@ -7188,6 +7524,393 @@
         },
         "x-go-source": "internal/store/pools_action_views.go",
         "x-go-type": "PoolShadowPage"
+      },
+      "PoolActOutcome": {
+        "type": "object",
+        "required": [
+          "source",
+          "result",
+          "recorded_at",
+          "measured_saving_micros",
+          "reported_saving_micros",
+          "measurement_basis"
+        ],
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "server_observed",
+              "customer_reported"
+            ]
+          },
+          "result": {
+            "type": "string",
+            "enum": [
+              "applied",
+              "no_op",
+              "failed"
+            ]
+          },
+          "recorded_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "measured_saving_micros": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0,
+            "description": "Observed platform-fee reduction only for the returned measurement basis. Null when unmeasured."
+          },
+          "reported_saving_micros": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "measurement_basis": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "observed_platform_fee_reduction_30m_v1",
+              null
+            ],
+            "description": "Observed Route platform-fee reduction over equal 30-minute windows. Not total infrastructure saving or a causal counterfactual."
+          }
+        },
+        "x-go-source": "internal/api/pools_action_proposals.go",
+        "x-go-type": "poolActOutcomeView",
+        "description": "Observed outcomes and customer reports are distinct. Missing measured savings stay null. Customer input never supplies server measurement."
+      },
+      "PoolActProposal": {
+        "type": "object",
+        "required": [
+          "id",
+          "pool_id",
+          "recommendation_id",
+          "reason",
+          "kind",
+          "level",
+          "recommendation",
+          "created_at",
+          "expires_at",
+          "state",
+          "decided_at",
+          "outcome"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "pool_id": {
+            "type": "string"
+          },
+          "recommendation_id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "idle_reclaim",
+              "defragment",
+              "drain_window",
+              "wait_tuning"
+            ]
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "approve",
+              "auto"
+            ]
+          },
+          "recommendation": {
+            "type": "object",
+            "description": "Immutable server-retained recommendation evidence matching kind. No caller-provided action body."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected",
+              "expired",
+              "no_op",
+              "applying",
+              "uncertain",
+              "applied",
+              "failed"
+            ]
+          },
+          "decided_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "outcome": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PoolActOutcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "x-go-source": "internal/api/pools_action_proposals.go",
+        "x-go-type": "poolActProposalView"
+      },
+      "PoolActProposals": {
+        "type": "object",
+        "required": [
+          "pool_id",
+          "proposals",
+          "next_cursor"
+        ],
+        "properties": {
+          "pool_id": {
+            "type": "string"
+          },
+          "proposals": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/PoolActProposal"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2048
+          }
+        },
+        "x-go-source": "internal/api/pools_action_proposals.go",
+        "x-go-type": "poolActProposalsResponse"
+      },
+      "WorkloadFreeze": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "workload_id": {
+            "type": "string"
+          },
+          "stage_id": {
+            "type": "string"
+          },
+          "manifest_id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "requested",
+              "releasing",
+              "frozen",
+              "resuming",
+              "resumed",
+              "failed"
+            ]
+          },
+          "requested_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "frozen_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "retained_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "storage_charge_micros": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Null while retained storage is not separately metered. Do not infer a zero charge."
+          },
+          "storage_billing_status": {
+            "type": "string",
+            "enum": [
+              "retained_storage_not_separately_metered"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "workload_id",
+          "stage_id",
+          "generation",
+          "state",
+          "requested_at",
+          "frozen_at",
+          "retained_bytes",
+          "storage_charge_micros",
+          "storage_billing_status"
+        ],
+        "x-go-source": "internal/store/workload_freeze.go",
+        "x-go-type": "WorkloadFreeze",
+        "description": "Saved checkpoint files and verified compute cleanup. Freeze and resume do not restore arbitrary process memory. The customer command must load its checkpoint."
+      },
+      "PoolWaitTuningEvidence": {
+        "type": "object",
+        "properties": {
+          "observed_hours": {
+            "type": "integer",
+            "minimum": 0,
+            "const": 336
+          },
+          "completed_executions": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "wait_seconds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "runtime_seconds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "burst_spent_micros": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "policy_version": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "observed_delay_pct": {
+            "type": "number",
+            "minimum": 0
+          },
+          "waiting_budget_pct": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "current_alpha": {
+            "type": "number",
+            "minimum": 0
+          },
+          "proposed_alpha": {
+            "type": "number",
+            "minimum": 0
+          },
+          "method": {
+            "type": "string",
+            "const": "bounded_proportional_wait_v1"
+          },
+          "history_from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "history_to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "source_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "required": [
+          "observed_hours",
+          "completed_executions",
+          "wait_seconds",
+          "runtime_seconds",
+          "burst_spent_micros",
+          "policy_version",
+          "observed_delay_pct",
+          "waiting_budget_pct",
+          "current_alpha",
+          "proposed_alpha",
+          "method",
+          "history_from",
+          "history_to",
+          "source_sha256"
+        ],
+        "x-go-source": "internal/finops/wait_tuning.go",
+        "x-go-type": "WaitTuningEvidence"
+      },
+      "PoolWaitTuningRecommendation": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "wait_tuning"
+          },
+          "level": {
+            "type": "string",
+            "const": "recommend"
+          },
+          "risk": {
+            "type": "string",
+            "const": "high"
+          },
+          "advisory_only": {
+            "type": "boolean",
+            "const": true
+          },
+          "expected_savings_micros": {
+            "type": "null"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/PoolWaitTuningEvidence"
+          }
+        },
+        "required": [
+          "kind",
+          "level",
+          "risk",
+          "advisory_only",
+          "expected_savings_micros",
+          "expires_at",
+          "evidence"
+        ],
+        "x-go-source": "internal/finops/wait_tuning.go",
+        "x-go-type": "WaitTuningRecommendation",
+        "description": "At most 25 percent adjustment based on 336 hours of actual Route coverage and completed settled executions. Applies to future waits. No counterfactual savings or universal delay guarantee."
       }
     }
   },

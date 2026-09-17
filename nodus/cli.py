@@ -223,6 +223,16 @@ def _cmd_assets(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_freeze(args: argparse.Namespace) -> int:
+    with Client(base_url=args.base_url) as client:
+        method = {"freeze": client.freeze, "freeze-status": client.freeze_status, "resume": client.resume}[args.cmd]
+        result = method(args.workload_id)
+        print(_safe_line(f"{result.workload_id}: {result.state}. Retained checkpoint: {result.retained_bytes} bytes."))
+        print("Retained storage is not separately metered. No storage charge is reported.")
+        print("Resume restarts the command with saved files. Your program must load its checkpoint.")
+    return 0
+
+
 def _cmd_pools(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
         if args.pools_cmd == "create":
@@ -283,6 +293,20 @@ def _cmd_pools(args: argparse.Namespace) -> int:
                     empty="No shadow runs. Automatic actions are not qualified.", plain=args.plain)
                 if page.next_cursor:
                     print(_safe_line("Next cursor: " + page.next_cursor))
+        elif args.pools_cmd == "action-proposals":
+            page = client.pools.action_proposals(args.pool_id, limit=args.limit, cursor=args.cursor, kind=args.kind)
+            if args.json:
+                print(json.dumps(page.raw, indent=2))
+            else:
+                show_table(["Action", "Kind", "State", "Observed outcome"],
+                    [[p.id, p.kind, p.state, p.outcome.result if p.outcome else "Not available"] for p in page.proposals],
+                    empty="No Act proposals.", plain=args.plain)
+                if page.next_cursor:
+                    print(_safe_line("Next cursor: " + page.next_cursor))
+        elif args.pools_cmd in ("approve-action", "reject-action"):
+            method = client.pools.approve_action_proposal if args.pools_cmd == "approve-action" else client.pools.reject_action_proposal
+            proposal = method(args.pool_id, args.proposal_id)
+            print(_safe_line(f"{proposal.id}: {proposal.state}. Approval alone does not confirm application or savings."))
         elif args.pools_cmd == "proposals":
             page = client.pools.proposals(args.pool_id, limit=args.limit, cursor=args.cursor, state=args.state)
             if args.json:
@@ -801,7 +825,7 @@ Use nodus COMMAND --help for command options.""",
             route.add_argument("setting", choices=("on", "off"))
             route.add_argument("--accept-rate-version", default=None)
             route.add_argument("--accept-rate-micros", type=int, default=None, help="explicit rate per active customer device-hour in USD micros")
-        route.add_argument("--wait-policy", choices=("never", "after_wait"), default=None)
+        route.add_argument("--wait-policy", choices=("never", "after_wait", "cheaper"), default=None)
         route.add_argument("--wait-alpha", type=float, default=None)
         route.add_argument("--waiting-budget-pct", type=float, default=None)
         route.add_argument("--burst-approval", choices=("auto", "above_threshold", "always"), default=None)
@@ -838,6 +862,16 @@ Use nodus COMMAND --help for command options.""",
     shadows.add_argument("--limit", type=int, default=None)
     shadows.add_argument("--cursor", default=None)
     shadows.add_argument("--json", action="store_true")
+    actions = pools_sub.add_parser("action-proposals", help="read Act intent and observed outcomes")
+    actions.add_argument("pool_id")
+    actions.add_argument("--kind", choices=action_kinds, default=None)
+    actions.add_argument("--limit", type=int, default=None)
+    actions.add_argument("--cursor", default=None)
+    actions.add_argument("--json", action="store_true")
+    for command in ("approve-action", "reject-action"):
+        decision = pools_sub.add_parser(command, help="decide retained Act evidence without inventing a result")
+        decision.add_argument("pool_id")
+        decision.add_argument("proposal_id")
     pools_proposals = pools_sub.add_parser("proposals", help="read burst approval intent and retained outcomes")
     pools_proposals.add_argument("pool_id")
     pools_proposals.add_argument("--json", action="store_true")
@@ -896,6 +930,10 @@ Use nodus COMMAND --help for command options.""",
     a = sub.add_parser("artifacts", help="verified manifests")
     a.add_argument("workload_id")
 
+    for command, help_text in (("freeze", "request a saved-file freeze"), ("freeze-status", "read retained state and cleanup progress"), ("resume", "resume the command with saved checkpoint files")):
+        freeze = sub.add_parser(command, help=help_text)
+        freeze.add_argument("workload_id")
+
     c = sub.add_parser("cancel", help="request a safe stop")
     c.add_argument("workload_id")
 
@@ -940,6 +978,9 @@ def main(argv: list[str] | None = None) -> int:
         "events": lambda: _cmd_events(args),
         "artifacts": lambda: _cmd_artifacts(args),
         "cancel": lambda: _cmd_cancel(args),
+        "freeze": lambda: _cmd_freeze(args),
+        "freeze-status": lambda: _cmd_freeze(args),
+        "resume": lambda: _cmd_freeze(args),
         "ledger": lambda: _cmd_ledger(args),
         "logs": lambda: _cmd_logs(args),
         "explain": lambda: _cmd_explain(args),

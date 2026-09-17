@@ -300,7 +300,7 @@ def _drain(rec: dict[str, Any], evidence: dict[str, Any]) -> None:
     history_start = _time(evidence.get("history_from"), hour=True)
     if evidence.get("method") != "host_seasonal_weekly_p90_below_one" or evidence.get("model") != "seasonal_weekly_v1" or evidence["history_hours"] != 672 or history_end - history_start != timedelta(hours=672):
         raise APIError("The API returned incomplete drain history")
-    if evidence["threshold_devices"] != 1 or evidence["max_p90_device_hours"] >= 1 or evidence["consecutive_hours"] < 3 or (end - start).total_seconds() != evidence["consecutive_hours"] * 3600 or not history_end < start < end or end - history_end > timedelta(days=7) or _time(rec["expires_at"]) > start:
+    if evidence["threshold_devices"] != 1 or evidence["max_p90_device_hours"] >= 1 or evidence["consecutive_hours"] < 3 or (end - start).total_seconds() != evidence["consecutive_hours"] * 3600 or not history_end <= start < end or end - history_end > timedelta(days=7) or _time(rec["expires_at"]) > end:
         raise APIError("The API returned inconsistent drain window evidence")
 
 
@@ -318,6 +318,24 @@ def _defragment(rec: dict[str, Any], evidence: dict[str, Any]) -> None:
         raise APIError("The API returned incomplete placement observations")
     if not end < _time(rec.get("expires_at")) <= end + timedelta(hours=24):
         raise APIError("The API returned inconsistent placement expiration")
+
+
+def _wait_tuning(rec: dict[str, Any], evidence: dict[str, Any]) -> None:
+    if rec.get("advisory_only") is not True or "expected_savings_micros" not in rec or rec["expected_savings_micros"] is not None:
+        raise APIError("The API returned unsupported wait tuning savings")
+    for key in ("observed_hours", "completed_executions", "wait_seconds", "runtime_seconds", "burst_spent_micros", "policy_version"):
+        _integer(evidence.get(key))
+    for key in ("observed_delay_pct", "waiting_budget_pct", "current_alpha", "proposed_alpha"):
+        _number(evidence.get(key))
+    start, end = _time(evidence.get("history_from"), hour=True), _time(evidence.get("history_to"), hour=True)
+    current, proposed = evidence["current_alpha"], evidence["proposed_alpha"]
+    if evidence.get("method") != "bounded_proportional_wait_v1" or evidence["observed_hours"] != 336 or end - start != timedelta(hours=336) or evidence["completed_executions"] <= 0 or evidence["runtime_seconds"] <= 0 or evidence["policy_version"] <= 0 or evidence["waiting_budget_pct"] > 100:
+        raise APIError("The API returned incomplete wait tuning evidence")
+    if current <= 0 or not current * .75 - 1e-12 <= proposed <= current * 1.25 + 1e-12 or current == proposed or _time(rec.get("expires_at")) != end + timedelta(hours=24):
+        raise APIError("The API returned unbounded wait tuning advice")
+    digest = evidence.get("source_sha256")
+    if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+        raise APIError("The API returned invalid wait tuning provenance")
 
 
 @dataclass(frozen=True)
@@ -348,11 +366,13 @@ class PoolRecommendation:
             _idle(recommendation, evidence)
         elif row["kind"] == "drain_window":
             _drain(recommendation, evidence)
+        elif row["kind"] == "wait_tuning":
+            _wait_tuning(recommendation, evidence)
         elif row["kind"] == "defragment":
             _defragment(recommendation, evidence)
         else:
             raise APIError("The API returned an unsupported recommendation kind")
-        if row["kind"] in ("idle_reclaim", "drain_window", "defragment") and _time(recommendation["expires_at"]) != _time(row["expires_at"]):
+        if row["kind"] in ("idle_reclaim", "drain_window", "defragment", "wait_tuning") and _time(recommendation["expires_at"]) != _time(row["expires_at"]):
             raise APIError("The API returned inconsistent recommendation expiration")
         if "outcome" not in row:
             raise APIError("The API omitted recommendation outcome availability")

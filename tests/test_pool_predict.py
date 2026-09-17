@@ -329,3 +329,28 @@ def test_defragment_rejects_incomplete_or_unsafe_evidence(asynchronous, field, v
     with pytest.raises(nodus.APIError):
         exercise(lambda req: httpx.Response(200, json={**RECOMMENDATIONS, "recommendations": [row]}), asynchronous,
                  lambda pools: pools.recommendations("pool_test"))
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_drain_advice_remains_valid_inside_its_retained_window(asynchronous):
+    draft = copy.deepcopy(DRAIN)
+    draft["expires_at"] = "2026-09-17T15:00:00Z"
+    draft["evidence"]["window_from"] = AS_OF
+    draft["evidence"]["window_to"] = "2026-09-17T15:00:00Z"
+    row = {**RECOMMENDATION, "kind": "drain_window", "expires_at": draft["expires_at"], "recommendation": draft}
+    page = exercise(lambda req: httpx.Response(200, json={**RECOMMENDATIONS, "recommendations": [row]}), asynchronous,
+        lambda pools: pools.recommendations("pool_test"))
+    assert page.recommendations[0].recommendation["evidence"]["window_from"] == AS_OF
+
+WAIT_TUNING = {"kind": "wait_tuning", "level": "recommend", "risk": "high", "advisory_only": True,
+    "expected_savings_micros": None, "expires_at": "2026-09-18T12:00:00Z",
+    "evidence": {"method": "bounded_proportional_wait_v1", "history_from": "2026-09-03T12:00:00Z", "history_to": AS_OF,
+        "observed_hours": 336, "completed_executions": 2, "wait_seconds": 200, "runtime_seconds": 1000,
+        "burst_spent_micros": 1000000, "observed_delay_pct": 20.0, "waiting_budget_pct": 10.0,
+        "current_alpha": 0.1, "proposed_alpha": 0.075, "policy_version": 1, "source_sha256": "a" * 64}}
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_wait_tuning_keeps_settled_evidence_without_invented_saving(asynchronous):
+    row = {**RECOMMENDATION, "kind": "wait_tuning", "expires_at": WAIT_TUNING["expires_at"], "recommendation": WAIT_TUNING}
+    page = exercise(lambda req: httpx.Response(200, json={**RECOMMENDATIONS, "recommendations": [row]}), asynchronous, lambda p: p.recommendations("pool_test"))
+    assert page.recommendations[0].recommendation["expected_savings_micros"] is None
+    assert page.recommendations[0].recommendation["evidence"]["completed_executions"] == 2

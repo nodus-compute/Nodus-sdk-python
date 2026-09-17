@@ -28,7 +28,7 @@ def test_route_activation_and_zero_settings(asynchronous):
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])
-@pytest.mark.parametrize("settings", [{"wait_policy": "cheaper"}, {"wait_alpha": math.inf},
+@pytest.mark.parametrize("settings", [{"wait_policy": "unknown"}, {"wait_alpha": math.inf},
     {"wait_alpha": math.nan}, {"wait_alpha": 10**500}, {"wait_alpha": -1}, {"wait_alpha": True},
     {"waiting_budget_pct": 101}, {"burst_threshold_micros": -1}, {"burst_threshold_micros": True},
     {"burst_threshold_micros": 2**63}, {"burst_approval": "unknown"},
@@ -96,3 +96,11 @@ def test_route_cli_consent_and_execute_token(monkeypatch, capsys):
     assert cli.main(["pools","token","pool_test","--mode","execute","--host-id","host_test"])==0
     assert calls[-1]=={"mode":"execute","host_id":"host_test"}
     assert capsys.readouterr().out=="synthetic-secret\n"
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_cheaper_policy_is_explicit_and_server_authorized(asynchronous):
+    def handler(req):
+        assert json.loads(req.content) == {"wait_policy": "cheaper"}
+        return httpx.Response(200, json={**POOL, "wait_policy": "cheaper"})
+    result = exercise(handler, asynchronous, lambda p: p.update_route_settings("pool_test", wait_policy="cheaper"))
+    assert result.wait_policy == "cheaper"
