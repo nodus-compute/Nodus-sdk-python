@@ -136,6 +136,7 @@ def _create_payload(
     from_snapshot: str | None = None,
     secrets: list[str] | None = None,
     service: dict[str, Any] | None = None,
+    bootstrap: dict[str, str] | None = None,
     stuck_after_s: int | None = None,
 ) -> dict[str, Any]:
     if image is not None and (not isinstance(image, str) or not image.strip()):
@@ -162,6 +163,7 @@ def _create_payload(
         ("from_snapshot", from_snapshot),
         ("secrets", _names(secrets)),
         ("service", service),
+        ("bootstrap", bootstrap),
         ("stuck_after_s", stuck_after_s),
     ):
         if value is not None:
@@ -306,10 +308,12 @@ class _SandboxState:
         self.replayed = False
         self.failure = None
         self.network_usage = None
+        self.warnings: list[str] = []
 
     def _absorb(self, value: dict[str, Any] | None) -> None:
         body = _obj(value)
         self.id = _text(body.get("id")) or self.id
+        self.warnings = [x for x in body.get("warnings", []) if isinstance(x, str)]
         usage = body.get("network_usage")
         self.network_usage = dict(usage) if isinstance(usage, dict) else None
         failure = body.get("failure")
@@ -421,6 +425,7 @@ class Sandboxes:
         from_snapshot: str | None = None,
         secrets: list[str] | None = None,
         service: dict[str, Any] | None = None,
+        bootstrap: dict[str, str] | None = None,
         stuck_after_s: int | None = None,
         idempotency_key: str | None = None,
     ) -> "Sandbox":
@@ -428,7 +433,7 @@ class Sandboxes:
             image=image, name=name, profile=profile, budget=budget, wake=wake, requirements=requirements,
             outcome=outcome, policy=policy, lifecycle=lifecycle,
             reservation=reservation, continuity=continuity,
-            from_snapshot=from_snapshot, secrets=secrets, service=service, stuck_after_s=stuck_after_s,
+            from_snapshot=from_snapshot, secrets=secrets, service=service, bootstrap=bootstrap, stuck_after_s=stuck_after_s,
         )
         headers: dict[str, str] = {}
         response = self._client._request(
@@ -514,6 +519,7 @@ class Sandbox(_SandboxState):
         from_snapshot: str | None = None,
         secrets: list[str] | None = None,
         service: dict[str, Any] | None = None,
+        bootstrap: dict[str, str] | None = None,
         stuck_after_s: int | None = None,
         idempotency_key: str | None = None,
     ):
@@ -539,7 +545,7 @@ class Sandbox(_SandboxState):
                     lifecycle=lifecycle,
                     reservation=reservation,
                     continuity=continuity,
-                    from_snapshot=from_snapshot, secrets=secrets, service=service, stuck_after_s=stuck_after_s,
+                    from_snapshot=from_snapshot, secrets=secrets, service=service, bootstrap=bootstrap, stuck_after_s=stuck_after_s,
                     idempotency_key=idempotency_key,
                 )
             except BaseException:
@@ -737,6 +743,7 @@ class AsyncSandboxes:
         from_snapshot: str | None = None,
         secrets: list[str] | None = None,
         service: dict[str, Any] | None = None,
+        bootstrap: dict[str, str] | None = None,
         stuck_after_s: int | None = None,
         idempotency_key: str | None = None,
     ) -> "AsyncSandbox":
@@ -744,7 +751,7 @@ class AsyncSandboxes:
             image=image, name=name, profile=profile, budget=budget, wake=wake, requirements=requirements,
             outcome=outcome, policy=policy, lifecycle=lifecycle,
             reservation=reservation, continuity=continuity,
-            from_snapshot=from_snapshot, secrets=secrets, service=service, stuck_after_s=stuck_after_s,
+            from_snapshot=from_snapshot, secrets=secrets, service=service, bootstrap=bootstrap, stuck_after_s=stuck_after_s,
         )
         headers: dict[str, str] = {}
         response = await self._client._request(

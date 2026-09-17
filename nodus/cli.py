@@ -242,7 +242,12 @@ def _devboxes(client, *, name=None):
 def _cmd_devbox(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
         if args.devbox_cmd == "up":
-            box = client.sandboxes.create(profile="devbox", name=args.name, image=args.image, budget=args.budget)
+            if not args.repo and any((args.ref, args.setup, args.dotfiles)):
+                raise ValidationError("--ref, --setup and --dotfiles require --repo")
+            bootstrap = None
+            if args.repo:
+                bootstrap = {key: value for key, value in (("repo", args.repo), ("ref", args.ref), ("setup", args.setup), ("dotfiles", args.dotfiles)) if value}
+            box = client.sandboxes.create(profile="devbox", name=args.name, image=args.image, budget=args.budget, bootstrap=bootstrap)
             print(_safe_line(box.id))
             return 0
         if args.devbox_cmd == "shell":
@@ -720,6 +725,10 @@ Use nodus COMMAND --help for command options.""",
     devbox_up.add_argument("name")
     devbox_up.add_argument("--image", default=None)
     devbox_up.add_argument("--budget", type=_positive_cost, default=None)
+    devbox_up.add_argument("--repo", help="connected GitHub repository as owner/name")
+    devbox_up.add_argument("--ref", help="branch name or refs/tags/name")
+    devbox_up.add_argument("--setup", help="setup command recorded as an ordinary sandbox execution")
+    devbox_up.add_argument("--dotfiles", help="connected GitHub dotfiles repository as owner/name")
     devbox_ls = devbox_sub.add_parser("ls", help="list devbox sandboxes")
     devbox_ls.add_argument("--json", action="store_true")
     devbox_shell = devbox_sub.add_parser("shell", help="open an interactive terminal, Ctrl+] disconnects")

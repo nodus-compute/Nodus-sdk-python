@@ -1426,6 +1426,13 @@
                 "type": "string"
               }
             }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Nonfatal warnings, including bootstrap_failed when the setup command fails."
           }
         }
       },
@@ -1520,6 +1527,9 @@
             ],
             "default": "auto",
             "description": "Startup preference expressed as an outcome. Nodus still chooses the infrastructure."
+          },
+          "bootstrap": {
+            "$ref": "#/components/schemas/SandboxBootstrap"
           }
         },
         "required": null,
@@ -1594,6 +1604,9 @@
             "minimum": 30,
             "maximum": 604800,
             "description": "Alert after an active command produces no output for this many seconds. Defaults to 1800. Alerts do not stop the command."
+          },
+          "bootstrap": {
+            "$ref": "#/components/schemas/SandboxBootstrap"
           }
         },
         "required": [
@@ -2910,6 +2923,33 @@
         },
         "x-go-source": "internal/models/models.go",
         "x-go-type": "WorkloadSource"
+      },
+      "SandboxBootstrap": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "repo"
+        ],
+        "properties": {
+          "repo": {
+            "type": "string",
+            "description": "Connected GitHub repository as owner/name. Credentials and URLs are not accepted."
+          },
+          "ref": {
+            "type": "string",
+            "description": "Optional branch name or refs/tags/name. Defaults to the repository default branch."
+          },
+          "setup": {
+            "type": "string",
+            "maxLength": 8192,
+            "description": "Optional shell setup command recorded as an ordinary sandbox execution. Failure leaves the sandbox usable with a bootstrap_failed warning."
+          },
+          "dotfiles": {
+            "type": "string",
+            "description": "Optional connected GitHub dotfiles repository as owner/name. Its install.sh runs before setup."
+          }
+        },
+        "description": "Preview repository bootstrap. Requires github.com in the egress allowlist. Checkout is placed in /workspace. The installation credential is never supplied to customer processes."
       }
     },
     "securitySchemes": {

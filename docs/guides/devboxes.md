@@ -68,3 +68,41 @@ Package clients use the supplied HTTP and HTTPS proxy settings. Redirects to
 other hosts require an explicit `policy.egress_allow` override. Repository,
 registry, model downloads, and CDN redirects have not all been qualified live.
 Set `policy={"network": "deny"}` to disable egress.
+
+## Repository bootstrap preview
+
+Connect the GitHub App to your account and grant it read access to the selected
+repository. Use an image that contains the tools your project needs.
+
+```bash
+nodus devbox up api \
+  --image your-image:qualified \
+  --repo your-org/api \
+  --ref main \
+  --setup "make deps"
+```
+
+The command returns the sandbox ID while startup continues. The checkout lives in
+`/workspace`. The setup command appears as an ordinary execution whose ID begins
+with `ex_bootstrap_`. Inspect its output and completion before running commands
+that depend on it. Setup failure leaves the box usable and adds a
+`bootstrap_failed` warning to its API response and SDK `warnings` list.
+
+The optional `--dotfiles your-org/dotfiles` clones a second connected repository
+into `$HOME/.dotfiles` and runs its `install.sh` before setup. `--ref` accepts a
+branch name or `refs/tags/name`. Repository URLs and embedded credentials are
+rejected. Bootstrap requires `github.com` in the egress allowlist, which the
+devbox preset includes.
+
+```python
+box = nodus.Devbox(
+    name="api",
+    image="your-image:qualified",
+    bootstrap={"repo": "your-org/api", "ref": "main", "setup": "make deps"},
+)
+```
+
+The installation credential is never supplied to customer commands or saved in
+the checkout. Later authenticated Git operations require your own connection
+method. Repository bootstrap does not turn the root filesystem into persistent
+storage. Production checkout and setup qualification is pending.
