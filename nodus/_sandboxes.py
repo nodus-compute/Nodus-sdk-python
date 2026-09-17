@@ -154,13 +154,18 @@ def _create_payload(
     return body
 
 
+def _terminal_size(rows: int | None, cols: int | None) -> None:
+    if any(type(n) is not int or not 1 <= n <= 4096 for n in (rows, cols)):
+        raise ValidationError("rows and cols must be integers from 1 through 4096")
+
+
 def _exec_payload(
     command: str | list[str] | tuple[str, ...],
     *,
     cwd: str | None,
     env: dict[str, str] | None,
     timeout_seconds: int | None,
-    stdin: bool,
+    stdin: bool, tty: bool = False, rows: int | None = None, cols: int | None = None,
 ) -> dict[str, Any]:
     body: dict[str, Any] = {"command": _command(command)}
     if cwd is not None:
@@ -171,6 +176,13 @@ def _exec_payload(
         body["timeout_s"] = timeout_seconds
     if stdin:
         body["stdin"] = True
+    if tty:
+        _terminal_size(rows, cols)
+        if not stdin:
+            raise ValidationError("tty requires stdin")
+        body.update(tty=True, rows=rows, cols=cols)
+    elif rows is not None or cols is not None:
+        raise ValidationError("terminal dimensions require tty")
     return body
 
 
@@ -549,14 +561,15 @@ class Sandbox(_SandboxState):
     def exec(
         self, command: str | list[str] | tuple[str, ...], *, cwd: str | None = None,
         env: dict[str, str] | None = None, timeout_seconds: int | None = None,
-        stdin: bool = False, idempotency_key: str | None = None,
+        stdin: bool = False, tty: bool = False, rows: int | None = None,
+        cols: int | None = None, idempotency_key: str | None = None,
     ) -> "SandboxExec":
         sandbox_id = _valid_id(self.id, "sandbox")
         path = f"/v1/sandboxes/{sandbox_id}/exec"
         headers: dict[str, str] = {}
         response = self._client._request(
             "POST", path,
-            json=_exec_payload(command, cwd=cwd, env=env, timeout_seconds=timeout_seconds, stdin=stdin),
+            json=_exec_payload(command, cwd=cwd, env=env, timeout_seconds=timeout_seconds, stdin=stdin, tty=tty, rows=rows, cols=cols),
             idempotency_key=idempotency_key or f"sandbox-exec-{uuid.uuid4()}",
             headers_out=headers,
         )
@@ -638,6 +651,19 @@ class SandboxExec(_SandboxExecState):
             idempotency_key=idempotency_key or f"sandbox-stdin-{uuid.uuid4()}",
         )
         return SandboxInputReceipt.from_dict(self._client._one(response, "POST", path))
+
+
+    def resize(self, rows: int, cols: int) -> None:
+        """Set terminal dimensions for a tty execution."""
+        _terminal_size(rows, cols)
+        self._client._request("POST", self._path() + "/resize", json={"rows": rows, "cols": cols})
+
+    def cancel(self) -> "SandboxExec":
+        """Request cancellation without terminating the sandbox."""
+        path = self._path() + "/cancel"
+        response = self._client._request("POST", path, json={})
+        self._absorb(self._client._one(response, "POST", path))
+        return self
 
 
 class AsyncSandboxes:
@@ -750,14 +776,15 @@ class AsyncSandbox(_SandboxState):
     async def exec(
         self, command: str | list[str] | tuple[str, ...], *, cwd: str | None = None,
         env: dict[str, str] | None = None, timeout_seconds: int | None = None,
-        stdin: bool = False, idempotency_key: str | None = None,
+        stdin: bool = False, tty: bool = False, rows: int | None = None,
+        cols: int | None = None, idempotency_key: str | None = None,
     ) -> "AsyncSandboxExec":
         sandbox_id = _valid_id(self.id, "sandbox")
         path = f"/v1/sandboxes/{sandbox_id}/exec"
         headers: dict[str, str] = {}
         response = await self._client._request(
             "POST", path,
-            json=_exec_payload(command, cwd=cwd, env=env, timeout_seconds=timeout_seconds, stdin=stdin),
+            json=_exec_payload(command, cwd=cwd, env=env, timeout_seconds=timeout_seconds, stdin=stdin, tty=tty, rows=rows, cols=cols),
             idempotency_key=idempotency_key or f"sandbox-exec-{uuid.uuid4()}",
             headers_out=headers,
         )
@@ -840,6 +867,18 @@ class AsyncSandboxExec(_SandboxExecState):
         )
         return SandboxInputReceipt.from_dict(self._client._one(response, "POST", path))
 
+    async def resize(self, rows: int, cols: int) -> None:
+        """Set terminal dimensions for a tty execution."""
+        _terminal_size(rows, cols)
+        await self._client._request("POST", self._path() + "/resize", json={"rows": rows, "cols": cols})
+
+    async def cancel(self) -> "AsyncSandboxExec":
+        """Request cancellation without terminating the sandbox."""
+        path = self._path() + "/cancel"
+        response = await self._client._request("POST", path, json={})
+        self._absorb(self._client._one(response, "POST", path))
+        return self
+
 
 class Devbox(Sandbox):
     """Create or reconnect to a named sandbox using server devbox defaults."""
@@ -850,3 +889,4 @@ class Devbox(Sandbox):
         if {"client", "sandbox_id"} & kwargs.keys():
             raise ValidationError("Devbox creates a named session, not an internal handle")
         super().__init__(name=name, image=image, profile="devbox", **kwargs)
+

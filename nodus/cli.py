@@ -245,6 +245,12 @@ def _cmd_devbox(args: argparse.Namespace) -> int:
             box = client.sandboxes.create(profile="devbox", name=args.name, image=args.image, budget=args.budget)
             print(_safe_line(box.id))
             return 0
+        if args.devbox_cmd == "shell":
+            from ._shell import shell
+            matches = [box for box in _devboxes(client, name=args.name) if not box.is_terminal]
+            if len(matches) != 1:
+                raise ValidationError("Expected exactly one active devbox with that name. Use nodus devbox ls.")
+            return shell(matches[0])
         if args.devbox_cmd == "rm":
             matches = [box for box in _devboxes(client, name=args.name) if not box.is_terminal]
             if len(matches) != 1:
@@ -716,6 +722,8 @@ Use nodus COMMAND --help for command options.""",
     devbox_up.add_argument("--budget", type=_positive_cost, default=None)
     devbox_ls = devbox_sub.add_parser("ls", help="list devbox sandboxes")
     devbox_ls.add_argument("--json", action="store_true")
+    devbox_shell = devbox_sub.add_parser("shell", help="open an interactive terminal, Ctrl+] disconnects")
+    devbox_shell.add_argument("name")
     devbox_rm = devbox_sub.add_parser("rm", help="terminate an active devbox by name")
     devbox_rm.add_argument("name")
     benchmark = sub.add_parser("benchmark", help="run and inspect a hardware matrix")

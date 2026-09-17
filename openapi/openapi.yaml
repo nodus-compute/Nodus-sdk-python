@@ -2089,6 +2089,124 @@
           }
         }
       }
+    },
+    "/v1/sandboxes/{id}/execs/{exec_id}/resize": {
+      "post": {
+        "operationId": "resizeSandboxExec",
+        "summary": "Set terminal dimensions",
+        "tags": [
+          "Sandboxes"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "exec_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SandboxTerminalSize"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxTerminalSizeReceipt"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The code, message, and fix fields describe the rejection and its remedy.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sandboxes/{id}/execs/{exec_id}/cancel": {
+      "post": {
+        "operationId": "cancelSandboxExec",
+        "summary": "Request command cancellation",
+        "tags": [
+          "Sandboxes"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "exec_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmptyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxExec"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The code, message, and fix fields describe the rejection and its remedy.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3881,6 +3999,21 @@
             "type": "boolean",
             "default": false,
             "description": "Enable framed stdin writes for this process."
+          },
+          "tty": {
+            "type": "boolean",
+            "default": false,
+            "description": "Allocate a controlling terminal with merged stdout and stderr. Requires stdin and explicit rows and cols."
+          },
+          "rows": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4096
+          },
+          "cols": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4096
           }
         },
         "additionalProperties": false
@@ -4387,6 +4520,55 @@
         },
         "x-go-source": "internal/benchmark/benchmark.go",
         "x-go-type": "Report"
+      },
+      "SandboxTerminalSize": {
+        "type": "object",
+        "required": [
+          "rows",
+          "cols"
+        ],
+        "properties": {
+          "rows": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4096
+          },
+          "cols": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4096
+          }
+        },
+        "additionalProperties": false
+      },
+      "SandboxTerminalSizeReceipt": {
+        "type": "object",
+        "required": [
+          "rows",
+          "cols",
+          "version"
+        ],
+        "properties": {
+          "rows": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4096
+          },
+          "cols": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4096
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "EmptyRequest": {
+        "type": "object",
+        "additionalProperties": false
       }
     }
   },
