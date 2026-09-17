@@ -1557,6 +1557,9 @@
             ],
             "default": "auto",
             "description": "Startup preference expressed as an outcome. Nodus still chooses the infrastructure."
+          },
+          "workspace": {
+            "$ref": "#/components/schemas/WorkspaceSelection"
           }
         },
         "required": null,
@@ -1634,6 +1637,9 @@
             "minimum": 30,
             "maximum": 604800,
             "description": "Alert after an active command produces no output for this many seconds. Defaults to 1800. Alerts do not stop the command."
+          },
+          "workspace": {
+            "$ref": "#/components/schemas/WorkspaceSelection"
           }
         },
         "required": [
@@ -2950,6 +2956,97 @@
         },
         "x-go-source": "internal/models/models.go",
         "x-go-type": "WorkloadSource"
+      },
+      "WorkspaceCreateRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "size_gb"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "size_gb": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "Requested capacity in GiB within the configured team limit."
+          }
+        }
+      },
+      "WorkspaceRecord": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "size_gb",
+          "billing_status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "size_gb": {
+            "type": "number"
+          },
+          "holder_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "saved_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "stored_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "last_error": {
+            "type": "string"
+          },
+          "saving_for_termination": {
+            "type": "boolean"
+          },
+          "billing_status": {
+            "type": "string",
+            "enum": [
+              "disabled_no_approved_storage_rate"
+            ]
+          }
+        }
+      },
+      "WorkspaceSelection": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_.-]+$"
+          },
+          "mount": {
+            "type": "string",
+            "default": "/workspace",
+            "description": "Dedicated top-level directory. System directories cannot be used."
+          }
+        }
       }
     },
     "securitySchemes": {
@@ -5014,6 +5111,16 @@
                 }
               }
             }
+          },
+          "202": {
+            "description": "Workspace final save requested. Poll the sandbox until termination completes. Saving failures preserve the last useful archive and appear in workspace metadata.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sandbox"
+                }
+              }
+            }
           }
         }
       }
@@ -5983,6 +6090,88 @@
         ],
         "description": "Ordered by stage ID and then generation. Nodus catalog identifiers and resource facts only."
       }
+    },
+    "/v1/workspaces": {
+      "post": {
+        "operationId": "createWorkspace",
+        "summary": "Create a named persistent workspace",
+        "tags": [
+          "Workspaces"
+        ],
+        "description": "Creates an empty tenant-owned workspace. A matching name and size replays the existing identity. Capacity and team count limits apply. Storage billing is disabled until an approved storage rate is configured.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceRecord"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The code, message, and fix fields describe the rejection and its remedy.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "listWorkspaces",
+        "summary": "List owned workspace metadata",
+        "tags": [
+          "Workspaces"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "workspaces"
+                  ],
+                  "properties": {
+                    "workspaces": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/WorkspaceRecord"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The code, message, and fix fields describe the rejection and its remedy.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "security": [
@@ -6008,6 +6197,10 @@
     },
     {
       "name": "Sandboxes"
+    },
+    {
+      "name": "Workspaces",
+      "description": "Named file persistence with one live sandbox writer."
     }
   ],
   "x-source-revision": "fd919e576d7300722d687111625114383475fcf4"

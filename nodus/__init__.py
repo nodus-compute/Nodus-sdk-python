@@ -38,6 +38,7 @@ from pathlib import Path
 from ._outputs import download_path, verified_file, output_destinations
 from ._assets import Asset, Assets, AsyncAssets
 from ._secrets import Secrets, AsyncSecrets
+from ._workspaces import Workspaces, AsyncWorkspaces
 from ._sandboxes import (
     AsyncSandbox,
     AsyncSandboxExec,
@@ -871,6 +872,11 @@ class Client(_Transport):
         return Secrets(self)
 
     @property
+    def workspaces(self) -> Workspaces:
+        """Manage named persistent workspace metadata."""
+        return Workspaces(self)
+
+    @property
     def sandboxes(self) -> Sandboxes:
         """Create and reconnect to durable agent execution environments."""
         return Sandboxes(self)
@@ -1272,6 +1278,11 @@ class AsyncClient(_Transport):
     def secrets(self) -> AsyncSecrets:
         """Manage tenant secrets without reading their values."""
         return AsyncSecrets(self)
+
+    @property
+    def workspaces(self) -> AsyncWorkspaces:
+        """Manage named persistent workspace metadata."""
+        return AsyncWorkspaces(self)
 
     @property
     def sandboxes(self) -> AsyncSandboxes:
