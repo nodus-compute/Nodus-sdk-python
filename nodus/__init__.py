@@ -37,6 +37,7 @@ from pathlib import Path
 
 from ._outputs import download_path, verified_file, output_destinations
 from ._assets import Asset, Assets, AsyncAssets
+from ._pools import Pool, PoolHost, HostDevice, EnrollmentToken, Pools, AsyncPools
 from ._sandboxes import (
     AsyncSandbox,
     AsyncSandboxExec,
@@ -105,6 +106,12 @@ except PackageNotFoundError:
 
 __all__ = [
     "Asset",
+    "Pool",
+    "PoolHost",
+    "HostDevice",
+    "EnrollmentToken",
+    "Pools",
+    "AsyncPools",
     "Client",
     "AsyncClient",
     "Workload",
@@ -827,6 +834,11 @@ class Client(_Transport):
         return wl
 
     @property
+    def pools(self) -> Pools:
+        """Manage customer-owned pools and observe-only hosts."""
+        return Pools(self)
+
+    @property
     def assets(self) -> Assets:
         """Upload and import code or data for workloads."""
         return Assets(self)
@@ -1399,6 +1411,11 @@ class AsyncClient(_Transport):
         if not wl.id:
             raise NodusError("submit returned no workload id", body=res)
         return wl
+
+    @property
+    def pools(self) -> AsyncPools:
+        """Manage customer-owned pools and observe-only hosts asynchronously."""
+        return AsyncPools(self)
 
     @property
     def assets(self) -> AsyncAssets:

@@ -168,6 +168,7 @@ Choose an image with your dependencies and pass its command to `client.run()`.
 - [Train or fine-tune a model](https://nodus-compute.ai/docs/guides/gpu-workloads/)
 - [Read logs and download results](https://nodus-compute.ai/docs/guides/monitoring-and-outputs/)
 - [Use Nodus with a coding agent](https://nodus-compute.ai/docs/guides/agents/)
+- [Measure customer-owned GPU hosts](https://nodus-compute.ai/docs/guides/pools/)
 - [Run tool-driven agents in sandboxes](https://nodus-compute.ai/docs/guides/agent-sandboxes/)
 
 For individual options, use the [Python reference](https://nodus-compute.ai/docs/reference/python/client/)

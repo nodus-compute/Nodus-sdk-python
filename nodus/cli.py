@@ -223,6 +223,20 @@ def _cmd_assets(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_pools(args: argparse.Namespace) -> int:
+    with Client(base_url=args.base_url) as client:
+        if args.pools_cmd == "create":
+            print(_safe_line(client.pools.create(args.name).id))
+        elif args.pools_cmd == "token":
+            print(client.pools.enrollment_token(args.pool_id).token)
+        else:
+            hosts = client.pools.hosts(args.pool_id)
+            show_table(["Host", "Name", "Health", "Mode", "Devices"],
+                       [[host.id, host.name, host.state, host.agent_mode, str(len(host.devices))]
+                        for host in hosts], empty="No enrolled hosts yet.", plain=args.plain)
+    return 0
+
+
 def _cmd_sandbox(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
         if args.sandbox_cmd == "new":
@@ -602,7 +616,7 @@ class _CommandHelpFormatter(argparse.RawDescriptionHelpFormatter):
                 ("Run", ("run", "submit", "sandbox")),
                 ("Monitor", ("list", "status", "wait", "logs", "cancel")),
                 ("Results", ("download",)),
-                ("Advanced", ("upload", "assets", "events", "artifacts", "ledger", "explain")),
+                ("Advanced", ("upload", "assets", "pools", "events", "artifacts", "ledger", "explain")),
             )
             return "\n".join(
                 f"  {title}:\n" + "".join(
@@ -673,6 +687,15 @@ Use nodus COMMAND --help for command options.""",
     u.add_argument("file")
     sub.add_parser("assets", help="list uploaded and imported data")
 
+    pools = sub.add_parser("pools", help="measure customer-owned GPU hosts")
+    pools_sub = pools.add_subparsers(dest="pools_cmd", required=True, metavar="COMMAND")
+    pools_create = pools_sub.add_parser("create", help="create a pool")
+    pools_create.add_argument("name")
+    pools_token = pools_sub.add_parser("token", help="print a secret single-use observe enrollment token")
+    pools_token.add_argument("pool_id")
+    pools_hosts = pools_sub.add_parser("hosts", help="list enrolled hosts and health")
+    pools_hosts.add_argument("pool_id")
+
     sandbox = sub.add_parser("sandbox", help="create and use agent sandboxes")
     sandbox_sub = sandbox.add_subparsers(dest="sandbox_cmd", required=True, metavar="COMMAND")
     sandbox_new = sandbox_sub.add_parser("new", help="create or reattach to a sandbox")
@@ -739,6 +762,7 @@ def main(argv: list[str] | None = None) -> int:
         "download": lambda: _cmd_download(args),
         "upload": lambda: _cmd_upload(args),
         "assets": lambda: _cmd_assets(args),
+        "pools": lambda: _cmd_pools(args),
         "sandbox": lambda: _cmd_sandbox(args),
         "list": lambda: _cmd_list(args),
         "status": lambda: _cmd_status(args),

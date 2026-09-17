@@ -28,6 +28,9 @@
     },
     {
       "name": "Sandboxes"
+    },
+    {
+      "name": "Pools"
     }
   ],
   "paths": {
@@ -1777,6 +1780,362 @@
             }
           }
         }
+      }
+    },
+    "/v1/pools": {
+      "post": {
+        "operationId": "createPool",
+        "summary": "Create a pool for read-only measurement",
+        "tags": [
+          "Pools"
+        ],
+        "responses": {
+          "201": {
+            "description": "Create a pool for read-only measurement",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Pool"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PoolCreateRequest"
+              }
+            }
+          }
+        },
+        "description": "The pool belongs to the authenticated team. This operation has no idempotency contract. Inspect the pool list after a timeout before repeating creation."
+      },
+      "get": {
+        "operationId": "listPools",
+        "summary": "List the authenticated team's pools",
+        "tags": [
+          "Pools"
+        ],
+        "responses": {
+          "200": {
+            "description": "List the authenticated team's pools",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolList"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/pools/{id}": {
+      "get": {
+        "operationId": "getPool",
+        "summary": "Read pool configuration",
+        "tags": [
+          "Pools"
+        ],
+        "responses": {
+          "200": {
+            "description": "Read pool configuration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Pool"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifier returned by Nodus."
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "updatePool",
+        "summary": "Update a pool name or owned hardware cost",
+        "tags": [
+          "Pools"
+        ],
+        "responses": {
+          "200": {
+            "description": "Update a pool name or owned hardware cost",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Pool"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifier returned by Nodus."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PoolPatchRequest"
+              }
+            }
+          }
+        },
+        "description": "Only name and owned_cost_micros_per_hour can be changed. Predict and Route cannot be enabled."
+      }
+    },
+    "/v1/pools/{id}/enrollment-tokens": {
+      "post": {
+        "operationId": "createPoolEnrollmentToken",
+        "summary": "Issue a single-use observe enrollment token",
+        "tags": [
+          "Pools"
+        ],
+        "responses": {
+          "201": {
+            "description": "Issue a single-use observe enrollment token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolEnrollmentToken"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifier returned by Nodus."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PoolEnrollmentTokenRequest"
+              }
+            }
+          }
+        },
+        "description": "The secret expires after 24 hours. Only observe mode is supported. Requests are not idempotent and must not be automatically replayed."
+      }
+    },
+    "/v1/pools/{id}/hosts": {
+      "get": {
+        "operationId": "listPoolHosts",
+        "summary": "List hosts with health and device inventory",
+        "tags": [
+          "Pools"
+        ],
+        "responses": {
+          "200": {
+            "description": "List hosts with health and device inventory",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolHostList"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifier returned by Nodus."
+          }
+        ]
+      }
+    },
+    "/v1/pools/{id}/hosts/{host}/drain": {
+      "post": {
+        "operationId": "drainPoolHost",
+        "summary": "Request host drain",
+        "tags": [
+          "Pools"
+        ],
+        "responses": {
+          "200": {
+            "description": "Request host drain",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolHost"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifier returned by Nodus."
+          },
+          {
+            "name": "host",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifier returned by Nodus."
+          }
+        ],
+        "description": "Marks the host draining. The observe agent receives desired drain state. Customer processes continue running."
+      }
+    },
+    "/v1/pools/{id}/hosts/{host}": {
+      "delete": {
+        "operationId": "removePoolHost",
+        "summary": "Remove a host and revoke its credential",
+        "tags": [
+          "Pools"
+        ],
+        "responses": {
+          "204": {
+            "description": "Remove a host and revoke its credential"
+          },
+          "default": {
+            "description": "Authentication, disabled feature, invalid input, missing pool or host, rate limits, and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifier returned by Nodus."
+          },
+          {
+            "name": "host",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Identifier returned by Nodus."
+          }
+        ],
+        "description": "Preserves historical measurements. Removal does not stop customer processes or uninstall the agent."
       }
     }
   },
@@ -3757,6 +4116,383 @@
             "format": "uri"
           }
         }
+      },
+      "Pool": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "wait_policy": {
+            "type": "string"
+          },
+          "burst_approval": {
+            "type": "string"
+          },
+          "burst_timeout_behaviour": {
+            "type": "string"
+          },
+          "predict_enabled": {
+            "type": "boolean"
+          },
+          "route_enabled": {
+            "type": "boolean"
+          },
+          "sandbox_capable": {
+            "type": "boolean"
+          },
+          "wait_alpha": {
+            "type": "number"
+          },
+          "waiting_budget_pct": {
+            "type": "number"
+          },
+          "burst_threshold_micros": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "platform_rate_micros": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "owned_cost_micros_per_hour": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Customer-supplied owned hardware cost in USD micros per hour. This value does not create a charge."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "state",
+          "wait_policy",
+          "burst_approval",
+          "burst_timeout_behaviour",
+          "predict_enabled",
+          "route_enabled",
+          "sandbox_capable",
+          "wait_alpha",
+          "waiting_budget_pct",
+          "burst_threshold_micros",
+          "platform_rate_micros",
+          "owned_cost_micros_per_hour",
+          "created_at",
+          "updated_at"
+        ],
+        "description": "Customer-owned capacity registered for free, read-only measurement. Predict, Route and sandbox execution are unavailable. Policy fields are inactive until the corresponding capabilities become available.",
+        "x-go-source": "internal/models/pools.go",
+        "x-go-type": "PrivatePool"
+      },
+      "PoolCreateRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Trimmed nonempty pool name, at most 200 UTF-8 bytes."
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false,
+        "x-go-source": "internal/api/pools.go",
+        "x-go-type": "poolCreateRequest"
+      },
+      "PoolPatchRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Trimmed nonempty pool name, at most 200 UTF-8 bytes."
+          },
+          "owned_cost_micros_per_hour": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "maximum": 9223372036854775807
+          }
+        },
+        "additionalProperties": false,
+        "minProperties": 1,
+        "x-go-source": "internal/api/pools.go",
+        "x-go-type": "poolPatchRequest"
+      },
+      "PoolEnrollmentTokenRequest": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "observe"
+            ],
+            "default": "observe"
+          }
+        },
+        "additionalProperties": false,
+        "x-go-source": "internal/api/pools.go",
+        "x-go-type": "poolTokenRequest"
+      },
+      "PoolEnrollmentToken": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string",
+            "description": "Secret single-use enrollment token returned only when issued. Keep it out of logs and source control."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "observe"
+            ]
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "token",
+          "mode",
+          "expires_at"
+        ],
+        "x-go-source": "internal/store/pools.go",
+        "x-go-type": "PoolEnrollmentToken"
+      },
+      "PoolInventoryDevice": {
+        "type": "object",
+        "properties": {
+          "device_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "model": {
+            "type": "string"
+          },
+          "memory_mb": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "device_uuid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "device_index",
+          "model",
+          "memory_mb",
+          "device_uuid"
+        ]
+      },
+      "PoolHostInventory": {
+        "type": "object",
+        "properties": {
+          "hostname": {
+            "type": "string"
+          },
+          "kernel": {
+            "type": "string"
+          },
+          "container_runtime": {
+            "type": "string"
+          },
+          "memory_mb": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "disk_mb": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "devices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PoolInventoryDevice"
+            }
+          }
+        },
+        "required": [
+          "hostname",
+          "kernel",
+          "memory_mb",
+          "disk_mb",
+          "devices"
+        ]
+      },
+      "PoolHostDevice": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "host_id": {
+            "type": "string"
+          },
+          "pool_id": {
+            "type": "string"
+          },
+          "device_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "model": {
+            "type": "string"
+          },
+          "memory_mb": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "device_uuid": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "host_id",
+          "pool_id",
+          "device_index",
+          "model",
+          "memory_mb",
+          "device_uuid",
+          "state"
+        ],
+        "x-go-source": "internal/models/pools.go",
+        "x-go-type": "HostDevice"
+      },
+      "PoolHost": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "pool_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "agent_version": {
+            "type": "string"
+          },
+          "agent_mode": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "enrolling",
+              "ready",
+              "draining",
+              "lost",
+              "removed"
+            ]
+          },
+          "inventory": {
+            "$ref": "#/components/schemas/PoolHostInventory"
+          },
+          "devices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PoolHostDevice"
+            }
+          },
+          "last_heartbeat_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "drain_requested_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "enrolled_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "pool_id",
+          "name",
+          "agent_version",
+          "agent_mode",
+          "state",
+          "inventory",
+          "devices",
+          "last_heartbeat_at",
+          "drain_requested_at",
+          "enrolled_at"
+        ],
+        "x-go-source": "internal/models/pools.go",
+        "x-go-type": "PoolHost"
+      },
+      "PoolList": {
+        "type": "object",
+        "properties": {
+          "pools": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Pool"
+            }
+          }
+        },
+        "required": [
+          "pools"
+        ]
+      },
+      "PoolHostList": {
+        "type": "object",
+        "properties": {
+          "hosts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PoolHost"
+            }
+          }
+        },
+        "required": [
+          "hosts"
+        ]
       }
     }
   },
