@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Submit benchmark matrices with an explicit total budget and idempotency key, then inspect the server report through the SDK or CLI.
+
 - Expose server-reported per-unit latency and posted cost through `workload.unit_metrics`.
 - Expose reported sandbox network bytes through `network_usage`.
 - Read sandbox lifecycle and denied-host events with `sandbox.events(after=...)`.

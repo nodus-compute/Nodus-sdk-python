@@ -840,6 +840,25 @@ class Client(_Transport):
             raise NodusError("submit returned no workload id", body=res)
         return wl
 
+    def benchmark(self, *, workload: dict[str, Any], gpu_families: list[str],
+                  batch_sizes: list[int], regions: list[str], repetitions: int,
+                  budget: float, idempotency_key: str) -> dict[str, Any]:
+        """Submit a hardware matrix under one server-allocated spending cap.
+
+        Reuse the explicit idempotency key after any uncertain response.
+        Returned costs and budget allocations are supplied by the server.
+        """
+        from ._benchmarks import request_payload
+        payload = request_payload(workload, gpu_families, batch_sizes, regions,
+                                  repetitions, budget, idempotency_key)
+        return self._one(self._request("POST", "/v1/benchmarks", json=payload,
+                         idempotency_key=idempotency_key), "POST", "/v1/benchmarks")
+
+    def get_benchmark(self, benchmark_id: str) -> dict[str, Any]:
+        """Read cell statuses, measurements and workload links."""
+        path = f"/v1/benchmarks/{_valid_id(benchmark_id)}"
+        return self._one(self._request("GET", path), "GET", path)
+
     @property
     def assets(self) -> Assets:
         """Upload and import code or data for workloads."""
@@ -1427,6 +1446,21 @@ class AsyncClient(_Transport):
         if not wl.id:
             raise NodusError("submit returned no workload id", body=res)
         return wl
+
+    async def benchmark(self, *, workload: dict[str, Any], gpu_families: list[str],
+                        batch_sizes: list[int], regions: list[str], repetitions: int,
+                        budget: float, idempotency_key: str) -> dict[str, Any]:
+        """Submit a hardware matrix under one server-allocated spending cap."""
+        from ._benchmarks import request_payload
+        payload = request_payload(workload, gpu_families, batch_sizes, regions,
+                                  repetitions, budget, idempotency_key)
+        return self._one(await self._request("POST", "/v1/benchmarks", json=payload,
+                         idempotency_key=idempotency_key), "POST", "/v1/benchmarks")
+
+    async def get_benchmark(self, benchmark_id: str) -> dict[str, Any]:
+        """Read cell statuses, measurements and workload links."""
+        path = f"/v1/benchmarks/{_valid_id(benchmark_id)}"
+        return self._one(await self._request("GET", path), "GET", path)
 
     @property
     def assets(self) -> AsyncAssets:

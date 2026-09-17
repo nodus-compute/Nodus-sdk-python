@@ -2005,6 +2005,90 @@
           }
         ]
       }
+    },
+    "/v1/benchmarks": {
+      "post": {
+        "operationId": "submitBenchmark",
+        "summary": "Run a bounded workload matrix",
+        "description": "Fans out ordinary workloads atomically with a single idempotency key. Each command can contain {{batch_size}}. Regions narrow workload data residency. Framework and multi-stage payloads are refused. GPU families use standard model names, never supplier SKUs.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BenchmarkRequest"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Benchmark accepted or replayed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BenchmarkReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid matrix or workload"
+          },
+          "402": {
+            "description": "Payment or credits required"
+          },
+          "409": {
+            "description": "Idempotency conflict"
+          },
+          "503": {
+            "description": "Admission unavailable"
+          }
+        }
+      }
+    },
+    "/v1/benchmarks/{id}": {
+      "get": {
+        "operationId": "getBenchmark",
+        "summary": "Read a benchmark report",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Per-cell observed costs, timings and workload links",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BenchmarkReport"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Benchmark not found"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4149,6 +4233,160 @@
             "description": "Nonempty UTF-8 secret with at most 4096 encoded bytes and no NUL characters."
           }
         }
+      },
+      "BenchmarkMatrix": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "gpu_families",
+          "batch_sizes",
+          "regions",
+          "repetitions"
+        ],
+        "properties": {
+          "gpu_families": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 64,
+            "items": {
+              "type": "string"
+            }
+          },
+          "batch_sizes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 64,
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            }
+          },
+          "regions": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 64,
+            "items": {
+              "type": "string"
+            }
+          },
+          "repetitions": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 64
+          }
+        },
+        "x-go-source": "internal/benchmark/benchmark.go",
+        "x-go-type": "Matrix"
+      },
+      "BenchmarkRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "workload",
+          "matrix",
+          "budget_usd"
+        ],
+        "properties": {
+          "workload": {
+            "$ref": "#/components/schemas/WorkloadPayload"
+          },
+          "matrix": {
+            "$ref": "#/components/schemas/BenchmarkMatrix"
+          },
+          "budget_usd": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1000000,
+            "description": "One total USD cap. Server divides microdollars across at most 64 immutable cell budgets. Unused cell allocations are not redistributed."
+          }
+        },
+        "x-go-source": "internal/benchmark/benchmark.go",
+        "x-go-type": "Request"
+      },
+      "BenchmarkCell": {
+        "type": "object",
+        "properties": {
+          "gpu_family": {
+            "type": "string"
+          },
+          "batch_size": {
+            "type": "integer"
+          },
+          "region": {
+            "type": "string"
+          },
+          "repetition": {
+            "type": "integer"
+          },
+          "budget_usd": {
+            "type": "number"
+          },
+          "workload_id": {
+            "type": "string"
+          },
+          "workload_url": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "spend_usd": {
+            "type": "number",
+            "description": "Posted workload ledger charges. Active and unsettled usage may be absent."
+          },
+          "wall_seconds": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Elapsed time from admission through terminal status or report time."
+          },
+          "unit_metrics": {
+            "$ref": "#/components/schemas/UnitMetrics"
+          },
+          "units_per_second": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Observed completed units divided by wall_seconds. Missing observations are not estimated."
+          }
+        }
+      },
+      "BenchmarkReport": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "completed",
+              "failed"
+            ]
+          },
+          "budget_usd": {
+            "type": "number"
+          },
+          "spend_usd": {
+            "type": "number"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cells": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BenchmarkCell"
+            }
+          }
+        },
+        "x-go-source": "internal/benchmark/benchmark.go",
+        "x-go-type": "Report"
       }
     }
   },

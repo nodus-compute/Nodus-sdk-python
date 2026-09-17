@@ -718,6 +718,13 @@ Use nodus COMMAND --help for command options.""",
     devbox_ls.add_argument("--json", action="store_true")
     devbox_rm = devbox_sub.add_parser("rm", help="terminate an active devbox by name")
     devbox_rm.add_argument("name")
+    benchmark = sub.add_parser("benchmark", help="run and inspect a hardware matrix")
+    benchmark_sub = benchmark.add_subparsers(dest="benchmark_cmd", required=True)
+    benchmark_run = benchmark_sub.add_parser("run", help="submit a benchmark JSON request")
+    benchmark_run.add_argument("file")
+    benchmark_run.add_argument("--idempotency-key", required=True)
+    benchmark_get = benchmark_sub.add_parser("get", help="show a benchmark report")
+    benchmark_get.add_argument("benchmark_id")
 
     sandbox = sub.add_parser("sandbox", help="create and use agent sandboxes")
     sandbox_sub = sandbox.add_subparsers(dest="sandbox_cmd", required=True, metavar="COMMAND")
@@ -787,6 +794,7 @@ def main(argv: list[str] | None = None) -> int:
         "assets": lambda: _cmd_assets(args),
         "sandbox": lambda: _cmd_sandbox(args),
         "devbox": lambda: _cmd_devbox(args),
+        "benchmark": lambda: _cmd_benchmark(args),
         "list": lambda: _cmd_list(args),
         "status": lambda: _cmd_status(args),
         "wait": lambda: _cmd_status(args),
@@ -824,6 +832,27 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         return 130
 
+
+
+
+def _cmd_benchmark(args: argparse.Namespace) -> int:
+    with Client(base_url=args.base_url) as client:
+        if args.benchmark_cmd == "get":
+            result = client.get_benchmark(args.benchmark_id)
+        else:
+            source = Path(args.file)
+            if source.stat().st_size > 1_000_000:
+                raise ValueError("benchmark request exceeds 1 MB")
+            request = json.loads(source.read_text())
+            if not isinstance(request, dict) or set(request) != {"workload", "matrix", "budget_usd"}:
+                raise ValueError("benchmark request requires workload, matrix and budget_usd")
+            matrix = request["matrix"]
+            if not isinstance(matrix, dict) or set(matrix) != {"gpu_families", "batch_sizes", "regions", "repetitions"}:
+                raise ValueError("matrix requires gpu_families, batch_sizes, regions and repetitions")
+            result = client.benchmark(workload=request["workload"], budget=request["budget_usd"],
+                                      idempotency_key=args.idempotency_key, **matrix)
+        print(json.dumps(result, indent=2, allow_nan=False))
+    return 0
 
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())
