@@ -1585,6 +1585,26 @@
           },
           "workspace": {
             "$ref": "#/components/schemas/WorkspaceSelection"
+          },
+          "source": {
+            "type": "object",
+            "required": [
+              "image"
+            ],
+            "properties": {
+              "image": {
+                "type": "string"
+              },
+              "asset_id": {
+                "type": "string"
+              },
+              "cache": {
+                "type": "boolean",
+                "default": false,
+                "description": "Opt in to verified image layer caching within this team and selected execution region. Retained storage stays attributed to the first materializing sandbox under its existing budget and configured workspace storage rate. Cache misses use the image registry."
+              }
+            },
+            "additionalProperties": false
           }
         },
         "required": null,
@@ -1653,6 +1673,11 @@
               },
               "asset_id": {
                 "type": "string"
+              },
+              "cache": {
+                "type": "boolean",
+                "default": false,
+                "description": "Opt in to verified image layer caching within this team and selected execution region. Retained storage stays attributed to the first materializing sandbox under its existing budget and configured workspace storage rate. Cache misses use the image registry."
               }
             },
             "additionalProperties": false
@@ -2836,13 +2861,51 @@
             "type": "string",
             "description": "Identifier of a dataset previously imported into this team. Raw external download URLs must be imported before submission.",
             "pattern": "^asset_[A-Za-z0-9-]{1,64}$"
+          },
+          "cache": {
+            "type": "boolean",
+            "default": false,
+            "description": "Opt in to the team digest cache in the selected execution region. The first materializing workload remains the storage billing owner under its existing spending cap. Cache retention uses workspace limits and the configured storage rate."
+          },
+          "bucket": {
+            "$ref": "#/components/schemas/BucketInput"
           }
         },
         "x-go-source": "internal/models/models.go",
         "x-go-type": "WorkloadInput",
         "required": [
-          "name",
-          "asset_id"
+          "name"
+        ],
+        "oneOf": [
+          {
+            "required": [
+              "asset_id"
+            ],
+            "not": {
+              "required": [
+                "bucket"
+              ]
+            }
+          },
+          {
+            "required": [
+              "bucket"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "asset_id"
+                  ]
+                },
+                {
+                  "required": [
+                    "cache"
+                  ]
+                }
+              ]
+            }
+          }
         ]
       },
       "WorkloadListItem": {
@@ -5727,6 +5790,45 @@
         "x-go-source": "internal/finops/queue.go",
         "x-go-type": "QueueEvidence",
         "description": "Retained queued demand under an immediate-start scenario from the next complete hour. This is not a placement promise. Unknown runtimes remain a job count. Known device-hours equal added device-hours plus demand beyond the selected horizon."
+      },
+      "BucketInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "uri",
+          "region",
+          "bytes",
+          "sha256",
+          "credential_source"
+        ],
+        "properties": {
+          "uri": {
+            "type": "string",
+            "description": "Canonical s3:// or gs:// object location without query parameters or credentials."
+          },
+          "region": {
+            "type": "string",
+            "description": "Exact bucket region. policy.data_regions must contain only this region."
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1099511627776
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "credential_source": {
+            "type": "string",
+            "enum": [
+              "team_webhook"
+            ],
+            "description": "Request temporary credentials synchronously from the configured team webhook. Credentials are never stored. The workload receives a sequential FIFO path in NODUS_INPUT_<name> and must consume it through EOF. Recovery restarts the stream and requests fresh credentials."
+          }
+        },
+        "x-go-source": "internal/models/assets.go",
+        "x-go-type": "BucketInput"
       }
     },
     "securitySchemes": {

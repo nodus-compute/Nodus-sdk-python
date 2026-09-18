@@ -15,6 +15,8 @@ import math
 import os
 import re
 from pathlib import PurePosixPath
+from urllib.parse import urlsplit, unquote
+import posixpath
 import shlex
 import sys
 import warnings
@@ -160,7 +162,7 @@ def build_payload(
     *,
     image: str | None = None,
     source_asset_id: str | None = None,
-    inputs: list[dict[str, str | bool]] | None = None,
+    inputs: list[dict[str, Any]] | None = None,
     outputs: dict[str, str] | None = None,
     command: list[str] | str | None = None,
     requirements: dict[str, Any] | None = None,
@@ -221,6 +223,8 @@ def build_payload(
     pol: dict[str, Any] = dict(policy or {})
     if data_regions:
         pol.setdefault("data_regions", list(data_regions))
+
+    _validate_bucket_regions(inputs, pol)
 
     outcome: dict[str, Any] = {}
     if budget is not None:
@@ -377,7 +381,7 @@ def validate_requirements(requirements: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def _validate_assets(source_asset_id: str | None, inputs: list[dict[str, str | bool]] | None) -> None:
+def _validate_assets(source_asset_id: str | None, inputs: list[dict[str, Any]] | None) -> None:
     def valid_id(value: Any) -> bool:
         return isinstance(value, str) and re.fullmatch(r"asset_[A-Za-z0-9-]{1,64}", value) is not None
     if source_asset_id is not None and not valid_id(source_asset_id):
@@ -388,16 +392,53 @@ def _validate_assets(source_asset_id: str | None, inputs: list[dict[str, str | b
         raise ValueError("inputs must be a list of at most eight named assets.")
     names: set[str] = set()
     for value in inputs:
-        if not isinstance(value, dict) or not {"name", "asset_id"} <= set(value) or not set(value) <= {"name", "asset_id", "cache"}:
-            raise ValueError("Each input requires name and asset_id. Import or upload the data first.")
-        if "cache" in value and type(value["cache"]) is not bool:
-            raise ValueError("Input cache must be a boolean.")
+        if not isinstance(value, dict) or "name" not in value:
+            raise ValueError("Each input requires a name and either asset_id or bucket.")
         name = value["name"]
         if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,63}", name) or name in names:
             raise ValueError("Input names must be unique identifiers starting with a letter.")
-        if not valid_id(value["asset_id"]):
-            raise ValueError("Input asset_id must be an asset ID returned by Nodus.")
+        if "bucket" in value:
+            if set(value) != {"name", "bucket"}:
+                raise ValueError("Bucket inputs cannot contain asset_id, cache or credentials.")
+            _validate_bucket(value["bucket"])
+        else:
+            if not {"name", "asset_id"} <= set(value) or not set(value) <= {"name", "asset_id", "cache"}:
+                raise ValueError("Each asset input requires name and asset_id.")
+            if "cache" in value and type(value["cache"]) is not bool:
+                raise ValueError("Input cache must be a boolean.")
+            if not valid_id(value["asset_id"]):
+                raise ValueError("Input asset_id must be an asset ID returned by Nodus.")
         names.add(name)
+
+
+def _validate_bucket(value: Any) -> None:
+    fields = {"uri", "region", "bytes", "sha256", "credential_source"}
+    if not isinstance(value, dict) or set(value) != fields:
+        raise ValueError("Bucket inputs require uri, region, bytes, sha256 and credential_source only. Never supply credentials.")
+    if value["credential_source"] != "team_webhook":
+        raise ValueError("Bucket credential_source must be team_webhook.")
+    if type(value["bytes"]) is not int or not 0 <= value["bytes"] <= 1 << 40:
+        raise ValueError("Bucket bytes must be an integer from zero through 1 TiB.")
+    if not isinstance(value["sha256"], str) or not re.fullmatch(r"[a-f0-9]{64}", value["sha256"]):
+        raise ValueError("Bucket sha256 must be a lowercase SHA-256 digest.")
+    if not isinstance(value["uri"], str) or not isinstance(value["region"], str):
+        raise ValueError("Bucket URI and region must be strings.")
+    uri = value["uri"]
+    parsed = urlsplit(uri)
+    path = unquote(parsed.path)
+    region_pattern = r"[a-z]{2}(?:-[a-z]+)+-[0-9]+" if parsed.scheme == "s3" else r"[a-z]+-[a-z]+[0-9]+"
+    if (parsed.scheme not in {"s3", "gs"} or "?" in uri or "#" in uri or parsed.username is not None
+            or not re.fullmatch(r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]", parsed.netloc) or ".." in parsed.netloc
+            or len(path) < 2 or len(path) > 4096 or not path.startswith("/") or posixpath.normpath(path) != path
+            or any(c in path for c in ("\\", "\r", "\n", "\x00"))
+            or not re.fullmatch(region_pattern, value["region"]) or value["region"].startswith("cn-")):
+        raise ValueError("Bucket URI must be a canonical s3:// or gs:// object without credentials or query parameters, in its exact region.")
+
+
+def _validate_bucket_regions(inputs: list[dict[str, Any]] | None, policy: dict[str, Any]) -> None:
+    for value in inputs or []:
+        if "bucket" in value and policy.get("data_regions") != [value["bucket"]["region"]]:
+            raise ValueError("Bucket inputs require data_regions containing only the exact bucket region.")
 
 
 def _validate_outputs(outputs: dict[str, str] | None) -> None:
