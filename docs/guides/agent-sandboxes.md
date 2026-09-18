@@ -57,6 +57,13 @@ sandbox budget limits its customer-funded usage. Acceptance can precede
 readiness. Calling `exec` waits for the environment and then runs the command,
 so application code does not need a readiness loop.
 
+Pass `cache_image=True` when creating a sandbox to allow verified image layers
+to be reused within your team and execution region. Cache storage shares the
+workspace size and count limits. Retention charges stay with the first sandbox
+that cached the layer, under its existing budget, even after it terminates.
+Storage billing remains disabled until a rate is configured. Unavailable or
+corrupt cache entries fall back to the pinned image registry content.
+
 When a sandbox reaches `failed`, `sandbox.failure` contains the server's
 `code`, `message`, and `fix` guidance. It is `None` when no failure is returned.
 Call `sandbox.refresh()` to read the latest state. The sandbox's console link
