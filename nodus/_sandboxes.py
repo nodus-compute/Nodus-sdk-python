@@ -695,6 +695,7 @@ class SandboxExec(_SandboxExecState):
     def iter_output(self, *, after: int = 0, follow: bool = True) -> Iterator[SandboxOutputFrame]:
         cursor = after
         while True:
+            previous_cursor = cursor
             page = self.output(after=cursor, wait=follow)
             for frame in page.frames:
                 if frame.sequence > cursor:
@@ -703,6 +704,8 @@ class SandboxExec(_SandboxExecState):
             cursor = max(cursor, page.next_sequence)
             if (page.done and page.complete) or not follow:
                 return
+            if page.done and cursor <= previous_cursor:
+                raise NodusError(f"Sandbox execution final output is unavailable after sequence {cursor}. Retry output(after={cursor}).")
 
     def write(
         self, data: bytes | str = b"", *, eof: bool = False,
@@ -940,6 +943,7 @@ class AsyncSandboxExec(_SandboxExecState):
     async def iter_output(self, *, after: int = 0, follow: bool = True) -> AsyncIterator[SandboxOutputFrame]:
         cursor = after
         while True:
+            previous_cursor = cursor
             page = await self.output(after=cursor, wait=follow)
             for frame in page.frames:
                 if frame.sequence > cursor:
@@ -948,6 +952,8 @@ class AsyncSandboxExec(_SandboxExecState):
             cursor = max(cursor, page.next_sequence)
             if (page.done and page.complete) or not follow:
                 return
+            if page.done and cursor <= previous_cursor:
+                raise NodusError(f"Sandbox execution final output is unavailable after sequence {cursor}. Retry output(after={cursor}).")
 
     async def write(
         self, data: bytes | str = b"", *, eof: bool = False,
