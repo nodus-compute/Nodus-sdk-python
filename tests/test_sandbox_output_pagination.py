@@ -56,6 +56,7 @@ def test_output_iterator_drains_all_completed_pages(asynchronous):
 @pytest.mark.skipif(os.name != "posix", reason="Physical shell requires a POSIX terminal")
 @pytest.mark.parametrize("stalled", [False, True])
 def test_shell_drains_binary_final_pages_and_restores_terminal(monkeypatch, stalled):
+    import errno
     import fcntl
     import pty
     import select
@@ -88,14 +89,18 @@ def test_shell_drains_binary_final_pages_and_restores_terminal(monkeypatch, stal
                                         "state": "completed", "exit_code": 7})
 
     transcript = bytearray()
-    finished = threading.Event()
-
     def collect_terminal():
         while True:
             if select.select([master], [], [], 0.05)[0]:
-                transcript.extend(os.read(master, 4096))
-            elif finished.is_set():
-                return
+                try:
+                    chunk = os.read(master, 4096)
+                except OSError as error:
+                    if error.errno == errno.EIO:
+                        return  # Linux signals the fully drained PTY close with EIO.
+                    raise
+                if not chunk:
+                    return
+                transcript.extend(chunk)
 
     reader = threading.Thread(target=collect_terminal)
     reader.start()
@@ -117,23 +122,26 @@ def test_shell_drains_binary_final_pages_and_restores_terminal(monkeypatch, stal
                     shell(Sandbox(client, "sb_test"))
             else:
                 assert shell(Sandbox(client, "sb_test")) == 7
-        finished.set()
-        reader.join(2)
-        assert not reader.is_alive()
-        assert bytes(transcript) == b"".join(CHUNKS[:2] if stalled else CHUNKS)
-        assert cursors == [0, 1, 2]
-        assert not any(path.endswith("/cancel") for path in actions)
         restored = termios.tcgetattr(slave)
         restored[3] &= ~getattr(termios, "PENDIN", 0)
         original[3] &= ~getattr(termios, "PENDIN", 0)
         assert restored == original
         assert {number: signal.getsignal(number) for number in signals} == signals
-    finally:
-        finished.set()
-        reader.join(2)
+        # EOF proves the transcript has drained. A quiet select interval does not.
         terminal.close()
-        os.close(master)
         os.close(slave)
+        slave = None
+        reader.join(2)
+        assert not reader.is_alive()
+        assert bytes(transcript) == b"".join(CHUNKS[:2] if stalled else CHUNKS)
+        assert cursors == [0, 1, 2]
+        assert not any(path.endswith("/cancel") for path in actions)
+    finally:
+        terminal.close()
+        if slave is not None:
+            os.close(slave)
+        reader.join(2)
+        os.close(master)
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])
