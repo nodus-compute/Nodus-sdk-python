@@ -8,6 +8,8 @@ import sys
 import time
 from typing import Any
 
+from .errors import NodusError
+
 
 def shell(box: Any, command: list[str] | None = None) -> int:
     """Run a terminal and restore local terminal settings on every exit path."""
@@ -50,6 +52,7 @@ def shell(box: Any, command: list[str] | None = None) -> int:
                 if not data or b"\x1d" in data:
                     break
                 execution.write(data)
+            previous_cursor = cursor
             page = execution.output(after=cursor, wait=False)
             for frame in page.frames:
                 if frame.sequence > cursor:
@@ -61,10 +64,13 @@ def shell(box: Any, command: list[str] | None = None) -> int:
                         view = view[count:]
                     cursor = frame.sequence
             cursor = max(cursor, page.next_sequence)
-            if page.done and page.complete:
+            if page.done:
                 done = True
-                execution.refresh()
-                return execution.exit_code if execution.exit_code is not None else 1
+                if page.complete:
+                    execution.refresh()
+                    return execution.exit_code if execution.exit_code is not None else 1
+                if cursor <= previous_cursor:
+                    raise NodusError(f"Sandbox execution final output is unavailable after sequence {cursor}. Retry output(after={cursor}).")
         return 130
     finally:
         try:
