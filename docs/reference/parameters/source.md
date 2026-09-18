@@ -79,10 +79,17 @@ Use asset IDs returned by upload or import, not paths or URLs. Their format is
 `asset_` followed by 1 to 64 letters, digits, or hyphens. Omitted
 `source_asset_id` attaches no code asset. Omitted `inputs` attaches no named assets.
 
-`inputs` accepts at most eight dictionaries, each containing exactly `name` and
-`asset_id`. Names must be unique, start with a letter, and contain at most 64
+`inputs` accepts at most eight dictionaries, each containing `name` and
+`asset_id`, with an optional boolean `cache` flag. Names must be unique, start with a letter, and contain at most 64
 letters, digits, or underscores. For example, `training_data` is valid and
 `training-data` is not. The input directory is exposed as `NODUS_INPUT_training_data`.
+
+Set `cache: True` to allow reuse of verified input content within your team and
+execution region. Cache storage uses workspace size and count limits. The first
+workload that fills a cache remains its storage billing owner, including after
+termination, under its existing spending cap. Storage billing stays disabled
+until a storage rate is configured. An unavailable cache falls back to the
+ordinary input. This flag does not stream external bucket data.
 
 Output names use only letters, digits, dots, underscores, or hyphens. They must
 be distinct without regard to case, cannot be `.` or `..`, and cannot end in a
@@ -100,3 +107,52 @@ Explicit output mappings replace this default. Save complete model bundles in a
 default folder, or declare files elsewhere. See
 [logs and results](../../guides/monitoring-and-outputs.md) for collection exclusions
 and downloads.
+
+## Stream a bucket object
+
+A bucket input supplies a sequential file path through `NODUS_INPUT_<name>`.
+The runner reads directly from the declared regional S3 or Google Cloud Storage
+endpoint while your command consumes the file. It does not import the corpus
+into Nodus storage. Read through EOF to verify the declared byte count and
+SHA-256 digest. Seeking and reopening the stream are not supported.
+The example descriptor below represents an object containing the three bytes `abc`.
+Replace its location, byte count and digest with your own object metadata.
+
+```python
+job = client.run(
+    command=["python", "train.py"],
+    budget=2,
+    data_regions=["us-east-1"],
+    inputs=[{
+        "name": "corpus",
+        "bucket": {
+            "uri": "s3://training-bucket/corpus.jsonl",
+            "region": "us-east-1",
+            "bytes": 3,
+            "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+            "credential_source": "team_webhook",
+        },
+    }],
+)
+```
+
+Use `gs://bucket/object` and the exact Google Cloud region for GCS. The execution
+region must exactly match the input region. Do not put signed URLs, access keys,
+or tokens in the workload definition. Bucket inputs do not accept `cache`.
+Imported assets and OCI image layers use the separate optional digest cache.
+
+A team administrator must configure the existing team webhook to handle a
+synchronous `input.credentials.request`. Nodus signs this request using the
+webhook timestamp and HMAC headers. The request identifies the workload, stage,
+generation, input name and object descriptor. Return HTTP 200 with the same
+`object` and a `credentials` object containing `expires_at` and either S3
+`access_key_id`, `secret_access_key`, `session_token`, or GCS `access_token`.
+Scope the temporary credential to reading the declared object and set its
+expiry within one hour. Never log the response body.
+
+Nodus keeps the credential only in memory and transfers it to the authenticated
+runner over TLS. A failed, expired, unread or corrupt stream prevents successful
+completion. Recovery requests a fresh credential and starts the stream from the
+beginning. Your program remains responsible for loading its own saved progress
+and skipping data already processed. Data received before EOF is not yet fully
+verified against the declared digest.

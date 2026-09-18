@@ -15,7 +15,7 @@ try:
 except ModuleNotFoundError:  # Python 3.10
     import tomli as tomllib
 
-from ._brief import _validate_outputs, validate_requirements, UNSUPPORTED
+from ._brief import _validate_assets, _validate_bucket_regions, _validate_outputs, validate_requirements, UNSUPPORTED
 from .requests import ContinuitySpec, Policy, Requirements, Source, StageInput, StageSpec
 
 _TEMPLATE = '''# Edit the image and command for your workload.
@@ -219,21 +219,7 @@ def load_workload_file(path: str | Path = 'nodus.toml') -> dict[str, Any]:
         elif key == 'data_regions':
             _strings(value, key)
         elif key == 'inputs':
-            if not isinstance(value, list):
-                _fail(key, 'expected a list of asset inputs')
-            if len(value) > 8:
-                _fail(key, 'at most 8 asset inputs are supported')
-            names = set()
-            for item in value:
-                _table(item, key, {'name', 'asset_id'})
-                for field in ('name', 'asset_id'):
-                    _text(item.get(field), f'inputs.{field}')
-                if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{0,63}', item['name']):
-                    _fail('inputs.name', 'start with a letter and use at most 64 letters, digits, or underscores')
-                _asset(item['asset_id'], 'inputs.asset_id')
-                if item['name'] in names:
-                    _fail(key, 'input names must be unique')
-                names.add(item['name'])
+            _validate_assets(None, value)
         elif key == 'source_asset_id':
             _asset(value, key)
         elif key == 'framework':
@@ -273,6 +259,7 @@ def load_workload_file(path: str | Path = 'nodus.toml') -> dict[str, Any]:
         _fail('data_regions', 'set this once, at the top level or in policy')
     if 'idempotency_key' in values and not all(32 <= ord(c) < 127 for c in values['idempotency_key']):
         _fail('idempotency_key', 'use printable ASCII without line breaks')
+    _validate_bucket_regions(values.get("inputs"), values.get("policy") or {"data_regions": values.get("data_regions")})
     return values
 
 

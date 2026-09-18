@@ -123,6 +123,7 @@ def _command(value: str | list[str] | tuple[str, ...]) -> list[str]:
 def _create_payload(
     *,
     image: str | None,
+    cache_image: bool = False,
     name: str | None = None,
     profile: str | None = None,
     budget: float | None = None,
@@ -146,7 +147,11 @@ def _create_payload(
         raise ValidationError("image or name is required")
     if stuck_after_s is not None and (type(stuck_after_s) is not int or not 30 <= stuck_after_s <= 604800):
         raise ValidationError("stuck_after_s must be an integer from 30 through 604800")
+    if type(cache_image) is not bool or (cache_image and image is None):
+        raise ValidationError("cache_image must be a boolean and requires an image when enabled")
     body: dict[str, Any] = {}
+    if cache_image:
+        body["source"] = {"image": image, "cache": True}
     if image is not None:
         body["image"] = image
     selected_requirements = dict(requirements or {})
@@ -414,6 +419,7 @@ class Sandboxes:
         self,
         *,
         image: str | None = None,
+        cache_image: bool = False,
         name: str | None = None,
         profile: str | None = None,
         budget: float | None = None,
@@ -433,7 +439,7 @@ class Sandboxes:
         idempotency_key: str | None = None,
     ) -> "Sandbox":
         body = _create_payload(
-            image=image, name=name, profile=profile, budget=budget, wake=wake, requirements=requirements,
+            image=image, cache_image=cache_image, name=name, profile=profile, budget=budget, wake=wake, requirements=requirements,
             outcome=outcome, policy=policy, lifecycle=lifecycle,
             reservation=reservation, continuity=continuity,
             from_snapshot=from_snapshot, secrets=secrets, service=service, bootstrap=bootstrap, stuck_after_s=stuck_after_s, workspace=workspace,
@@ -509,6 +515,7 @@ class Sandbox(_SandboxState):
         sandbox_id: str = "",
         *,
         image: str | None = None,
+        cache_image: bool = False,
         name: str | None = None,
         profile: str | None = None,
         budget: float | None = None,
@@ -539,6 +546,7 @@ class Sandbox(_SandboxState):
             try:
                 created = self._client.sandboxes.create(
                     image=image,
+                    cache_image=cache_image,
                     name=name,
                     profile=profile,
                     budget=budget,
@@ -742,6 +750,7 @@ class AsyncSandboxes:
         self,
         *,
         image: str | None = None,
+        cache_image: bool = False,
         name: str | None = None,
         profile: str | None = None,
         budget: float | None = None,
@@ -761,7 +770,7 @@ class AsyncSandboxes:
         idempotency_key: str | None = None,
     ) -> "AsyncSandbox":
         body = _create_payload(
-            image=image, name=name, profile=profile, budget=budget, wake=wake, requirements=requirements,
+            image=image, cache_image=cache_image, name=name, profile=profile, budget=budget, wake=wake, requirements=requirements,
             outcome=outcome, policy=policy, lifecycle=lifecycle,
             reservation=reservation, continuity=continuity,
             from_snapshot=from_snapshot, secrets=secrets, service=service, bootstrap=bootstrap, stuck_after_s=stuck_after_s, workspace=workspace,
