@@ -179,6 +179,17 @@ See [troubleshooting](https://nodus-compute.ai/docs/operations/errors/) if a run
 
 See [RELEASING.md](https://github.com/nodus-compute/Nodus-sdk-python/blob/main/RELEASING.md) for release steps. Licensed under [Apache-2.0](https://github.com/nodus-compute/Nodus-sdk-python/blob/main/LICENSE).
 
+Devbox preview builds also include [named development sessions](https://github.com/nodus-compute/Nodus-sdk-python/blob/main/docs/guides/devboxes.md).
+## Benchmark a workload
+
+`client.benchmark()` accepts an API workload payload, `gpu_families`, `batch_sizes`, `regions`, `repetitions`, an explicit `budget`, and an explicit `idempotency_key`. Reuse the same key after an uncertain response. Both synchronous and asynchronous clients return the server report.
+
+The server divides one total cap into fixed cell allocations. Unused allocations are not redistributed. Use `{{batch_size}}` in a command argument when varying batch size. Inspect the returned workload IDs, posted ledger costs and measurements with `client.get_benchmark(id)`.
+
+`nodus benchmark run request.json --idempotency-key customer-attempt` accepts the API JSON shape with `workload`, `matrix` and `budget_usd`. `nodus benchmark get bm_ID` prints the report. These commands require a backend with the benchmark API.
+
+See [durable steps](https://github.com/nodus-compute/Nodus-sdk-python/blob/main/docs/durable-steps.md) for serial recorded-result replay on deployments with the capability enabled.
+
 ### Action policies and shadow readiness
 
 `client.pools.action_policies(pool_id)` reads all four per-kind settings and the

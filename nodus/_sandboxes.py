@@ -13,7 +13,9 @@ import re
 import time
 from typing import Any, AsyncIterator, Iterator
 import uuid
+from urllib.parse import unquote, urlsplit
 
+from ._secrets import _names
 from .errors import APITimeoutError, NodusError, ValidationError
 from .types import Event, _dt, _int, _num, _obj, _rows, _text
 
@@ -25,6 +27,7 @@ __all__ = [
     "SandboxInputReceipt",
     "Sandboxes",
     "Sandbox",
+    "Devbox",
     "SandboxExec",
     "AsyncSandboxes",
     "AsyncSandbox",
@@ -78,6 +81,21 @@ def _valid_id(value: Any, kind: str) -> str:
     )
 
 
+def _http_path(sandbox_id: str, port: int, path: str, method: str) -> str:
+    if isinstance(port, bool) or not isinstance(port, int) or not 1024 <= port <= 65535 or port == 18080:
+        raise ValidationError("port must be a guest HTTP port from 1024 to 65535, excluding 18080")
+    if method not in {"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}:
+        raise ValidationError("unsupported HTTP method")
+    if not isinstance(path, str) or len(path) > 4096 or not path.startswith("/") or path.startswith("//"):
+        raise ValidationError("path must be an absolute guest HTTP path")
+    decoded = unquote(path)
+    if any(c in decoded for c in ("\r", "\n", "\\", "\x00")) or urlsplit(path).fragment:
+        raise ValidationError("invalid HTTP path")
+    if any(part in {".", ".."} for part in urlsplit(decoded).path.split("/")):
+        raise ValidationError("HTTP paths cannot contain dot segments")
+    return f"/v1/sandboxes/{_valid_id(sandbox_id, 'sandbox')}/ports/{port}/{path[1:]}"
+
+
 def _wire(value: Any) -> Any:
     if isinstance(value, Enum):
         return value.value
@@ -106,6 +124,7 @@ def _create_payload(
     *,
     image: str | None,
     name: str | None = None,
+    profile: str | None = None,
     budget: float | None = None,
     wake: str | None = None,
     requirements: dict[str, Any] | None = None,
@@ -115,18 +134,27 @@ def _create_payload(
     reservation: dict[str, Any] | None = None,
     continuity: dict[str, Any] | None = None,
     from_snapshot: str | None = None,
+    secrets: list[str] | None = None,
+    service: dict[str, Any] | None = None,
+    bootstrap: dict[str, str] | None = None,
+    stuck_after_s: int | None = None,
+    workspace: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if image is not None and (not isinstance(image, str) or not image.strip()):
         raise ValidationError("image must be nonempty text")
     if image is None and not name:
         raise ValidationError("image or name is required")
+    if stuck_after_s is not None and (type(stuck_after_s) is not int or not 30 <= stuck_after_s <= 604800):
+        raise ValidationError("stuck_after_s must be an integer from 30 through 604800")
     body: dict[str, Any] = {}
     if image is not None:
         body["image"] = image
     selected_requirements = dict(requirements or {})
-    selected_requirements.setdefault("compute_class", "accelerator")
+    if profile != "devbox":
+        selected_requirements.setdefault("compute_class", "accelerator")
     for key, value in (
         ("name", name),
+        ("profile", profile),
         ("wake", wake),
         ("requirements", selected_requirements),
         ("policy", policy),
@@ -134,6 +162,11 @@ def _create_payload(
         ("reservation", reservation),
         ("continuity", continuity),
         ("from_snapshot", from_snapshot),
+        ("secrets", _names(secrets)),
+        ("service", service),
+        ("bootstrap", bootstrap),
+        ("stuck_after_s", stuck_after_s),
+        ("workspace", workspace),
     ):
         if value is not None:
             body[key] = _wire(value)
@@ -147,13 +180,18 @@ def _create_payload(
     return body
 
 
+def _terminal_size(rows: int | None, cols: int | None) -> None:
+    if any(type(n) is not int or not 1 <= n <= 4096 for n in (rows, cols)):
+        raise ValidationError("rows and cols must be integers from 1 through 4096")
+
+
 def _exec_payload(
     command: str | list[str] | tuple[str, ...],
     *,
     cwd: str | None,
     env: dict[str, str] | None,
     timeout_seconds: int | None,
-    stdin: bool,
+    stdin: bool, tty: bool = False, rows: int | None = None, cols: int | None = None,
 ) -> dict[str, Any]:
     body: dict[str, Any] = {"command": _command(command)}
     if cwd is not None:
@@ -164,6 +202,13 @@ def _exec_payload(
         body["timeout_s"] = timeout_seconds
     if stdin:
         body["stdin"] = True
+    if tty:
+        _terminal_size(rows, cols)
+        if not stdin:
+            raise ValidationError("tty requires stdin")
+        body.update(tty=True, rows=rows, cols=cols)
+    elif rows is not None or cols is not None:
+        raise ValidationError("terminal dimensions require tty")
     return body
 
 
@@ -265,10 +310,12 @@ class _SandboxState:
         self.replayed = False
         self.failure = None
         self.network_usage = None
+        self.warnings: list[str] = []
 
     def _absorb(self, value: dict[str, Any] | None) -> None:
         body = _obj(value)
         self.id = _text(body.get("id")) or self.id
+        self.warnings = [x for x in body.get("warnings", []) if isinstance(x, str)]
         usage = body.get("network_usage")
         self.network_usage = dict(usage) if isinstance(usage, dict) else None
         failure = body.get("failure")
@@ -368,6 +415,7 @@ class Sandboxes:
         *,
         image: str | None = None,
         name: str | None = None,
+        profile: str | None = None,
         budget: float | None = None,
         wake: str | None = None,
         requirements: dict[str, Any] | None = None,
@@ -377,13 +425,18 @@ class Sandboxes:
         reservation: dict[str, Any] | None = None,
         continuity: dict[str, Any] | None = None,
         from_snapshot: str | None = None,
+        secrets: list[str] | None = None,
+        service: dict[str, Any] | None = None,
+        bootstrap: dict[str, str] | None = None,
+        stuck_after_s: int | None = None,
+        workspace: dict[str, Any] | None = None,
         idempotency_key: str | None = None,
     ) -> "Sandbox":
         body = _create_payload(
-            image=image, name=name, budget=budget, wake=wake, requirements=requirements,
+            image=image, name=name, profile=profile, budget=budget, wake=wake, requirements=requirements,
             outcome=outcome, policy=policy, lifecycle=lifecycle,
             reservation=reservation, continuity=continuity,
-            from_snapshot=from_snapshot,
+            from_snapshot=from_snapshot, secrets=secrets, service=service, bootstrap=bootstrap, stuck_after_s=stuck_after_s, workspace=workspace,
         )
         headers: dict[str, str] = {}
         response = self._client._request(
@@ -440,6 +493,16 @@ class Sandboxes:
 
 
 class Sandbox(_SandboxState):
+    @property
+    def agent_events(self):
+        from ._agent_runs import AgentEvents
+        return AgentEvents(self._client, _valid_id(self.id, "sandbox"))
+
+    @property
+    def agent_runs(self):
+        from ._agent_runs import AgentRuns
+        return AgentRuns(self._client, _valid_id(self.id, "sandbox"))
+
     def __init__(
         self,
         client: Any | None = None,
@@ -447,6 +510,7 @@ class Sandbox(_SandboxState):
         *,
         image: str | None = None,
         name: str | None = None,
+        profile: str | None = None,
         budget: float | None = None,
         wake: str | None = None,
         requirements: dict[str, Any] | None = None,
@@ -456,6 +520,11 @@ class Sandbox(_SandboxState):
         reservation: dict[str, Any] | None = None,
         continuity: dict[str, Any] | None = None,
         from_snapshot: str | None = None,
+        secrets: list[str] | None = None,
+        service: dict[str, Any] | None = None,
+        bootstrap: dict[str, str] | None = None,
+        stuck_after_s: int | None = None,
+        workspace: dict[str, Any] | None = None,
         idempotency_key: str | None = None,
     ):
         if client is None and image is None and not name:
@@ -471,6 +540,7 @@ class Sandbox(_SandboxState):
                 created = self._client.sandboxes.create(
                     image=image,
                     name=name,
+                    profile=profile,
                     budget=budget,
                     wake=wake,
                     requirements=requirements,
@@ -479,7 +549,7 @@ class Sandbox(_SandboxState):
                     lifecycle=lifecycle,
                     reservation=reservation,
                     continuity=continuity,
-                    from_snapshot=from_snapshot,
+                    from_snapshot=from_snapshot, secrets=secrets, service=service, bootstrap=bootstrap, stuck_after_s=stuck_after_s, workspace=workspace,
                     idempotency_key=idempotency_key,
                 )
             except BaseException:
@@ -523,23 +593,48 @@ class Sandbox(_SandboxState):
         self._absorb(self._client._one(self._client._request("GET", path), "GET", path))
         return self
 
+    def refresh_secrets(self) -> None:
+        """Bind current secret versions for subsequent commands."""
+        path = f"/v1/sandboxes/{_valid_id(self.id, 'sandbox')}/refresh-secrets"
+        self._client._request("POST", path)
+
+    def metrics(self) -> dict[str, Any]:
+        """Read actual measurements and 24 hour history. Missing measurements are None."""
+        path = f"/v1/sandboxes/{_valid_id(self.id, 'sandbox')}/metrics"
+        return _obj(self._client._request("GET", path))
+
     def events(self, *, after: int = 0) -> list[Event]:
         """Read up to 100 lifecycle and denied-host events after an event sequence."""
         path = f"/v1/sandboxes/{_valid_id(self.id, 'sandbox')}/events"
         response = self._client._request("GET", path, params={"after": after})
         return [Event.from_dict(_obj(row)) for row in _rows(_obj(response).get("events"))]
 
+    def request(
+        self, method: str, path: str = "/", *, port: int,
+        json: Any = None, content: bytes | None = None,
+    ) -> bytes:
+        """Send JSON or raw bytes to a guest HTTP port and return bounded bytes.
+
+        Requests are never retried. A timed out mutation may have executed.
+        """
+        if content is not None and (not isinstance(content, bytes) or json is not None):
+            raise ValidationError("content must be bytes and cannot be combined with json")
+        route = _http_path(self.id, port, path, method)
+        return self._client._request(method, route, json=json, content=content, raw=True,
+                                     max_bytes=65536, max_retries=0)
+
     def exec(
         self, command: str | list[str] | tuple[str, ...], *, cwd: str | None = None,
         env: dict[str, str] | None = None, timeout_seconds: int | None = None,
-        stdin: bool = False, idempotency_key: str | None = None,
+        stdin: bool = False, tty: bool = False, rows: int | None = None,
+        cols: int | None = None, idempotency_key: str | None = None,
     ) -> "SandboxExec":
         sandbox_id = _valid_id(self.id, "sandbox")
         path = f"/v1/sandboxes/{sandbox_id}/exec"
         headers: dict[str, str] = {}
         response = self._client._request(
             "POST", path,
-            json=_exec_payload(command, cwd=cwd, env=env, timeout_seconds=timeout_seconds, stdin=stdin),
+            json=_exec_payload(command, cwd=cwd, env=env, timeout_seconds=timeout_seconds, stdin=stdin, tty=tty, rows=rows, cols=cols),
             idempotency_key=idempotency_key or f"sandbox-exec-{uuid.uuid4()}",
             headers_out=headers,
         )
@@ -600,14 +695,17 @@ class SandboxExec(_SandboxExecState):
     def iter_output(self, *, after: int = 0, follow: bool = True) -> Iterator[SandboxOutputFrame]:
         cursor = after
         while True:
+            previous_cursor = cursor
             page = self.output(after=cursor, wait=follow)
             for frame in page.frames:
                 if frame.sequence > cursor:
                     cursor = frame.sequence
                     yield frame
             cursor = max(cursor, page.next_sequence)
-            if page.done or not follow:
+            if (page.done and page.complete) or not follow:
                 return
+            if page.done and cursor <= previous_cursor:
+                raise NodusError(f"Sandbox execution final output is unavailable after sequence {cursor}. Retry output(after={cursor}).")
 
     def write(
         self, data: bytes | str = b"", *, eof: bool = False,
@@ -623,6 +721,19 @@ class SandboxExec(_SandboxExecState):
         return SandboxInputReceipt.from_dict(self._client._one(response, "POST", path))
 
 
+    def resize(self, rows: int, cols: int) -> None:
+        """Set terminal dimensions for a tty execution."""
+        _terminal_size(rows, cols)
+        self._client._request("POST", self._path() + "/resize", json={"rows": rows, "cols": cols})
+
+    def cancel(self) -> "SandboxExec":
+        """Request cancellation without terminating the sandbox."""
+        path = self._path() + "/cancel"
+        response = self._client._request("POST", path, json={})
+        self._absorb(self._client._one(response, "POST", path))
+        return self
+
+
 class AsyncSandboxes:
     def __init__(self, client: Any):
         self._client = client
@@ -632,6 +743,7 @@ class AsyncSandboxes:
         *,
         image: str | None = None,
         name: str | None = None,
+        profile: str | None = None,
         budget: float | None = None,
         wake: str | None = None,
         requirements: dict[str, Any] | None = None,
@@ -641,13 +753,18 @@ class AsyncSandboxes:
         reservation: dict[str, Any] | None = None,
         continuity: dict[str, Any] | None = None,
         from_snapshot: str | None = None,
+        secrets: list[str] | None = None,
+        service: dict[str, Any] | None = None,
+        bootstrap: dict[str, str] | None = None,
+        stuck_after_s: int | None = None,
+        workspace: dict[str, Any] | None = None,
         idempotency_key: str | None = None,
     ) -> "AsyncSandbox":
         body = _create_payload(
-            image=image, name=name, budget=budget, wake=wake, requirements=requirements,
+            image=image, name=name, profile=profile, budget=budget, wake=wake, requirements=requirements,
             outcome=outcome, policy=policy, lifecycle=lifecycle,
             reservation=reservation, continuity=continuity,
-            from_snapshot=from_snapshot,
+            from_snapshot=from_snapshot, secrets=secrets, service=service, bootstrap=bootstrap, stuck_after_s=stuck_after_s, workspace=workspace,
         )
         headers: dict[str, str] = {}
         response = await self._client._request(
@@ -702,6 +819,16 @@ class AsyncSandboxes:
 
 
 class AsyncSandbox(_SandboxState):
+    @property
+    def agent_events(self):
+        from ._agent_runs import AsyncAgentEvents
+        return AsyncAgentEvents(self._client, _valid_id(self.id, "sandbox"))
+
+    @property
+    def agent_runs(self):
+        from ._agent_runs import AsyncAgentRuns
+        return AsyncAgentRuns(self._client, _valid_id(self.id, "sandbox"))
+
     def __init__(self, client: Any, sandbox_id: str = ""):
         self._client = client
         self._owned_client = False
@@ -717,23 +844,45 @@ class AsyncSandbox(_SandboxState):
         self._absorb(self._client._one(await self._client._request("GET", path), "GET", path))
         return self
 
+    async def refresh_secrets(self) -> None:
+        """Bind current secret versions for subsequent commands."""
+        path = f"/v1/sandboxes/{_valid_id(self.id, 'sandbox')}/refresh-secrets"
+        await self._client._request("POST", path)
+
+    async def metrics(self) -> dict[str, Any]:
+        """Read actual measurements and 24 hour history. Missing measurements are None."""
+        path = f"/v1/sandboxes/{_valid_id(self.id, 'sandbox')}/metrics"
+        return _obj(await self._client._request("GET", path))
+
     async def events(self, *, after: int = 0) -> list[Event]:
         """Read up to 100 lifecycle and denied-host events after an event sequence."""
         path = f"/v1/sandboxes/{_valid_id(self.id, 'sandbox')}/events"
         response = await self._client._request("GET", path, params={"after": after})
         return [Event.from_dict(_obj(row)) for row in _rows(_obj(response).get("events"))]
 
+    async def request(
+        self, method: str, path: str = "/", *, port: int,
+        json: Any = None, content: bytes | None = None,
+    ) -> bytes:
+        """Send JSON or raw bytes and return bounded bytes without automatic retries."""
+        if content is not None and (not isinstance(content, bytes) or json is not None):
+            raise ValidationError("content must be bytes and cannot be combined with json")
+        route = _http_path(self.id, port, path, method)
+        return await self._client._request(method, route, json=json, content=content, raw=True,
+                                           max_bytes=65536, max_retries=0)
+
     async def exec(
         self, command: str | list[str] | tuple[str, ...], *, cwd: str | None = None,
         env: dict[str, str] | None = None, timeout_seconds: int | None = None,
-        stdin: bool = False, idempotency_key: str | None = None,
+        stdin: bool = False, tty: bool = False, rows: int | None = None,
+        cols: int | None = None, idempotency_key: str | None = None,
     ) -> "AsyncSandboxExec":
         sandbox_id = _valid_id(self.id, "sandbox")
         path = f"/v1/sandboxes/{sandbox_id}/exec"
         headers: dict[str, str] = {}
         response = await self._client._request(
             "POST", path,
-            json=_exec_payload(command, cwd=cwd, env=env, timeout_seconds=timeout_seconds, stdin=stdin),
+            json=_exec_payload(command, cwd=cwd, env=env, timeout_seconds=timeout_seconds, stdin=stdin, tty=tty, rows=rows, cols=cols),
             idempotency_key=idempotency_key or f"sandbox-exec-{uuid.uuid4()}",
             headers_out=headers,
         )
@@ -794,14 +943,17 @@ class AsyncSandboxExec(_SandboxExecState):
     async def iter_output(self, *, after: int = 0, follow: bool = True) -> AsyncIterator[SandboxOutputFrame]:
         cursor = after
         while True:
+            previous_cursor = cursor
             page = await self.output(after=cursor, wait=follow)
             for frame in page.frames:
                 if frame.sequence > cursor:
                     cursor = frame.sequence
                     yield frame
             cursor = max(cursor, page.next_sequence)
-            if page.done or not follow:
+            if (page.done and page.complete) or not follow:
                 return
+            if page.done and cursor <= previous_cursor:
+                raise NodusError(f"Sandbox execution final output is unavailable after sequence {cursor}. Retry output(after={cursor}).")
 
     async def write(
         self, data: bytes | str = b"", *, eof: bool = False,
@@ -815,3 +967,26 @@ class AsyncSandboxExec(_SandboxExecState):
             idempotency_key=idempotency_key or f"sandbox-stdin-{uuid.uuid4()}",
         )
         return SandboxInputReceipt.from_dict(self._client._one(response, "POST", path))
+
+    async def resize(self, rows: int, cols: int) -> None:
+        """Set terminal dimensions for a tty execution."""
+        _terminal_size(rows, cols)
+        await self._client._request("POST", self._path() + "/resize", json={"rows": rows, "cols": cols})
+
+    async def cancel(self) -> "AsyncSandboxExec":
+        """Request cancellation without terminating the sandbox."""
+        path = self._path() + "/cancel"
+        response = await self._client._request("POST", path, json={})
+        self._absorb(self._client._one(response, "POST", path))
+        return self
+
+
+class Devbox(Sandbox):
+    """Create or reconnect to a named sandbox using server devbox defaults."""
+
+    def __init__(self, *, name: str, image: str | None = None, **kwargs: Any):
+        if not isinstance(name, str) or not name.strip():
+            raise ValidationError("devbox name must be nonempty text")
+        if {"client", "sandbox_id"} & kwargs.keys():
+            raise ValidationError("Devbox creates a named session, not an internal handle")
+        super().__init__(name=name, image=image, profile="devbox", **kwargs)

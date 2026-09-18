@@ -21,6 +21,7 @@ _CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 
 __all__ = [
     "NodusError",
+    "StepOutcomeUnknown", "StepDefinitionConflict", "StepResultExpired", "StepFailed",
     "ConfigurationError",
     "AuthenticationError",
     "NotFoundError",
@@ -340,3 +341,19 @@ def error_from_response(
             message, retry_after=retry_after, retry_after_header=retry_after_header, **kwargs
         )
     return cls(message, **kwargs)
+
+
+class StepOutcomeUnknown(NodusError):
+    """The journal cannot establish a safe result for an external operation."""
+
+
+class StepDefinitionConflict(NodusError):
+    """An existing run or step identity has a different definition."""
+
+
+class StepResultExpired(NodusError):
+    """A completed result is no longer retained and cannot be re-executed."""
+
+
+class StepFailed(NodusError):
+    """The journal retains a known failure for this step."""

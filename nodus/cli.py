@@ -23,7 +23,7 @@ from typing import Any
 from . import Client, SandboxExec, __version__, _is_header_safe, _redact, _resolve_base_url, _current_hosted_url, config, login
 from ._terminal import clean, compute_label, format_cost, show_table, show_workload, status_label
 from ._brief import STATUS_FILTERS
-from .errors import NodusError, NotFoundError, AuthenticationError, APIConnectionError, APITimeoutError
+from .errors import ValidationError, NodusError, NotFoundError, AuthenticationError, APIConnectionError, APITimeoutError
 from .types import _num
 from ._workload_file import load_workload_file, write_workload_file
 
@@ -222,6 +222,55 @@ def _cmd_assets(args: argparse.Namespace) -> int:
                    empty="No assets yet. Use nodus upload FILE to add one.", plain=args.plain)
     return 0
 
+
+def _devboxes(client, *, name=None):
+    cursor = None
+    seen = set()
+    while True:
+        rows, next_cursor = client.sandboxes.list_page(cursor=cursor, name=name)
+        for box in rows:
+            if box.envelope.get("profile") == "devbox" and (name is None or box.envelope.get("name", "") == name):
+                yield box
+        if next_cursor is None:
+            return
+        if next_cursor in seen:
+            raise ValidationError("Sandbox pagination did not advance. Retry the command.")
+        seen.add(next_cursor)
+        cursor = next_cursor
+
+
+def _cmd_devbox(args: argparse.Namespace) -> int:
+    with Client(base_url=args.base_url) as client:
+        if args.devbox_cmd == "up":
+            if not args.repo and any((args.ref, args.setup, args.dotfiles)):
+                raise ValidationError("--ref, --setup and --dotfiles require --repo")
+            bootstrap = None
+            if args.repo:
+                bootstrap = {key: value for key, value in (("repo", args.repo), ("ref", args.ref), ("setup", args.setup), ("dotfiles", args.dotfiles)) if value}
+            box = client.sandboxes.create(profile="devbox", name=args.name, image=args.image, budget=args.budget, bootstrap=bootstrap)
+            print(_safe_line(box.id))
+            return 0
+        if args.devbox_cmd == "shell":
+            from ._shell import shell
+            matches = [box for box in _devboxes(client, name=args.name) if not box.is_terminal]
+            if len(matches) != 1:
+                raise ValidationError("Expected exactly one active devbox with that name. Use nodus devbox ls.")
+            return shell(matches[0])
+        if args.devbox_cmd == "rm":
+            matches = [box for box in _devboxes(client, name=args.name) if not box.is_terminal]
+            if len(matches) != 1:
+                raise ValidationError("Expected exactly one active devbox with that name. Use nodus devbox ls.")
+            matches[0].terminate()
+            print(_safe_line(matches[0].id))
+            return 0
+        boxes = list(_devboxes(client))
+        if args.json:
+            print(json.dumps([{"id": box.id, "name": box.envelope.get("name", ""), "state": box.state, "cost_usd": box.cost_usd} for box in boxes], indent=2, default=str))
+        else:
+            show_table(["Devbox", "Name", "Status", "Cost"],
+                       [[box.id, box.envelope.get("name", ""), box.state, format_cost(box.cost_usd)] for box in boxes],
+                       empty="No devboxes yet.", plain=args.plain)
+        return 0
 
 def _cmd_freeze(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
@@ -739,7 +788,7 @@ class _CommandHelpFormatter(argparse.RawDescriptionHelpFormatter):
             descriptions = {choice.dest: choice.help for choice in action._choices_actions}
             groups = (
                 ("Setup", ("login", "logout", "init")),
-                ("Run", ("run", "submit", "sandbox")),
+                ("Run", ("run", "submit", "sandbox", "devbox")),
                 ("Monitor", ("list", "status", "wait", "logs", "cancel")),
                 ("Results", ("download",)),
                 ("Advanced", ("upload", "assets", "pools", "events", "artifacts", "ledger", "explain")),
@@ -812,6 +861,30 @@ Use nodus COMMAND --help for command options.""",
     u = sub.add_parser("upload", help="upload a data file or archive")
     u.add_argument("file")
     sub.add_parser("assets", help="list uploaded and imported data")
+
+    devbox = sub.add_parser("devbox", help="create and manage devbox sandboxes")
+    devbox_sub = devbox.add_subparsers(dest="devbox_cmd", required=True, metavar="COMMAND")
+    devbox_up = devbox_sub.add_parser("up", help="create or reconnect to a named devbox")
+    devbox_up.add_argument("name")
+    devbox_up.add_argument("--image", default=None)
+    devbox_up.add_argument("--budget", type=_positive_cost, default=None)
+    devbox_up.add_argument("--repo", help="connected GitHub repository as owner/name")
+    devbox_up.add_argument("--ref", help="branch name or refs/tags/name")
+    devbox_up.add_argument("--setup", help="setup command recorded as an ordinary sandbox execution")
+    devbox_up.add_argument("--dotfiles", help="connected GitHub dotfiles repository as owner/name")
+    devbox_ls = devbox_sub.add_parser("ls", help="list devbox sandboxes")
+    devbox_ls.add_argument("--json", action="store_true")
+    devbox_shell = devbox_sub.add_parser("shell", help="open an interactive terminal, Ctrl+] disconnects")
+    devbox_shell.add_argument("name")
+    devbox_rm = devbox_sub.add_parser("rm", help="terminate an active devbox by name")
+    devbox_rm.add_argument("name")
+    benchmark = sub.add_parser("benchmark", help="run and inspect a hardware matrix")
+    benchmark_sub = benchmark.add_subparsers(dest="benchmark_cmd", required=True)
+    benchmark_run = benchmark_sub.add_parser("run", help="submit a benchmark JSON request")
+    benchmark_run.add_argument("file")
+    benchmark_run.add_argument("--idempotency-key", required=True)
+    benchmark_get = benchmark_sub.add_parser("get", help="show a benchmark report")
+    benchmark_get.add_argument("benchmark_id")
 
     pools = sub.add_parser("pools", help="measure customer-owned GPU hosts")
     pools_sub = pools.add_subparsers(dest="pools_cmd", required=True, metavar="COMMAND")
@@ -975,6 +1048,8 @@ def main(argv: list[str] | None = None) -> int:
         "assets": lambda: _cmd_assets(args),
         "pools": lambda: _cmd_pools(args),
         "sandbox": lambda: _cmd_sandbox(args),
+        "devbox": lambda: _cmd_devbox(args),
+        "benchmark": lambda: _cmd_benchmark(args),
         "list": lambda: _cmd_list(args),
         "status": lambda: _cmd_status(args),
         "wait": lambda: _cmd_status(args),
@@ -1015,6 +1090,27 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         return 130
 
+
+
+
+def _cmd_benchmark(args: argparse.Namespace) -> int:
+    with Client(base_url=args.base_url) as client:
+        if args.benchmark_cmd == "get":
+            result = client.get_benchmark(args.benchmark_id)
+        else:
+            source = Path(args.file)
+            if source.stat().st_size > 1_000_000:
+                raise ValueError("benchmark request exceeds 1 MB")
+            request = json.loads(source.read_text())
+            if not isinstance(request, dict) or set(request) != {"workload", "matrix", "budget_usd"}:
+                raise ValueError("benchmark request requires workload, matrix and budget_usd")
+            matrix = request["matrix"]
+            if not isinstance(matrix, dict) or set(matrix) != {"gpu_families", "batch_sizes", "regions", "repetitions"}:
+                raise ValueError("matrix requires gpu_families, batch_sizes, regions and repetitions")
+            result = client.benchmark(workload=request["workload"], budget=request["budget_usd"],
+                                      idempotency_key=args.idempotency_key, **matrix)
+        print(json.dumps(result, indent=2, allow_nan=False))
+    return 0
 
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())

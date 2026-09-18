@@ -47,3 +47,5 @@ their progress, and collect results. Use the [parameter reference](reference/par
 for supported arguments and the [OpenAPI specification](../openapi/openapi.yaml)
 for HTTP schemas. Set a budget, keep the workload ID, and check `succeeded` after
 waiting. An accepted workload is not necessarily a completed workload.
+
+- [Devbox preview](guides/devboxes.md) explains named development sessions and server defaults.

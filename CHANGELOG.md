@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Submit benchmark matrices with an explicit total budget and idempotency key, then inspect the server report through the SDK or CLI.
+- Add registered sandbox services, bounded HTTP requests and a scheduled micro-batch example.
+
+- Expose server-reported per-unit latency and posted cost through `workload.unit_metrics`.
+
 - Read pool forecasts, issued calibration, and paginated advisory recommendations with sync and async clients.
 - Require explicit account monthly price consent before enabling Predict.
 - Record manual recommendation outcomes without turning estimates into measured savings.

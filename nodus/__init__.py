@@ -38,6 +38,9 @@ from pathlib import Path
 from ._freeze import WorkloadFreeze
 from ._outputs import download_path, verified_file, output_destinations
 from ._assets import Asset, Assets, AsyncAssets
+from ._secrets import Secrets, AsyncSecrets
+from ._workspaces import Workspaces, AsyncWorkspaces
+
 from ._pool_predict import PredictSubscription, ForecastPoint, ForecastQueue, ForecastSeries, ForecastCalibration, PoolForecastSnapshot, PoolForecast, PoolRecommendation, PoolRecommendations, RecommendationOutcome
 from ._pool_act_proposals import PoolActOutcome, PoolActProposal, PoolActProposals
 from ._pool_actions import PoolActionPolicy, PoolActionSettings, PoolShadowRun, PoolShadowRuns
@@ -48,6 +51,7 @@ from ._sandboxes import (
     AsyncSandboxExec,
     AsyncSandboxes,
     Sandbox,
+    Devbox,
     SandboxExec,
     SandboxExecState,
     SandboxInputReceipt,
@@ -97,6 +101,7 @@ from .types import (
     Route,
     Settlement,
     StageRun,
+    UnitMetrics,
     WorkloadStatus,
 )
 
@@ -110,6 +115,7 @@ except PackageNotFoundError:
     __version__ = "0.0.0+source"
 
 __all__ = [
+    "agent", "step", "step_context", "StepOutcomeUnknown", "StepDefinitionConflict", "StepResultExpired", "StepFailed",
     "Asset",
     "Pool",
     "PoolHost",
@@ -141,7 +147,10 @@ __all__ = [
     "Workload",
     "AsyncWorkload",
     "Sandboxes",
+    "Secrets",
+    "AsyncSecrets",
     "Sandbox",
+    "Devbox",
     "SandboxExec",
     "AsyncSandboxes",
     "AsyncSandbox",
@@ -153,6 +162,7 @@ __all__ = [
     "SandboxInputReceipt",
     "Route",
     "StageRun",
+    "UnitMetrics",
     "Output",
     "Source",
     "Requirements",
@@ -487,6 +497,7 @@ class _WorkloadState:
     meter: Meter | None = None
     revision: int = 1
     stages: list[StageRun] = field(default_factory=list)
+    unit_metrics: UnitMetrics | None = None
     #: True when the control plane answered from an idempotency record: the
     #: submission already existed, this call did not create a second run.
     replayed: bool = False
@@ -525,6 +536,8 @@ class _WorkloadState:
         if ceiling is not None:
             self.budget_usd = _num(ceiling, self.budget_usd)
         self.revision = _int(d.get("revision"), self.revision) or self.revision
+        if "unit_metrics" in d:
+            self.unit_metrics = UnitMetrics.from_dict(d["unit_metrics"])
         if "stages" in d:
             self.stages = [StageRun.from_dict(s) for s in _rows(d.get("stages"))]
         self.created_at = _dt(d.get("created_at")) or self.created_at
@@ -689,6 +702,8 @@ class Client(_Transport):
         idempotency_key: str | None = None,
         params: dict[str, Any] | None = None,
         text: bool = False,
+        raw: bool = False,
+        content: bytes | None = None,
         headers_out: dict[str, str] | None = None,
         max_bytes: int | None = None,
         timeout: float | None = None,
@@ -702,15 +717,15 @@ class Client(_Transport):
         slept = 0.0
         while True:
             delay: float | None = None
-            capped: str | None = None
+            capped: bytes | None = None
             try:
                 if max_bytes is None:
                     resp = self._http.request(
-                        method, path, json=json, headers=headers, params=params, **request_options
+                        method, path, json=json, content=content, headers=headers, params=params, **request_options
                     )
                 else:
                     with self._http.stream(
-                        method, path, json=json, headers=headers, params=params, **request_options
+                        method, path, json=json, content=content, headers=headers, params=params, **request_options
                     ) as resp:
                         if resp.status_code < 400:
                             chunks, total = [], 0
@@ -719,7 +734,7 @@ class Client(_Transport):
                                 if total > max_bytes:
                                     raise self._too_big(path, max_bytes)
                                 chunks.append(chunk)
-                            capped = b"".join(chunks).decode("utf-8", "replace")
+                            capped = b"".join(chunks)
                         else:
                             resp.read()
             except httpx.TimeoutException as exc:
@@ -760,7 +775,9 @@ class Client(_Transport):
             if headers_out is not None:
                 headers_out.update(resp.headers)
             if capped is not None:
-                return capped
+                return capped if raw else capped.decode("utf-8", "replace")
+            if raw:
+                return resp.content
             if not resp.content:
                 return "" if text else None
             # The log endpoint answers text/plain, because its whole purpose is
@@ -864,6 +881,25 @@ class Client(_Transport):
             raise NodusError("submit returned no workload id", body=res)
         return wl
 
+    def benchmark(self, *, workload: dict[str, Any], gpu_families: list[str],
+                  batch_sizes: list[int], regions: list[str], repetitions: int,
+                  budget: float, idempotency_key: str) -> dict[str, Any]:
+        """Submit a hardware matrix under one server-allocated spending cap.
+
+        Reuse the explicit idempotency key after any uncertain response.
+        Returned costs and budget allocations are supplied by the server.
+        """
+        from ._benchmarks import request_payload
+        payload = request_payload(workload, gpu_families, batch_sizes, regions,
+                                  repetitions, budget, idempotency_key)
+        return self._one(self._request("POST", "/v1/benchmarks", json=payload,
+                         idempotency_key=idempotency_key), "POST", "/v1/benchmarks")
+
+    def get_benchmark(self, benchmark_id: str) -> dict[str, Any]:
+        """Read cell statuses, measurements and workload links."""
+        path = f"/v1/benchmarks/{_valid_id(benchmark_id)}"
+        return self._one(self._request("GET", path), "GET", path)
+
     @property
     def pools(self) -> Pools:
         """Manage customer-owned pools and observe-only hosts."""
@@ -873,6 +909,16 @@ class Client(_Transport):
     def assets(self) -> Assets:
         """Upload and import code or data for workloads."""
         return Assets(self)
+
+    @property
+    def secrets(self) -> Secrets:
+        """Manage tenant secrets without reading their values."""
+        return Secrets(self)
+
+    @property
+    def workspaces(self) -> Workspaces:
+        """Manage named persistent workspace metadata."""
+        return Workspaces(self)
 
     @property
     def sandboxes(self) -> Sandboxes:
@@ -1300,6 +1346,16 @@ class AsyncClient(_Transport):
         return self._api_key_shown
 
     @property
+    def secrets(self) -> AsyncSecrets:
+        """Manage tenant secrets without reading their values."""
+        return AsyncSecrets(self)
+
+    @property
+    def workspaces(self) -> AsyncWorkspaces:
+        """Manage named persistent workspace metadata."""
+        return AsyncWorkspaces(self)
+
+    @property
     def sandboxes(self) -> AsyncSandboxes:
         """Create and reconnect to durable agent execution environments."""
         return AsyncSandboxes(self)
@@ -1322,6 +1378,8 @@ class AsyncClient(_Transport):
         idempotency_key: str | None = None,
         params: dict[str, Any] | None = None,
         text: bool = False,
+        raw: bool = False,
+        content: bytes | None = None,
         headers_out: dict[str, str] | None = None,
         max_bytes: int | None = None,
         timeout: float | None = None,
@@ -1335,15 +1393,15 @@ class AsyncClient(_Transport):
         slept = 0.0
         while True:
             delay: float | None = None
-            capped: str | None = None
+            capped: bytes | None = None
             try:
                 if max_bytes is None:
                     resp = await self._http.request(
-                        method, path, json=json, headers=headers, params=params, **request_options
+                        method, path, json=json, content=content, headers=headers, params=params, **request_options
                     )
                 else:
                     async with self._http.stream(
-                        method, path, json=json, headers=headers, params=params, **request_options
+                        method, path, json=json, content=content, headers=headers, params=params, **request_options
                     ) as resp:
                         if resp.status_code < 400:
                             chunks, total = [], 0
@@ -1352,7 +1410,7 @@ class AsyncClient(_Transport):
                                 if total > max_bytes:
                                     raise self._too_big(path, max_bytes)
                                 chunks.append(chunk)
-                            capped = b"".join(chunks).decode("utf-8", "replace")
+                            capped = b"".join(chunks)
                         else:
                             await resp.aread()
             except httpx.TimeoutException as exc:
@@ -1393,7 +1451,9 @@ class AsyncClient(_Transport):
             if headers_out is not None:
                 headers_out.update(resp.headers)
             if capped is not None:
-                return capped
+                return capped if raw else capped.decode("utf-8", "replace")
+            if raw:
+                return resp.content
             if not resp.content:
                 return "" if text else None
             # The log endpoint answers text/plain, because its whole purpose is
@@ -1475,6 +1535,21 @@ class AsyncClient(_Transport):
         if not wl.id:
             raise NodusError("submit returned no workload id", body=res)
         return wl
+
+    async def benchmark(self, *, workload: dict[str, Any], gpu_families: list[str],
+                        batch_sizes: list[int], regions: list[str], repetitions: int,
+                        budget: float, idempotency_key: str) -> dict[str, Any]:
+        """Submit a hardware matrix under one server-allocated spending cap."""
+        from ._benchmarks import request_payload
+        payload = request_payload(workload, gpu_families, batch_sizes, regions,
+                                  repetitions, budget, idempotency_key)
+        return self._one(await self._request("POST", "/v1/benchmarks", json=payload,
+                         idempotency_key=idempotency_key), "POST", "/v1/benchmarks")
+
+    async def get_benchmark(self, benchmark_id: str) -> dict[str, Any]:
+        """Read cell statuses, measurements and workload links."""
+        path = f"/v1/benchmarks/{_valid_id(benchmark_id)}"
+        return self._one(await self._request("GET", path), "GET", path)
 
     @property
     def pools(self) -> AsyncPools:
@@ -1839,3 +1914,11 @@ class AsyncWorkload(_WorkloadState):
 
     async def cancel(self) -> None:
         await self._client.cancel(self.id)
+
+
+from . import _agent as agent
+from ._steps import step, step_context
+from .errors import StepOutcomeUnknown, StepDefinitionConflict, StepResultExpired, StepFailed
+
+from ._agent_runs import AgentRun
+__all__.append("AgentRun")

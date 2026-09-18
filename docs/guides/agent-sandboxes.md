@@ -225,3 +225,25 @@ async def main():
 
 asyncio.run(main())
 ```
+
+## Resource measurements and alerts
+
+Read current measurements and the last 24 hours of history with
+`box.metrics()` or `await box.metrics()` for an asynchronous sandbox.
+The response includes `latest`, `history`, `rollup_24h`, `last_output_at`, and
+the billing `meter`. Missing measurements are `None`. Check `observed_at` on
+the latest sample because an idle, suspended, or unreachable runtime may have
+no recent measurement. Samples normally arrive every 30 seconds.
+
+CPU seconds are cumulative within one runtime generation. Resident memory sums
+process RSS and can count shared pages more than once. Disk usage measures
+regular file logical bytes in the workspace. Rollups measure counter changes
+within each generation and never fill gaps with estimated usage.
+
+Set `stuck_after_s=60` when creating a sandbox to request an alert after an
+active command has produced no output for one minute. The default is 30 minutes.
+This no-output signal also applies to quiet servers and does not stop execution.
+The account webhook and `box.events()` receive `sandbox.stuck`,
+`sandbox.spend_rate`, and `sandbox.budget_warning` events. Spend-rate alerts use
+the existing billing rate and budget, and repeat only after the qualifying rate
+at least doubles.
