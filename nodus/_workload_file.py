@@ -225,7 +225,9 @@ def load_workload_file(path: str | Path = 'nodus.toml') -> dict[str, Any]:
                 _fail(key, 'at most 8 asset inputs are supported')
             names = set()
             for item in value:
-                _table(item, key, {'name', 'asset_id'})
+                _table(item, key, {'name', 'asset_id', 'cache'})
+                if 'cache' in item and type(item['cache']) is not bool:
+                    _fail('inputs.cache', 'expected a boolean')
                 for field in ('name', 'asset_id'):
                     _text(item.get(field), f'inputs.{field}')
                 if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{0,63}', item['name']):

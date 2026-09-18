@@ -160,7 +160,7 @@ def build_payload(
     *,
     image: str | None = None,
     source_asset_id: str | None = None,
-    inputs: list[dict[str, str]] | None = None,
+    inputs: list[dict[str, str | bool]] | None = None,
     outputs: dict[str, str] | None = None,
     command: list[str] | str | None = None,
     requirements: dict[str, Any] | None = None,
@@ -377,7 +377,7 @@ def validate_requirements(requirements: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def _validate_assets(source_asset_id: str | None, inputs: list[dict[str, str]] | None) -> None:
+def _validate_assets(source_asset_id: str | None, inputs: list[dict[str, str | bool]] | None) -> None:
     def valid_id(value: Any) -> bool:
         return isinstance(value, str) and re.fullmatch(r"asset_[A-Za-z0-9-]{1,64}", value) is not None
     if source_asset_id is not None and not valid_id(source_asset_id):
@@ -388,8 +388,10 @@ def _validate_assets(source_asset_id: str | None, inputs: list[dict[str, str]] |
         raise ValueError("inputs must be a list of at most eight named assets.")
     names: set[str] = set()
     for value in inputs:
-        if not isinstance(value, dict) or set(value) != {"name", "asset_id"}:
+        if not isinstance(value, dict) or not {"name", "asset_id"} <= set(value) or not set(value) <= {"name", "asset_id", "cache"}:
             raise ValueError("Each input requires name and asset_id. Import or upload the data first.")
+        if "cache" in value and type(value["cache"]) is not bool:
+            raise ValueError("Input cache must be a boolean.")
         name = value["name"]
         if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,63}", name) or name in names:
             raise ValueError("Input names must be unique identifiers starting with a letter.")

@@ -79,10 +79,17 @@ Use asset IDs returned by upload or import, not paths or URLs. Their format is
 `asset_` followed by 1 to 64 letters, digits, or hyphens. Omitted
 `source_asset_id` attaches no code asset. Omitted `inputs` attaches no named assets.
 
-`inputs` accepts at most eight dictionaries, each containing exactly `name` and
-`asset_id`. Names must be unique, start with a letter, and contain at most 64
+`inputs` accepts at most eight dictionaries, each containing `name` and
+`asset_id`, with an optional boolean `cache` flag. Names must be unique, start with a letter, and contain at most 64
 letters, digits, or underscores. For example, `training_data` is valid and
 `training-data` is not. The input directory is exposed as `NODUS_INPUT_training_data`.
+
+Set `cache: True` to allow reuse of verified input content within your team and
+execution region. Cache storage uses workspace size and count limits. The first
+workload that fills a cache remains its storage billing owner, including after
+termination, under its existing spending cap. Storage billing stays disabled
+until a storage rate is configured. An unavailable cache falls back to the
+ordinary input. This flag does not stream external bucket data.
 
 Output names use only letters, digits, dots, underscores, or hyphens. They must
 be distinct without regard to case, cannot be `.` or `..`, and cannot end in a

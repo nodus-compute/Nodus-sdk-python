@@ -47,7 +47,7 @@ def test_python_run_sends_new_fields(asynchronous):
     http = httpx.AsyncClient if asynchronous else httpx.Client
     client._http = http(base_url="https://nodus.invalid", transport=httpx.MockTransport(handler))
     args = dict(command=["python", "train.py"], budget=5, source_asset_id="asset_code",
-                inputs=[{"name": "data", "asset_id": "asset_data"}], outputs={"model": "model.bin"})
+                inputs=[{"name": "data", "asset_id": "asset_data", "cache": True}], outputs={"model": "model.bin"})
     if asynchronous:
         async def run():
             async with client:
@@ -59,3 +59,17 @@ def test_python_run_sends_new_fields(asynchronous):
     assert result.id == "wl_test"
     assert seen[0]["stages"][0]["source"]["asset_id"] == "asset_code"
     assert seen[0]["inputs"][0]["asset_id"] == "asset_data"
+    assert seen[0]["inputs"][0]["cache"] is True
+
+@pytest.mark.parametrize("cache", [True, False])
+def test_input_cache_flag_survives_submission(cache):
+    payload = build_payload(command=["python", "train.py"], budget=5,
+                            inputs=[{"name": "weights", "asset_id": "asset_weights", "cache": cache}])
+    assert payload["inputs"] == [{"name": "weights", "asset_id": "asset_weights", "cache": cache}]
+
+
+@pytest.mark.parametrize("cache", [1, "true", None])
+def test_input_cache_requires_explicit_boolean(cache):
+    with pytest.raises(ValueError):
+        build_payload(command=["python", "train.py"], budget=5,
+                      inputs=[{"name": "weights", "asset_id": "asset_weights", "cache": cache}])

@@ -220,3 +220,12 @@ def test_server_asset_constraints_are_checked_locally(tmp_path, extra):
     path.write_text('command = ["python", "train.py"]\nbudget = 5\n' + extra)
     with pytest.raises(ValueError):
         load_workload_file(path)
+
+
+def test_cached_input_flag_in_workload_file(tmp_path):
+    path = tmp_path / 'cached.toml'
+    path.write_text('command = ["python", "train.py"]\nbudget = 5\ninputs = [{name = "weights", asset_id = "asset_weights", cache = true}]\n')
+    assert load_workload_file(path)['inputs'][0]['cache'] is True
+    path.write_text(path.read_text().replace('cache = true', 'cache = "true"'))
+    with pytest.raises(ValueError):
+        load_workload_file(path)
