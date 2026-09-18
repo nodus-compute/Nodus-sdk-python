@@ -259,7 +259,7 @@ def load_workload_file(path: str | Path = 'nodus.toml') -> dict[str, Any]:
         _fail('data_regions', 'set this once, at the top level or in policy')
     if 'idempotency_key' in values and not all(32 <= ord(c) < 127 for c in values['idempotency_key']):
         _fail('idempotency_key', 'use printable ASCII without line breaks')
-    _validate_bucket_regions(values.get("inputs"), values.get("policy", {"data_regions": values.get("data_regions")}))
+    _validate_bucket_regions(values.get("inputs"), values.get("policy") or {"data_regions": values.get("data_regions")})
     return values
 
 

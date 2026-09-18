@@ -40,3 +40,12 @@ def test_workload_file_passes_bucket_descriptor_without_credentials(tmp_path):
     values = load_workload_file(path)
     assert values['inputs'] == [dict(name='corpus', bucket=BUCKET)]
     assert build_payload(**values)['outcome']['max_cost_usd'] == 2
+
+
+def test_workload_file_empty_policy_preserves_top_level_bucket_region(tmp_path):
+    path = tmp_path / 'nodus.toml'
+    path.write_text('command=["python", "train.py"]\nbudget=2\ndata_regions=["us-east-1"]\npolicy={}\n'
+                    '[[inputs]]\nname="corpus"\n[inputs.bucket]\n' + '\n'.join(f'{key}={value!r}' for key, value in BUCKET.items()))
+    payload = build_payload(**load_workload_file(path))
+    assert payload['policy'] == {'data_regions': ['us-east-1']}
+    assert payload['inputs'] == [{'name': 'corpus', 'bucket': BUCKET}]
