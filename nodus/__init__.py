@@ -38,6 +38,7 @@ from pathlib import Path
 from ._freeze import WorkloadFreeze
 from ._outputs import download_path, verified_file, output_destinations
 from ._assets import Asset, Assets, AsyncAssets
+from ._rl import AsyncRL, RL, RLRecipe, RLRunPreview
 from ._secrets import Secrets, AsyncSecrets
 from ._workspaces import Workspaces, AsyncWorkspaces
 
@@ -117,6 +118,10 @@ except PackageNotFoundError:
 __all__ = [
     "agent", "step", "step_context", "StepOutcomeUnknown", "StepDefinitionConflict", "StepResultExpired", "StepFailed",
     "Asset",
+    "RL",
+    "AsyncRL",
+    "RLRecipe",
+    "RLRunPreview",
     "Pool",
     "PoolHost",
     "HostDevice",
@@ -911,6 +916,11 @@ class Client(_Transport):
         return Assets(self)
 
     @property
+    def rl(self) -> RL:
+        """Discover, preview, and explicitly launch reviewed RL recipes."""
+        return RL(self)
+
+    @property
     def secrets(self) -> Secrets:
         """Manage tenant secrets without reading their values."""
         return Secrets(self)
@@ -1560,6 +1570,11 @@ class AsyncClient(_Transport):
     def assets(self) -> AsyncAssets:
         """Upload and import code or data for workloads."""
         return AsyncAssets(self)
+
+    @property
+    def rl(self) -> AsyncRL:
+        """Discover, preview, and explicitly launch reviewed RL recipes."""
+        return AsyncRL(self)
 
     async def run_file(self, path: str | Path = "nodus.toml") -> "AsyncWorkload":
         """Submit a validated workload file. Each call submits one workload."""

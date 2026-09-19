@@ -1111,6 +1111,18 @@
             "minimum": 1,
             "maximum": 10000,
             "description": "Planned logical task count. The customer command must apply this selection and limit. Recorded attempts may include retries."
+          },
+          "recipe": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RLRecipeProvenance"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "readOnly": true,
+            "description": "Server-owned managed recipe identity. Custom workload submissions cannot set this field."
           }
         },
         "allOf": [
@@ -1131,7 +1143,7 @@
             }
           }
         ],
-        "description": "Optional association for a custom workload with RL task evidence. Catalog entries are research candidates. Supply and review your own runtime, image, command, dependencies and dataset access. Your code configures the model, enforces the planned task count and emits typed task events. This metadata does not choose a command, install an environment or provide built-in training. Unknown or duplicate fields are rejected.",
+        "description": "RL task association. Managed launches create the recipe provenance through /v1/rl-runs. For custom workloads, omit recipe and provide your own executable code, model setup, task limit and typed task events. Unknown and duplicate fields are rejected.",
         "x-go-source": "internal/models/rl.go",
         "x-go-type": "RLMetadata"
       },
@@ -6125,6 +6137,547 @@
         },
         "x-go-source": "internal/models/assets.go",
         "x-go-type": "BucketInput"
+      },
+      "RLRecipeProvenance": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+          },
+          "version": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "runtime_image": {
+            "type": "string",
+            "maxLength": 512,
+            "description": "Immutable runtime image selected by Nodus for the managed recipe."
+          },
+          "model_revision": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{40}$"
+          },
+          "config_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "description": "SHA256 of the exact runtime configuration bytes."
+          },
+          "request_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "description": "Canonical reviewed request identity for durable retry."
+          },
+          "review_token": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "description": "Original reviewed launch identity retained for retry after runtime rotation."
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "runtime_image",
+          "model_revision",
+          "config_sha256",
+          "request_sha256",
+          "review_token"
+        ],
+        "x-go-source": "internal/models/rl.go",
+        "x-go-type": "RLRecipeProvenance"
+      },
+      "RLRecipeRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "recipe_id": {
+            "type": "string",
+            "default": "reasoning-gym-leg-counting",
+            "enum": [
+              "reasoning-gym-leg-counting"
+            ]
+          },
+          "recipe_version": {
+            "type": "string",
+            "default": "1.0.0",
+            "enum": [
+              "1.0.0"
+            ]
+          },
+          "mode": {
+            "type": "string",
+            "default": "evaluate",
+            "enum": [
+              "evaluate",
+              "train"
+            ]
+          },
+          "evaluation_tasks": {
+            "type": "integer",
+            "minimum": 4,
+            "maximum": 64,
+            "default": 16
+          },
+          "training_steps": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50,
+            "default": 20
+          },
+          "max_cost_usd": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 5,
+            "description": "Run spending limit. This is not a prediction of completion cost."
+          },
+          "seed": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647,
+            "default": 42
+          },
+          "include_traces": {
+            "type": "boolean",
+            "default": false,
+            "description": "Opt in to prompt, model response and verifier text in live task events."
+          }
+        },
+        "required": [],
+        "x-go-source": "internal/rlrecipe/recipe.go",
+        "x-go-type": "Request",
+        "description": "Omitted fields use these defaults. Explicit null, unknown or repeated fields are rejected. Model, runtime and commands are selected by the recipe."
+      },
+      "RLRunRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "recipe_id": {
+            "type": "string",
+            "default": "reasoning-gym-leg-counting",
+            "enum": [
+              "reasoning-gym-leg-counting"
+            ]
+          },
+          "recipe_version": {
+            "type": "string",
+            "default": "1.0.0",
+            "enum": [
+              "1.0.0"
+            ]
+          },
+          "mode": {
+            "type": "string",
+            "default": "evaluate",
+            "enum": [
+              "evaluate",
+              "train"
+            ]
+          },
+          "evaluation_tasks": {
+            "type": "integer",
+            "minimum": 4,
+            "maximum": 64,
+            "default": 16
+          },
+          "training_steps": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50,
+            "default": 20
+          },
+          "max_cost_usd": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 5,
+            "description": "Run spending limit. This is not a prediction of completion cost."
+          },
+          "seed": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647,
+            "default": 42
+          },
+          "include_traces": {
+            "type": "boolean",
+            "default": false,
+            "description": "Opt in to prompt, model response and verifier text in live task events."
+          },
+          "review_token": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        },
+        "required": [
+          "review_token"
+        ]
+      },
+      "RLRecipeOutput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "description"
+        ],
+        "x-go-source": "internal/rlrecipe/recipe.go",
+        "x-go-type": "Output"
+      },
+      "RLRecipePhase": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "baseline",
+              "training",
+              "evaluation",
+              "export"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "description"
+        ],
+        "x-go-source": "internal/rlrecipe/recipe.go",
+        "x-go-type": "Phase"
+      },
+      "RLRecipeDefaults": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "evaluation_tasks": {
+            "type": "integer",
+            "minimum": 4,
+            "maximum": 64,
+            "default": 16
+          },
+          "training_steps": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50,
+            "default": 20
+          },
+          "max_cost_usd": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 5,
+            "description": "Run spending limit. This is not a prediction of completion cost."
+          },
+          "seed": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647,
+            "default": 42
+          }
+        },
+        "required": [
+          "evaluation_tasks",
+          "training_steps",
+          "max_cost_usd",
+          "seed"
+        ],
+        "x-go-source": "internal/rlrecipe/recipe.go",
+        "x-go-type": "DefaultValues"
+      },
+      "RLRecipeLimits": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "evaluation_tasks_min": {
+            "type": "integer"
+          },
+          "evaluation_tasks_max": {
+            "type": "integer"
+          },
+          "training_steps_min": {
+            "type": "integer"
+          },
+          "training_steps_max": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "evaluation_tasks_min",
+          "evaluation_tasks_max",
+          "training_steps_min",
+          "training_steps_max"
+        ],
+        "x-go-source": "internal/rlrecipe/recipe.go",
+        "x-go-type": "Limits"
+      },
+      "RLRecipeDescriptor": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "environment_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "model_revision": {
+            "type": "string"
+          },
+          "taskset": {
+            "type": "string"
+          },
+          "modes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "evaluate",
+                "train"
+              ]
+            }
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "unavailable_reason": {
+            "type": "string"
+          },
+          "defaults": {
+            "$ref": "#/components/schemas/RLRecipeDefaults"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/RLRecipeLimits"
+          },
+          "outputs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RLRecipeOutput"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "environment_id",
+          "name",
+          "model",
+          "model_revision",
+          "taskset",
+          "modes",
+          "available",
+          "defaults",
+          "limits",
+          "outputs"
+        ],
+        "x-go-source": "internal/rlrecipe/recipe.go",
+        "x-go-type": "Descriptor"
+      },
+      "RLRunEstimate": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "estimator_version": {
+            "type": "string"
+          },
+          "catalog_version": {
+            "type": "string"
+          },
+          "profile_version": {
+            "type": "string"
+          },
+          "router_version": {
+            "type": "string"
+          },
+          "provenance": {
+            "type": "string"
+          },
+          "customer_price_version": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "estimated",
+              "partial",
+              "unavailable"
+            ]
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "valid_until": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "execution_seconds": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "low": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "high": {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "low",
+                  "high"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "completion_seconds": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "low": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "high": {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "low",
+                  "high"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "compute_cost_usd": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "low": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "high": {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "low",
+                  "high"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "status",
+          "reasons",
+          "valid_until",
+          "execution_seconds",
+          "completion_seconds",
+          "compute_cost_usd"
+        ],
+        "x-go-source": "internal/api/estimates.go",
+        "x-go-type": "EstimatePreview"
+      },
+      "RLRunPreview": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "recipe": {
+            "$ref": "#/components/schemas/RLRecipeDescriptor"
+          },
+          "configuration": {
+            "$ref": "#/components/schemas/RLRecipeRequest"
+          },
+          "review_token": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "Empty when the runtime is unavailable. Otherwise submit unchanged with the reviewed configuration."
+          },
+          "phases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RLRecipePhase"
+            }
+          },
+          "outputs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RLRecipeOutput"
+            }
+          },
+          "estimate": {
+            "$ref": "#/components/schemas/RLRunEstimate"
+          },
+          "launchable": {
+            "type": "boolean"
+          },
+          "blocking_reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "recipe",
+          "configuration",
+          "review_token",
+          "phases",
+          "outputs",
+          "estimate",
+          "launchable",
+          "blocking_reasons"
+        ],
+        "x-go-source": "internal/api/rl_runs.go",
+        "x-go-type": "rlRunPreview"
       }
     },
     "securitySchemes": {
@@ -10770,6 +11323,154 @@
             }
           }
         }
+      }
+    },
+    "/v1/rl-recipes": {
+      "get": {
+        "operationId": "listRLRecipes",
+        "summary": "Discover managed RL recipes and availability",
+        "tags": [
+          "RL"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "recipes": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/RLRecipeDescriptor"
+                      }
+                    }
+                  },
+                  "required": [
+                    "recipes"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/rl-runs/preview": {
+      "post": {
+        "operationId": "previewRLRun",
+        "summary": "Review an RL setup without reserving compute",
+        "tags": [
+          "RL"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RLRunPreview"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RLRecipeRequest"
+              }
+            }
+          }
+        },
+        "description": "Authenticates the caller and prepares a server-owned recipe. Preview does not create a workload or reserve compute. An unavailable estimate is not a zero cost estimate. Launchability remains subject to current billing and capacity checks at submission and provisioning."
+      }
+    },
+    "/v1/rl-runs": {
+      "post": {
+        "operationId": "createRLRun",
+        "summary": "Launch the reviewed managed RL recipe",
+        "tags": [
+          "RL"
+        ],
+        "responses": {
+          "202": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmitResult"
+                }
+              }
+            },
+            "headers": {
+              "Idempotent-Replayed": {
+                "description": "true on a replay of the original submission.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RLRunRequest"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "description": "Required stable key per logical submission. Replay the same payload with the same key. Different payload returns 409."
+          }
+        ],
+        "description": "Uses ordinary workload admission, billing and tenant ownership. 202 confirms acceptance. Reuse the exact body and Idempotency-Key after an uncertain response. A changed configuration or runtime returns 409 review_changed. After an earlier uncertain submission, keep the original key and check existing runs before starting another attempt. 503 rl_unavailable means new managed launches are paused or the runtime is unqualified. A completed run does not by itself establish improved model quality."
       }
     }
   },
