@@ -17,7 +17,7 @@ long your program will run. Provide memory only when you know the requirement.
 
 ## Optimization
 
-Optimization tiers are not supported yet and are coming later. New workloads
+Optimization tiers are not supported. New workloads
 use one automatic policy that selects the cheapest compatible on-demand capacity
 by full hourly price. Lower hourly prices do not guarantee lower total completion
 cost or shorter runtime.

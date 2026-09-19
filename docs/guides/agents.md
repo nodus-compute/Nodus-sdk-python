@@ -131,7 +131,7 @@ add `gpu="RTX 4090"` and `peak_memory_gb=16` to a new request. GPU model and
 memory are separate constraints.
 `model` is a workload description, not an instruction to download model weights.
 
-Optimization tiers are not supported yet and are coming later. Omit
+Optimization tiers are not supported. Omit
 `optimization` in new requests. Legacy arguments remain accepted for compatibility
 but have no preference effect on new runs. Nodus selects the cheapest compatible
 on-demand capacity by full hourly price. Your explicit GPU and resource
