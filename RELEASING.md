@@ -15,20 +15,18 @@ then build and check the package. Commit those changes before tagging.
 python -m pytest -q
 python -m build
 python -m twine check dist/*
-git tag v0.3.6
-git push origin v0.3.6
 ```
 
-Use the actual release version in the tag. The workflow verifies it matches
-the package version. Approve the pending `pypi` deployment in GitHub Actions.
+Create a Git tag named `v` followed by the version in `pyproject.toml`, then
+push that tag to `origin`. The workflow verifies that the tag matches the
+package version. Approve the pending `pypi` deployment in GitHub Actions.
 
 Creating and pushing the tag starts publishing automatically. The manual
 Run workflow button only retries an existing tag. Entering a new version there
 does not create its tag.
 
-If checkout reports `couldn't find remote ref refs/tags/v0.3.6`, create and push
-the tag from the tested release commit using the commands above. Do not move an
-existing release tag.
+If checkout reports `couldn't find remote ref`, create and push the requested
+tag from the tested release commit. Do not move an existing release tag.
 
 ## Retry after a workflow fix
 
@@ -58,10 +56,11 @@ Keep README links absolute so they work on PyPI as well as GitHub.
 
 ## Verify a release
 
-Run the same isolated verification used by CI:
+Run the same isolated verification used by CI. Replace `VERSION` with the
+version declared in the matching release checkout's `pyproject.toml`:
 
 ```bash
-python scripts/verify-release.py --version 0.3.6 --report release-verification.json
+python scripts/verify-release.py --version VERSION --report release-verification.json
 ```
 
 For an unpublished wheel, replace `--version` with `--wheel PATH_TO_WHEEL`.

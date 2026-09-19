@@ -147,8 +147,8 @@ nodus cancel WORKLOAD_ID
 
 Nodus uses one policy for new runs: choose the cheapest compatible on-demand
 capacity by full hourly price. A lower hourly price does not guarantee a lower
-total completion cost. Optimization tiers are not supported yet and are coming
-later. Existing optimization arguments remain accepted for backward compatibility
+total completion cost. Optimization tiers are not supported.
+Existing optimization arguments remain accepted for backward compatibility
 but have no preference effect on new runs.
 
 Set `gpu="H100"` to require a GPU model, or omit it to let Nodus choose.

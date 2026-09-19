@@ -25,8 +25,7 @@ are not sent, except the default image and continuity policy.
 | `extra` | Additional top-level fields | [Extensions](#extensions-and-validation) |
 
 Do not pass `env`, `interrupt_tolerance`, or `expected_runtime_hours`: they are
-explicitly unsupported. Nodus estimates runtime automatically. Unknown Python
-keywords raise `TypeError` before submission. Use the dictionary fields listed
+explicitly unsupported. Unknown Python keywords raise `TypeError` before submission. Use the dictionary fields listed
 in these references. Each page defines their accepted values and defaults.
 
 ## Extensions and validation

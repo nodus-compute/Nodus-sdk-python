@@ -6,8 +6,7 @@ its progress, and retrieve logs and output files through the same interface.
 For interactive agents, create a durable sandbox and execute multiple commands
 with streamed output and stdin.
 Nodus selects the cheapest compatible on-demand capacity by full hourly price.
-Set a workload budget to limit spending. Optimization tiers are not supported
-yet and are coming later.
+Set a workload budget to limit spending. Optimization tiers are not supported.
 
 Install [nodus-compute from PyPI](https://pypi.org/project/nodus-compute/)
 with Python 3.10 or newer, then sign in to get started.
