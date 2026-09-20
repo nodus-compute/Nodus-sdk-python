@@ -3409,6 +3409,23 @@
           }
         }
       },
+      "ResearchWorkspaceConnectionRetryRequest": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["tool"],
+        "description": "Select one browser tool. Unknown fields are ignored. The complete JSON body must not exceed 512 bytes.",
+        "properties": {
+          "tool": {"type": "string", "enum": ["editor", "notebook"]}
+        }
+      },
+      "ResearchWorkspaceConnectionRetry": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["status"],
+        "properties": {
+          "status": {"type": "string", "const": "retry_scheduled"}
+        }
+      },
       "ResearchWorkspaceSSHConnection": {
         "type": "object",
         "required": ["host", "ssh_config", "gateway_fingerprint", "gateway_known_hosts"],
@@ -9740,6 +9757,40 @@
           },
           "default": {
             "description": "400 for an invalid tool. 404 for a workspace not owned by this account. 409 workspace_not_ready until the session and tools are ready. 503 if browser access or SSH configuration is unavailable. Authentication, rate limits and transient failures also apply.",
+            "content": {
+              "application/json": {"schema": {"$ref": "#/components/schemas/SandboxError"}}
+            }
+          }
+        }
+      }
+    },
+    "/v1/research-workspaces/{id}/connections/retry": {
+      "post": {
+        "operationId": "retryResearchWorkspaceConnection",
+        "summary": "Retry one browser connection without restarting compute",
+        "tags": ["Research workspaces"],
+        "description": "Explicitly schedules a safe retry for the selected tool on the current workspace session. It does not issue a connection URL, start compute or guarantee that the tool is ready. An uncertain remote operation cannot be retried until its outcome is reconciled. After acceptance, read the workspace again and use its connection readiness before opening the tool. A rejected retry does not prevent stopping compute. Available only when the deployment enables connection retry.",
+        "parameters": [
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}, "description": "Research workspace identifier owned by this account."}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {"schema": {"$ref": "#/components/schemas/ResearchWorkspaceConnectionRetryRequest"}}
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Retry scheduled. This is not a ready connection or browser grant.",
+            "headers": {
+              "Cache-Control": {"schema": {"type": "string", "const": "no-store"}}
+            },
+            "content": {
+              "application/json": {"schema": {"$ref": "#/components/schemas/ResearchWorkspaceConnectionRetry"}}
+            }
+          },
+          "default": {
+            "description": "400 invalid_tool, invalid_json or invalid_body for invalid input. 404 not_found for an unavailable owned workspace. 409 connection_not_retryable when a safe retry cannot be scheduled. 503 connection_unavailable when disabled or gateway authority is unavailable. 500 connection_retry_failed for an unexpected internal failure. Authentication and rate limits also apply.",
             "content": {
               "application/json": {"schema": {"$ref": "#/components/schemas/SandboxError"}}
             }

@@ -85,9 +85,10 @@ class NodusError(Exception):
     def code(self) -> str | None:
         """The machine-readable error code the control plane returned, if any."""
         if isinstance(self.body, dict):
-            value = self.body.get("error")
-            if isinstance(value, str):
-                return value
+            for key in ("error", "code"):
+                value = self.body.get(key)
+                if isinstance(value, str):
+                    return value
         return None
 
     @property
@@ -346,6 +347,8 @@ def error_from_response(
     # Only the code the API actually writes counts.
     if status_code == 401 and code == "invalid_signature":
         cls: type[NodusError] = SignatureError
+    elif status_code == 409 and code == "connection_not_retryable":
+        cls = APIError
     elif status_code == 409 and code == "asset_in_use":
         cls = AssetInUseError
     elif status_code == 503 and code == "spend_check_unavailable":

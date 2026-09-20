@@ -218,6 +218,10 @@ def docs_api(monkeypatch):
                     "last_error": "", "saving_for_termination": False,
                     "billing_status": "disabled_no_approved_storage_rate",
                 }, 201)
+            if path == "/v1/research-workspaces/ws_1234-abcd/connections/retry":
+                assert payload in ({"tool": "editor"}, {"tool": "notebook"})
+                assert self.headers.get("Idempotency-Key") is None
+                return self.reply({"status": "retry_scheduled"}, 202)
             if path == "/v1/sandboxes":
                 return self.reply(sandbox, 202)
             if path in ("/v1/sandboxes/sb_docs/exec", "/v1/sandboxes/sb_example/exec"):
@@ -279,6 +283,9 @@ def test_python_documentation_executes(path, number, body, docs_api, tmp_path, m
             state["input"] = {"invoice_id": 42}
             namespace["send_to_invoice_service"] = lambda invoice_id: "synthetic-remote-7"
         exec(compile(body.replace('"YOUR_WORKLOAD_ID"', '"wl_docs"'), str(path), "exec"), namespace)
+    if path.name == "workspaces.md" and number in (1, 2):
+        assert docs_api[1].count(("POST", "/v1/research-workspaces/ws_1234-abcd/connections/retry")) == 1
+        assert ("POST", "/v1/workloads") not in docs_api[1]
     # Compile embedded Python argv too, without pretending it ran on a GPU.
     for payload in docs_api[2]:
         sources = [payload.get("source", {})] + [s.get("source", {}) for s in payload.get("stages", [])]
