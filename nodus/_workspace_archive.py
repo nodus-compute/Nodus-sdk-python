@@ -123,7 +123,10 @@ def build_workspace_archive(directory: str | os.PathLike[str]) -> Iterator[Works
                     path = parent / child.name
                     relative = path.relative_to(root).as_posix()
                     _path_bytes(relative)
-                    info = child.stat(follow_symlinks=False)
+                    # Windows DirEntry.stat caches zero device/inode identity.
+                    # A fresh lstat matches later descriptor checks and still
+                    # rejects symbolic links without following their targets.
+                    info = path.lstat()
                     if not (stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode)):
                         raise ValidationError("Upload regular files and directories only. Keep links and environment dependencies outside the project")
                     if stat.S_ISDIR(info.st_mode):

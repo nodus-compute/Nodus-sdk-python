@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tarfile
+from types import SimpleNamespace
 
 import pytest
 
@@ -47,6 +48,81 @@ def test_archive_is_stable_across_mtime_and_directory_creation_order(tmp_path):
     os.utime(project / "z.txt", (50, 50))
     with archive.build_workspace_archive(project) as second:
         assert (second.path.read_bytes(), second.manifest) == initial
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_windows_cached_directory_identity_does_not_reject_unchanged_project(tmp_path, monkeypatch, nested):
+    project = tmp_path / "project"
+    project.mkdir()
+    parent = project / "data" if nested else project
+    parent.mkdir(exist_ok=True)
+    (parent / "train.py").write_bytes(b"print(42)\n")
+    original = archive.os.scandir
+
+    class CachedStat:
+        # Windows DirEntry.stat caches these as zero, unlike os.stat/fstat.
+        st_dev = st_ino = st_nlink = 0
+
+        def __init__(self, info):
+            self.info = info
+
+        def __getattr__(self, name):
+            return getattr(self.info, name)
+
+    class WindowsDirectory:
+        def __init__(self, path):
+            self.iterator = original(path)
+
+        def __enter__(self):
+            self.iterator.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self.iterator.__exit__(*args)
+
+        def __iter__(self):
+            for child in self.iterator:
+                yield SimpleNamespace(
+                    name=child.name,
+                    stat=lambda *, follow_symlinks=True, child=child: CachedStat(
+                        child.stat(follow_symlinks=follow_symlinks)
+                    ),
+                )
+
+    def windows_scandir(path):
+        if not isinstance(path, int) and Path(path).is_relative_to(project):
+            return WindowsDirectory(path)
+        return original(path)
+
+    monkeypatch.setattr(archive.os, "scandir", windows_scandir)
+    with archive.build_workspace_archive(project) as built:
+        with tarfile.open(built.path) as contents:
+            expected = "data/train.py" if nested else "train.py"
+            assert contents.extractfile(expected).read() == b"print(42)\n"
+        assert built.manifest["inventory"]["payload_bytes"] == 10
+        assert built.manifest["inventory"]["entries"] == (2 if nested else 1)
+
+
+def test_replaced_identical_file_cannot_publish_a_snapshot(tmp_path, monkeypatch):
+    project = tmp_path / "project"
+    project.mkdir()
+    target = project / "train.py"
+    target.write_bytes(b"original")
+    before = target.stat()
+    replacement = tmp_path / "replacement.py"
+    replacement.write_bytes(target.read_bytes())
+    replacement.chmod(before.st_mode)
+    os.utime(replacement, ns=(before.st_atime_ns, before.st_mtime_ns))
+    original = archive._header
+
+    def replace_after_scan(*args, **kwargs):
+        replacement.replace(target)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(archive, "_header", replace_after_scan)
+    with pytest.raises(ValidationError, match="Project changed while preparing upload"):
+        with archive.build_workspace_archive(project):
+            pytest.fail("replacement file was accepted as the original snapshot")
 
 
 def test_chunked_file_and_record_termination_have_verified_offsets(tmp_path):
