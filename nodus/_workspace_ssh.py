@@ -57,7 +57,7 @@ def _relay(connection: websocket.WebSocket, input_fd: int, output_fd: int) -> No
                 opcode, data = connection.recv_data()
             except websocket.WebSocketTimeoutException:
                 continue
-            except websocket.WebSocketConnectionClosedException:
+            except (websocket.WebSocketConnectionClosedException, OSError):
                 if stopped.is_set():
                     break
                 raise NodusError("Workspace SSH connection closed. Request fresh connection instructions.") from None

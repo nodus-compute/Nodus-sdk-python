@@ -176,7 +176,7 @@ def test_ssh_proxy_input_eof_closes_the_tunnel_promptly(gateway):
         child.stdin.close()
         child.stdin = None
         child.wait(timeout=3)
-        assert child.returncode == 0
+        assert child.returncode == 0, child.stderr.read().decode()
         assert child.stdout.read() == b""
     finally:
         stop(child)
@@ -195,3 +195,25 @@ def test_ssh_proxy_invalid_generation_or_session_never_connects(gateway, args):
         assert b"invalid choice" not in error
     finally:
         stop(child)
+
+
+@pytest.mark.parametrize("abort_error", [OSError(10038, "socket was closed"), ConnectionResetError("connection aborted")])
+def test_input_eof_tolerates_receive_error_from_local_socket_abort(abort_error):
+    from nodus._workspace_ssh import _relay
+    input_read, input_write = os.pipe()
+    output_read, output_write = os.pipe()
+    aborted = threading.Event()
+    class Connection:
+        def recv_data(self):
+            os.close(input_write)
+            assert aborted.wait(2)
+            raise abort_error
+        def abort(self):
+            aborted.set()
+        def send_binary(self, data):
+            pytest.fail("EOF cannot send SSH payload")
+    try:
+        _relay(Connection(), input_read, output_write)
+    finally:
+        for descriptor in (input_read, output_read, output_write):
+            os.close(descriptor)
