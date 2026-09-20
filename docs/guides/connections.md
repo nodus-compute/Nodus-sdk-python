@@ -239,3 +239,93 @@ Sandboxes accept `connections=["lab-wandb"]` in `client.sandboxes.create` and
 `Sandbox(...)`. Credentials follow the existing authenticated guest boot and
 recovery channel. Reconnect preserves the admitted connection references and
 secret versions. Sandbox live connections enforce the same HTTPS host union.
+
+## Load results into a database
+
+Declare a CSV, JSONL or Parquet result file with a database sink. Use an active
+Postgres, Neon or Supabase connection with `write` or `readwrite` scope. Its
+region must be allowed by the workload's `data_regions`, when supplied.
+
+```python
+from nodus import Client
+
+with Client() as client:
+    workload = client.run(
+        command=["python", "train.py"],
+        budget=2,
+        outputs={
+            "results": {
+                "path": "results.jsonl",
+                "sink": {"connection": "lab-db", "table": "eval_results"},
+            }
+        },
+    )
+    workload.wait()
+    for output in workload.outputs():
+        print(output.name, output.sink_state, output.sink_rows, output.sink_error)
+```
+
+Your command writes the declared file. After upload, Nodus loads it on the
+control plane using the credential version pinned when the workload was
+admitted. Credentials never enter the workload. Secret rotation or revocation
+prevents new admissions but preserves already admitted loads. A connection
+referenced by saved sink outputs cannot be deleted because reload needs it.
+
+Load state is `pending`, `loading`, `loaded` or `failed`. Workload completion
+and output downloads remain available if a database load fails. Inspect the
+value-free `sink_error`, correct the target schema or permissions, and retry:
+
+```python
+from nodus import Client
+
+with Client() as client:
+    workload = client.get("YOUR_WORKLOAD_ID")
+    workload.reload_output("results", stage="main")
+```
+
+```bash
+nodus workload outputs wl_example
+nodus workload outputs wl_example --reload results --stage main
+```
+
+Table names are single PostgreSQL identifiers without a schema prefix.
+Uppercase letters fold to lowercase. Names beginning with `nodus_` are reserved.
+Two outputs in the same stage must use different connection and table targets.
+Each file column must be a distinct identifier and cannot begin with `nodus_`.
+
+CSV requires a header. Its columns load as `text` and empty cells become SQL
+NULL. JSONL requires one object per line. Strings, booleans and numbers become
+`text`, `boolean` and `numeric`. Nested objects and arrays become `jsonb`.
+Missing keys and JSON null become SQL NULL. A column must keep one non-null
+type across the file. Parquet supports flat nullable boolean, integer, float,
+text, binary, date, timestamp, decimal and JSON columns. Unsigned integers up to
+32 bits load as `bigint`, and unsigned 64-bit integers load as exact `numeric`.
+
+Files are limited to 5 GB, 50 million rows and 256 columns. CSV records, JSONL
+lines, Parquet pages and Parquet footers are limited to 8 MiB. Parquet row groups
+must fit the reader's 128 MiB decoded-data allowance. A header-only CSV, an empty
+JSONL file or a zero-row Parquet file loads zero rows. A CSV without a header
+fails. Empty JSONL has no inferred file columns.
+
+Nodus creates a missing table in `public`, or checks that the existing table
+contains all file columns with compatible types. Every row also carries
+`nodus_workload_id`, `nodus_generation`, `nodus_stage` and `nodus_loaded_at`.
+Those four columns must have types `text`, `integer`, `text` and `timestamptz`.
+One transaction replaces earlier rows for the same workload and stage. A failed
+replacement preserves the prior successful rows. Successful newer generations
+fence older loads for the same target table, even when the newer output has zero
+rows. Metadata updates do not advance this fence. Reloading does not duplicate rows.
+
+The `public.nodus_runs` table holds workload, stage and generation metadata,
+including status, GPU, GPU count, region, customer charge, start and end times,
+optional sweep ID, and load time. Final status and charges are updated after
+completion. Supplier details are excluded. Join results to metadata with:
+
+```sql
+SELECT e.*, r.cost_usd, r.gpu, r.region
+FROM eval_results e
+JOIN nodus_runs r
+  ON e.nodus_workload_id = r.workload_id
+ AND e.nodus_stage = r.stage
+ AND e.nodus_generation = r.generation
+```

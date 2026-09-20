@@ -26,6 +26,7 @@ from typing import Any
 from .types import WorkloadStatus
 from ._connections import _live_refs, _group
 from ._outputs import portable_output_name
+from .requests import OutputSpec
 
 _PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -164,7 +165,7 @@ def build_payload(
     image: str | None = None,
     source_asset_id: str | None = None,
     inputs: list[dict[str, Any]] | None = None,
-    outputs: dict[str, str] | None = None,
+    outputs: dict[str, str | OutputSpec] | None = None,
     command: list[str] | str | None = None,
     requirements: dict[str, Any] | None = None,
     placement: dict[str, Any] | None = None,
@@ -452,14 +453,33 @@ def _validate_bucket_regions(inputs: list[dict[str, Any]] | None, policy: dict[s
             raise ValueError("Bucket inputs require data_regions containing only the exact bucket region.")
 
 
-def _validate_outputs(outputs: dict[str, str] | None) -> None:
+def _validate_outputs(outputs: dict[str, str | OutputSpec] | None) -> None:
     if outputs is None:
         return
     if not isinstance(outputs, dict):
         raise TypeError("outputs must map output names to relative file paths.")
     if len({name.casefold() for name in outputs if isinstance(name, str)}) != len(outputs):
         raise ValueError("Output names must be distinct on case-insensitive filesystems.")
+    targets = set()
     for name, path in outputs.items():
+        if isinstance(path, dict):
+            if set(path) - {"path", "sink"} or "path" not in path:
+                raise ValueError("Output declarations require path and an optional sink.")
+            sink = path.get("sink")
+            if sink is not None:
+                if (not isinstance(sink, dict) or set(sink) != {"connection", "table"}
+                        or not isinstance(sink.get("connection"), str) or not sink["connection"]
+                        or not isinstance(sink.get("table"), str)
+                        or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,62}", sink["table"])
+                        or sink["table"].lower().startswith("nodus_")):
+                    raise ValueError("Output sinks require a connection and one non-reserved PostgreSQL table identifier.")
+                if not isinstance(path["path"], str) or PurePosixPath(path["path"]).suffix.lower() not in (".csv", ".jsonl", ".parquet"):
+                    raise ValueError("Sink files must be CSV, JSONL or Parquet.")
+                target = (sink["connection"], sink["table"].lower())
+                if target in targets:
+                    raise ValueError("Outputs in one stage must use distinct sink tables.")
+                targets.add(target)
+            path = path["path"]
         if not portable_output_name(name):
             raise ValueError("Output names must be portable file names using letters, digits, dots, underscores or hyphens.")
         if (not isinstance(path, str) or not path or "\\" in path or ":" in path

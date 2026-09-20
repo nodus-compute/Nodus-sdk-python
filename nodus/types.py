@@ -265,6 +265,9 @@ class Output:
     sha256: str = ""
     bytes: int = 0
     download: str = ""
+    sink_state: str = ""
+    sink_rows: int | None = None
+    sink_error: str = ""
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
     @classmethod
@@ -272,7 +275,9 @@ class Output:
         d = _obj(d)
         return cls(name=_text(d.get("name")), stage_id=_text(d.get("stage_id")),
                    sha256=_text(d.get("sha256")), bytes=_int(d.get("bytes")),
-                   download=_text(d.get("download")), raw=d)
+                   download=_text(d.get("download")), sink_state=_text(d.get("sink_state")),
+                   sink_rows=_int(d["sink_rows"]) if d.get("sink_rows") is not None else None,
+                   sink_error=_text(d.get("sink_error")), raw=d)
 
 
 #: An object holding a tar of a checkpoint subtree rather than a single file.
