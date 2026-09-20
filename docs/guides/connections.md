@@ -91,6 +91,72 @@ keys cannot enable it. The action is recorded in team activity.
 
 Only wandb supports the live flag, with `write` or `readwrite` scope. Its declared
 hosts are `api.wandb.ai`, `files.wandb.ai` and `storage.googleapis.com`. Database
-connections keep credentials on the control plane. This guide covers connection
-management. Attaching live connections to runs and importing or loading data are
-not available through these management operations.
+connections keep credentials on the control plane.
+
+## Attach live wandb to a run
+
+Use an existing administrator-enabled wandb connection with write scope. A run
+accepts one connection, by name or ID. Admission pins its metadata and exact
+secret version. Rotation and connection deletion do not change an admitted run.
+They prevent new admission using that connection. A connection region must match
+`policy.data_regions` when that policy is supplied.
+
+```python
+from nodus import Client
+
+with Client() as client:
+    workload = client.run(
+        command=["python", "train.py"],
+        connections=["lab-wandb"],
+        sweep_id="experiment-42",
+        budget=5,
+    )
+    workload.refresh()
+    for link in workload.links:
+        print(link.url)
+```
+
+The workload image must already contain wandb and your training dependencies.
+Your script calls `wandb.init()` normally. Nodus supplies `WANDB_API_KEY`,
+`WANDB_ENTITY`, `WANDB_PROJECT`, `WANDB_RUN_GROUP` and `WANDB_NAME` in the process
+environment. `NODUS_CONN_LAB_WANDB_KIND` is `wandb`. The default group is the Nodus
+workload ID and the name includes the workload and stage IDs. Set the same scalar
+`sweep_id` on several runs to group them. This does not schedule a sweep.
+
+The key is delivered to the authenticated execution in memory. It is absent from
+payloads, image layers, Docker environment files and checkpoint artifacts.
+Captured logs redact the credential, including fragments split between writes.
+Managed `WANDB_*`, `NODUS_CONN_*` and `NODUS_SECRET_*` names cannot be overridden
+through submit or sandbox exec environment fields.
+
+Live runs use an isolated network namespace. HTTPS can reach the union of the
+connection's declared hosts and `policy.egress_allow`. HTTP, unlisted hosts,
+private addresses and direct sockets are blocked. Proxy denials appear in
+`workload.egress_denied` events. Additional tenant secret references can be
+specified with `policy.secret_refs` and are pinned at admission. Deployments
+without an enabled isolated execution provider refuse admission before acquiring
+capacity. Explicit private pool placement is not supported for live runs.
+
+Run links printed by wandb are validated against the pinned entity and project.
+They appear in `workload.links`, workload detail and list responses, and the
+console run row. `nodus run` prints a newly captured URL while waiting, including
+with `--plain`. `nodus workload get` also displays captured links. Python callers
+can use `workload.wait(on_update=callback)` to observe new links on each poll.
+The sync and async clients support the same live fields.
+
+A CLI workload file uses the same fields:
+
+```toml
+command = ["python", "train.py"]
+connections = ["lab-wandb"]
+sweep_id = "experiment-42"
+budget = 5
+
+[policy]
+egress_allow = ["metrics.example.com"]
+```
+
+Sandboxes accept `connections=["lab-wandb"]` in `client.sandboxes.create` and
+`Sandbox(...)`. Credentials follow the existing authenticated guest boot and
+recovery channel. Reconnect preserves the admitted connection references and
+secret versions. Sandbox live connections enforce the same HTTPS host union.

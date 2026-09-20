@@ -61,6 +61,7 @@ class Policy(TypedDict, total=False):
 
     data_regions: list[str]
     secret_refs: list[str]
+    egress_allow: list[str]
 
 
 class ContinuitySpec(TypedDict, total=False):
