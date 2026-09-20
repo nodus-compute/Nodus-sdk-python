@@ -1117,7 +1117,7 @@ def main(argv: list[str] | None = None) -> int:
                 message = "Add a payment method at https://console.nodus-compute.ai/?view=billing before running workloads, including runs using starter credits."
             else:
                 message = "This run cannot start within your current spending limit. Review your account limit and available credits in the console."
-        if args.cmd == "secret" and isinstance(exc, NodusError) and not isinstance(exc, ValidationError):
+        if args.cmd == "secret" and isinstance(exc, NodusError) and (exc.status_code is not None or not isinstance(exc, ValidationError)):
             message = "Secret operation failed. Check your credentials, secret name, and connection."
         print(f"Error: {message}", file=sys.stderr)
         return 2

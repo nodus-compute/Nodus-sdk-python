@@ -3,6 +3,7 @@ import io
 import json
 
 import httpx
+import pytest
 from nodus import cli
 from test_sandbox_cli import client_factory
 
@@ -40,3 +41,19 @@ def test_secret_cli_rejects_oversized_input_without_request(monkeypatch, capsys)
     monkeypatch.setattr(cli.sys, "stdin", io.StringIO("private-" * 1000))
     assert cli.main(["secret", "set", "API_KEY"]) == 2
     assert "private-" not in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("status", [400, 422])
+@pytest.mark.parametrize("debug", [False, True])
+def test_secret_cli_never_echoes_remote_validation_errors(monkeypatch, capsys, status, debug):
+    value = "synthetic-private-sentinel"
+    def handler(request):
+        assert json.loads(request.content)["value"] == value
+        return httpx.Response(status, json={"error": "invalid_secret", "message": "Rejected value " + value})
+    monkeypatch.setattr(cli, "Client", client_factory(handler))
+    monkeypatch.setattr(cli.sys, "stdin", io.StringIO(value))
+    argv = (["--debug"] if debug else []) + ["secret", "set", "API_KEY"]
+    assert cli.main(argv) == 2
+    output = capsys.readouterr()
+    assert value not in output.out + output.err
+    assert "Secret operation failed" in output.err
