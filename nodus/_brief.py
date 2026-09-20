@@ -197,6 +197,8 @@ def build_payload(
     _validate_assets(source_asset_id, inputs)
     _validate_outputs(outputs)
     for stage in stages or []:
+        if isinstance(stage, dict) and isinstance(stage.get("continuity"), dict):
+            validate_checkpoint_integration(stage["continuity"])
         if isinstance(stage, dict) and stage.get("outputs"):
             _validate_outputs(stage["outputs"])
             if not portable_output_name(stage.get("id")):
@@ -257,6 +259,7 @@ def build_payload(
     else:
         mode = _enum_value(continuity)
         cont = {"mode": mode, "resume_on_interruption": mode != "ephemeral"}
+    validate_checkpoint_integration(cont)
 
     payload: dict[str, Any] = {
         "requirements": req,
@@ -329,6 +332,12 @@ def build_payload(
             stage["requirements"] = validate_requirements(stage["requirements"])
     _warn_about_the_money(payload)
     return payload
+
+
+def validate_checkpoint_integration(continuity: dict[str, Any]) -> None:
+    """Validate an explicit application checkpoint integration selection."""
+    if 'integration' in continuity and continuity['integration'] not in ('auto', 'none', 'hf-trainer-v1'):
+        raise ValueError('continuity.integration must be auto, none, or hf-trainer-v1')
 
 
 def validate_placement(placement: Any) -> dict[str, str]:

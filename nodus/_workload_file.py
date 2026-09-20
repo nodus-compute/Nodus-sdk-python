@@ -15,7 +15,7 @@ try:
 except ModuleNotFoundError:  # Python 3.10
     import tomli as tomllib
 
-from ._brief import _validate_assets, _validate_bucket_regions, _validate_outputs, validate_requirements, UNSUPPORTED
+from ._brief import _validate_assets, _validate_bucket_regions, _validate_outputs, validate_requirements, validate_checkpoint_integration, UNSUPPORTED
 from ._connections import _live_refs, _group
 from .requests import ContinuitySpec, Policy, Requirements, Source, StageInput, StageSpec
 
@@ -112,6 +112,7 @@ def _continuity(value: Any, name: str, allow_string: bool = True) -> None:
     if allow_string and isinstance(value, str):
         value = {'mode': value}
     _table(value, name, set(ContinuitySpec.__annotations__))
+    validate_checkpoint_integration(value)
     if 'mode' in value and value['mode'] not in ('checkpointed', 'restartable', 'ephemeral'):
         _fail(name + '.mode', 'expected checkpointed, restartable, or ephemeral')
     if 'resume_on_interruption' in value and not isinstance(value['resume_on_interruption'], bool):

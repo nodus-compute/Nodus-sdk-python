@@ -78,6 +78,7 @@ class ContinuitySpec(TypedDict, total=False):
     mode: Literal["checkpointed", "restartable", "ephemeral"] | ContinuityMode
     resume_on_interruption: bool
     checkpoint_paths: list[str]
+    integration: Literal["auto", "none", "hf-trainer-v1"]
 
 
 class StageInput(TypedDict):
