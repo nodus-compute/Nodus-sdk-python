@@ -38,7 +38,7 @@ def document_paths(root):
     paths.update((root / '.claude').rglob('*.md'))
     if (root / 'sdk/AGENTS.md').exists():
         paths.add(root / 'sdk/AGENTS.md')
-    for folder in ('docs', 'wiki', 'examples', 'openapi', 'design'):
+    for folder in ('docs', 'wiki', 'examples', 'openapi', 'design', 'plugins'):
         paths.update((root / folder).rglob('*.md'))
     paths.update((root / 'examples').rglob('*.py'))
     paths.update((root / 'nodus').rglob('*.py'))
