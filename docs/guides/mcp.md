@@ -12,7 +12,7 @@ It manages the Python runtime and package dependencies for you.
 **1. Sign in once.** Run this in your terminal and complete browser sign-in:
 
 ```sh
-uvx --from 'nodus-compute[mcp]==0.4.1' nodus login
+uvx --from 'nodus-compute[mcp]==0.4.2' nodus login
 ```
 
 **2. Add Nodus to your MCP client.** In Claude Desktop or Cursor, add this to
@@ -23,7 +23,7 @@ your MCP server configuration and reload the connection:
   "mcpServers": {
     "nodus": {
       "command": "uvx",
-      "args": ["--from", "nodus-compute[mcp]==0.4.1", "nodus-mcp"]
+      "args": ["--from", "nodus-compute[mcp]==0.4.2", "nodus-mcp"]
     }
   }
 }
@@ -32,7 +32,7 @@ your MCP server configuration and reload the connection:
 For Codex, run this instead of editing JSON:
 
 ```sh
-codex mcp add nodus -- uvx --from 'nodus-compute[mcp]==0.4.1' nodus-mcp
+codex mcp add nodus -- uvx --from 'nodus-compute[mcp]==0.4.2' nodus-mcp
 ```
 
 The server uses your saved sign-in. There is no API key to paste into the
@@ -46,7 +46,7 @@ without starting paid compute. Your client should discover seven tools.
 Install the MCP extra and reuse your existing Nodus sign-in:
 
 ```sh
-pip install --upgrade 'nodus-compute[mcp]==0.4.1'
+pip install --upgrade 'nodus-compute[mcp]==0.4.2'
 nodus login
 ```
 
@@ -196,8 +196,10 @@ If `nodus mcp` asks for MCP support, install the `[mcp]` extra using the pip
 command above. The plain Python SDK install keeps MCP dependencies optional.
 
 Custom API origins must use HTTPS, except for local loopback development.
-HTTP redirects are refused. Set the final API origin directly. API requests
-have a 30 second timeout. A timeout does not cancel a remote workload.
+HTTP redirects are refused. Set the final API origin directly. The server
+reuses HTTP connections between tool calls and closes them on shutdown.
+Saved sign-in changes apply to the next call without restarting the server.
+API requests have a 30 second timeout. A timeout does not cancel a remote workload.
 
 Log calls support the API's 8 MiB log payload plus truncation notices.
 Responses larger than the server's 16 MiB bound return a tool error.

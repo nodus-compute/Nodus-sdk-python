@@ -215,6 +215,49 @@ def _cmd_upload(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_secret(args: argparse.Namespace) -> int:
+    with Client(base_url=args.base_url) as client:
+        if args.secret_cmd == "set":
+            if args.from_file:
+                with Path(args.from_file).open("r", encoding="utf-8", newline="") as source:
+                    value = source.read(4097)
+            else:
+                if sys.stdin.isatty():
+                    raise ValidationError("Pipe the secret on stdin or use --from-file")
+                value = sys.stdin.read(4097)
+            metadata = client.secrets.put(args.name, value)
+            print(f"Stored {_safe_line(metadata['name'])} version {_safe_line(metadata['version'])}")
+        elif args.secret_cmd == "ls":
+            show_table(["Name", "Version", "Created"],
+                       [[_safe_line(item.get("name", "")), _safe_line(item.get("version", "")),
+                         _safe_line(item.get("created_at", ""))] for item in client.secrets.list()],
+                       empty="No secrets.", plain=args.plain)
+        else:
+            client.secrets.delete(args.name)
+            print(f"Revoked {_safe_line(args.name)}")
+    return 0
+
+
+def _cmd_connection(args: argparse.Namespace) -> int:
+    with Client(base_url=args.base_url) as client:
+        if args.connection_cmd == "add":
+            result = client.connections.create(args.name, args.kind, secret=args.secret,
+                scope=args.scope, region=args.region, live=args.live, branch=args.branch,
+                entity=args.entity, project=args.project)
+            print(f"Created {_safe_line(result['name'])} ({_safe_line(result['id'])})")
+        elif args.connection_cmd == "ls":
+            show_table(["ID", "Name", "Kind", "Region", "Live", "Verified"],
+                [[_safe_line(c.get(k, "")) for k in ("id", "name", "kind", "region", "live_mode", "verified_at")]
+                 for c in client.connections.list()], empty="No connections.", plain=args.plain)
+        elif args.connection_cmd == "verify":
+            result = client.connections.verify(args.connection)
+            print(f"Verified {_safe_line(result['name'])} at {_safe_line(result['verified_at'])}")
+        else:
+            client.connections.delete(args.connection)
+            print(f"Deleted {_safe_line(args.connection)}")
+    return 0
+
+
 def _cmd_assets(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
         show_table(["Asset", "Status", "Name"],
@@ -863,6 +906,30 @@ Use nodus COMMAND --help for command options.""",
     u = sub.add_parser("upload", help="upload a data file or archive")
     u.add_argument("file")
     sub.add_parser("assets", help="list uploaded and imported data")
+    secret = sub.add_parser("secret", help="store and manage write-only tenant secrets")
+    secret_sub = secret.add_subparsers(dest="secret_cmd", required=True)
+    secret_set = secret_sub.add_parser("set", help="store a new version from stdin or a file")
+    secret_set.add_argument("name")
+    secret_set.add_argument("--from-file", help="read the exact UTF-8 value from a file")
+    secret_sub.add_parser("ls", help="list secret names and current versions")
+    secret_rm = secret_sub.add_parser("rm", help="revoke a secret for new admissions")
+    secret_rm.add_argument("name")
+
+    connection = sub.add_parser("connection", help="manage verified external connections")
+    connection_sub = connection.add_subparsers(dest="connection_cmd", required=True)
+    connection_add = connection_sub.add_parser("add", help="verify and save a tenant secret reference")
+    connection_add.add_argument("--name", required=True)
+    connection_add.add_argument("kind", choices=("postgres", "neon", "supabase", "wandb"))
+    connection_add.add_argument("--secret", required=True, help="existing tenant secret name or ID")
+    connection_add.add_argument("--scope", choices=("read", "write", "readwrite"), default=None)
+    connection_add.add_argument("--region")
+    connection_add.add_argument("--live", action="store_true", help="admin opt-in for wandb")
+    connection_add.add_argument("--branch")
+    connection_add.add_argument("--entity")
+    connection_add.add_argument("--project")
+    connection_sub.add_parser("ls", help="list connection metadata")
+    for verb in ("rm", "verify"):
+        connection_sub.add_parser(verb).add_argument("connection")
 
     devbox = sub.add_parser("devbox", help="create and manage devbox sandboxes")
     devbox_sub = devbox.add_subparsers(dest="devbox_cmd", required=True, metavar="COMMAND")
@@ -1065,6 +1132,8 @@ def main(argv: list[str] | None = None) -> int:
         "download": lambda: _cmd_download(args),
         "upload": lambda: _cmd_upload(args),
         "assets": lambda: _cmd_assets(args),
+        "secret": lambda: _cmd_secret(args),
+        "connection": lambda: _cmd_connection(args),
         "pools": lambda: _cmd_pools(args),
         "sandbox": lambda: _cmd_sandbox(args),
         "devbox": lambda: _cmd_devbox(args),
@@ -1104,6 +1173,13 @@ def main(argv: list[str] | None = None) -> int:
                 message = "Add a payment method at https://console.nodus-compute.ai/?view=billing before running workloads, including runs using starter credits."
             else:
                 message = "This run cannot start within your current spending limit. Review your account limit and available credits in the console."
+        if args.cmd in ("secret", "connection") and isinstance(exc, (APIConnectionError, APITimeoutError)):
+            message = ("Request to Nodus timed out." if isinstance(exc, APITimeoutError) else "Could not connect to Nodus.")
+            message += " Check your connection. Your saved sign-in is unchanged."
+            if args.cmd == "connection" and args.connection_cmd == "add":
+                message += " Look up the connection by name before retrying."
+        elif args.cmd in ("secret", "connection") and isinstance(exc, NodusError) and (exc.status_code is not None or not isinstance(exc, ValidationError)):
+            message = ("Secret" if args.cmd == "secret" else "Connection") + " operation failed. Check your credentials, reference, and connection."
         print(f"Error: {message}", file=sys.stderr)
         return 2
     except KeyboardInterrupt:

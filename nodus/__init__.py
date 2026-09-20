@@ -39,6 +39,7 @@ from ._freeze import WorkloadFreeze
 from ._outputs import download_path, verified_file, output_destinations
 from ._assets import Asset, Assets, AsyncAssets
 from ._secrets import Secrets, AsyncSecrets
+from ._connections import Connections, AsyncConnections
 from ._workspaces import Workspaces, AsyncWorkspaces
 
 from ._pool_predict import PredictSubscription, ForecastPoint, ForecastQueue, ForecastSeries, ForecastCalibration, PoolForecastSnapshot, PoolForecast, PoolRecommendation, PoolRecommendations, RecommendationOutcome
@@ -147,6 +148,8 @@ __all__ = [
     "Workload",
     "AsyncWorkload",
     "Sandboxes",
+    "Connections",
+    "AsyncConnections",
     "Secrets",
     "AsyncSecrets",
     "Sandbox",
@@ -911,6 +914,11 @@ class Client(_Transport):
         return Assets(self)
 
     @property
+    def connections(self) -> Connections:
+        """Manage verified external connections."""
+        return Connections(self)
+
+    @property
     def secrets(self) -> Secrets:
         """Manage tenant secrets without reading their values."""
         return Secrets(self)
@@ -1344,6 +1352,11 @@ class AsyncClient(_Transport):
     def api_key(self) -> str:
         """The configured key, redacted. What was sent is in the transport."""
         return self._api_key_shown
+
+    @property
+    def connections(self) -> AsyncConnections:
+        """Manage verified external connections."""
+        return AsyncConnections(self)
 
     @property
     def secrets(self) -> AsyncSecrets:

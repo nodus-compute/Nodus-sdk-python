@@ -21,6 +21,7 @@ with Python 3.10 or newer, then sign in to get started.
 
 - [Run a Python script](guides/containers-and-scripts.md)
 - [Attach code and datasets](guides/assets.md)
+- [Manage external data connections](guides/connections.md)
 - [Train or fine-tune a model](guides/gpu-workloads.md)
 - [Run from a workload file](getting-started/workload-files.md)
 - [Run an agent sandbox](guides/agent-sandboxes.md)
