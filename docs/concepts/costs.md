@@ -24,9 +24,12 @@ not promise completion within your budget.
 The meter also separates compute charges from platform fees. Read
 `compute_settled_usd` and `platform_fee_settled_usd` for settled components,
 and `compute_accruing_usd` and `platform_fee_accruing_usd` for current accrual.
-`subscription_settled_usd` is an account-level component and is zero for a
-workload. These fields default to zero when an older server omits them.
-Continue using the aggregate meter values for totals.
+`subscription_settled_usd` is an account-level component. Where the server
+reports saved-file charges, `storage_settled_usd` is their settled account-level
+component, separate from compute. Subscription and storage components are zero
+on job and workspace compute meters. These fields default to zero when an older
+server omits them. Continue using the aggregate meter values for totals, rather
+than adding the components yourself.
 
 Stopping and settlement can take time. The final customer charge stays within
 the authorized allowance. Lowering a limit does not refund charges already

@@ -13,6 +13,7 @@ COMPONENTS = {
     "subscription_settled_usd": 0.0,
     "compute_accruing_usd": 1.25,
     "platform_fee_accruing_usd": 0.02,
+    "storage_settled_usd": 0.0,
 }
 
 
@@ -68,8 +69,34 @@ def test_subscription_is_read_as_account_component_without_inference():
     assert meter.total_now_usd == 102.85
 
 
-@pytest.mark.parametrize("invalid", [None, True, "invalid", float("inf"), 2 ** 4096],
-                         ids=["null", "boolean", "text", "infinity", "oversized_integer"])
+def test_storage_is_a_distinct_account_component_without_recalculating_totals():
+    meter = nodus.Meter.from_dict({
+        **COMPONENTS, "subscription_settled_usd": 7.25, "storage_settled_usd": 4.0,
+        "settled_usd": 19.0, "accruing_usd": 1.27, "total_now_usd": 20.27,
+    })
+    assert meter.storage_settled_usd == 4.0
+    assert meter.subscription_settled_usd == 7.25
+    assert meter.compute_settled_usd == 2.5
+    assert meter.platform_fee_settled_usd == 0.08
+    assert meter.settled_usd == 19.0
+    assert meter.total_now_usd == 20.27
+
+
+@pytest.mark.parametrize("wire_value, expected", [
+    (0, 0.0), (4, 4.0), (4.25, 4.25), ("4.25", 4.25), (-2.25, -2.25),
+])
+def test_storage_uses_the_existing_numeric_component_handling(wire_value, expected):
+    meter = nodus.Meter.from_dict({"storage_settled_usd": wire_value})
+    assert meter.storage_settled_usd == expected
+
+
+@pytest.mark.parametrize("invalid", [
+    None, True, False, "invalid", float("inf"), float("-inf"), float("nan"),
+    "Infinity", "NaN", 2 ** 4096,
+], ids=[
+    "null", "true", "false", "text", "infinity", "negative_infinity", "nan",
+    "infinity_text", "nan_text", "oversized_integer",
+])
 def test_unusable_components_do_not_interrupt_status_polling(invalid):
     meter = nodus.Meter.from_dict({field: invalid for field in COMPONENTS})
     assert meter is not None
@@ -82,3 +109,21 @@ def test_additive_components_preserve_existing_positional_meter_constructor():
     assert meter.settled_usd == 2.58
     assert meter.raw == {"legacy": True}
     assert meter.compute_settled_usd == 0.0
+    assert meter.storage_settled_usd == 0.0
+
+
+def test_storage_preserves_all_existing_positional_meter_fields():
+    meter = nodus.Meter(2.58, 1.27, 0.02, 3.85, None, {"legacy": True},
+                       2.5, 0.08, 99.0, 1.25, 0.02)
+    assert meter.settled_usd == 2.58
+    assert meter.accruing_usd == 1.27
+    assert meter.accruing_rate_usd_hour == 0.02
+    assert meter.total_now_usd == 3.85
+    assert meter.as_of is None
+    assert meter.raw == {"legacy": True}
+    assert meter.compute_settled_usd == 2.5
+    assert meter.platform_fee_settled_usd == 0.08
+    assert meter.subscription_settled_usd == 99.0
+    assert meter.compute_accruing_usd == 1.25
+    assert meter.platform_fee_accruing_usd == 0.02
+    assert meter.storage_settled_usd == 0.0

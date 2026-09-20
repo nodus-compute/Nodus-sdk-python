@@ -1023,6 +1023,11 @@
             "default": 0,
             "description": "Settled subscription charges in an account meter. Zero in workload meters."
           },
+          "storage_settled_usd": {
+            "type": "number",
+            "default": 0,
+            "description": "Settled saved-file charges earned in this UTC billing month in an account meter. Already included in settled_usd. Zero in workload and workspace compute-session meters."
+          },
           "compute_accruing_usd": {
             "type": "number",
             "default": 0,
@@ -3303,6 +3308,7 @@
           "compute_settled_usd": {"type": "number"},
           "platform_fee_settled_usd": {"type": "number"},
           "subscription_settled_usd": {"type": "number", "description": "Zero for workspace compute sessions."},
+          "storage_settled_usd": {"type": "number", "default": 0, "description": "Zero for workspace compute sessions. Saved-file charges belong to the account meter."},
           "compute_accruing_usd": {"type": "number"},
           "platform_fee_accruing_usd": {"type": "number"}
         },

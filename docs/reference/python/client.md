@@ -120,8 +120,13 @@ to overwrite existing files. Use a new destination directory for another copy.
 | `ManifestFile` | `uri`, `sha256`, `bytes`, `media`, `is_tar` |
 | `Output` | `name`, `stage_id`, `sha256`, `bytes`, `download` |
 | `Route` | `sku`, `compute_class`, `fit_class`, `region`, `memory_gb`, `resources`, prices and estimated cost |
-| `Meter` | `settled_usd`, `accruing_usd`, `total_now_usd`, `accruing_rate_usd_hour`, `as_of`, `compute_settled_usd`, `platform_fee_settled_usd`, `subscription_settled_usd`, `compute_accruing_usd`, `platform_fee_accruing_usd` |
+| `Meter` | `settled_usd`, `accruing_usd`, `total_now_usd`, `accruing_rate_usd_hour`, `as_of`, `compute_settled_usd`, `platform_fee_settled_usd`, `subscription_settled_usd`, `compute_accruing_usd`, `platform_fee_accruing_usd`, `storage_settled_usd` |
 | `Ledger` | `entries`, `charged_usd`, `settlement` |
+
+`Meter.storage_settled_usd` reads settled account-level saved-file charges when
+reported by the server, separately from compute. It is zero on job and workspace
+compute meters and defaults to zero when omitted by an older server. The server's
+aggregate meter values remain authoritative for totals.
 
 `Event` has `type` and `payload`, not a `message` attribute. Output download
 helpers use the authenticated API endpoint. Treat returned `download` as
