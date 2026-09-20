@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 function Install-Nodus {
-    $nodusRoot = Join-Path ([Environment]::GetFolderPath('UserProfile')) '.nodus'
+    $nodusRoot = Join-Path $env:USERPROFILE '.nodus'
     $nodusRuntime = Join-Path $nodusRoot 'agent-tools/@@SDK_VERSION@@-1'
     $nodusTemp = Join-Path ([IO.Path]::GetTempPath()) ('nodus-' + [Guid]::NewGuid().ToString('N'))
     $nodusLock = $null

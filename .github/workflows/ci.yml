@@ -6,6 +6,23 @@ on:
   pull_request:
 
 jobs:
+  agent-install:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify native bootstrap and repeat installation
+        run: python scripts/verify-agent-install.py
+
   plugins:
     runs-on: ubuntu-latest
     timeout-minutes: 10
