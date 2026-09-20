@@ -1,6 +1,7 @@
 """Asset requests match the authenticated import and upload handlers."""
 import asyncio
 import json
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -231,6 +232,56 @@ def test_import_query_polling_has_overall_deadline(asynchronous, monkeypatch):
         return httpx.Response(202 if req.method == "POST" else 200, json={**ROW, "state": "importing"})
     with pytest.raises(nodus.APITimeoutError, match="asset_123"):
         exercise(handler, asynchronous, lambda assets: assets.import_query("db", "SELECT 1"))
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("allowance,start,after_sleep,expected_timeout", [
+    pytest.param(0.01, 4096.0, 4096.0, 0.01, id="clock-roundoff"),
+    pytest.param(1.0, 0.0, 0.99951171875, 0.00048828125, id="sub-millisecond"),
+    pytest.param(1.0, 0.0, 1.0, None, id="deadline-reached"),
+    pytest.param(1.0, 0.0, 1.25, None, id="sleep-overrun"),
+])
+def test_query_poll_respects_remaining_allowance(
+    asynchronous, allowance, start, after_sleep, expected_timeout, monkeypatch,
+):
+    import nodus._assets as module
+    now = [start]
+    sleeps = []
+    calls = []
+
+    def sleep(seconds):
+        sleeps.append(seconds)
+        now[0] = after_sleep
+
+    async def async_sleep(seconds):
+        sleep(seconds)
+
+    monkeypatch.setattr(module, "time", SimpleNamespace(monotonic=lambda: now[0], sleep=sleep))
+    monkeypatch.setattr(module, "asyncio", SimpleNamespace(sleep=async_sleep, CancelledError=asyncio.CancelledError))
+    monkeypatch.setattr(module, "_QUERY_WAIT_SECONDS", allowance)
+    monkeypatch.setattr(module, "_QUERY_POLL_SECONDS", 0.002)
+
+    def handler(req):
+        calls.append(req.method)
+        if req.method == "POST":
+            return httpx.Response(202, json={**ROW, "state": "importing"})
+        assert req.url.path == "/v1/assets/asset_123"
+        assert expected_timeout is not None, "Polling started after the deadline"
+        for timeout in req.extensions["timeout"].values():
+            assert 0 < timeout <= expected_timeout
+        return httpx.Response(200, json=ROW)
+
+    if expected_timeout is None:
+        with pytest.raises(nodus.APITimeoutError, match="asset_123") as raised:
+            exercise(handler, asynchronous, lambda assets: assets.import_query("db", "SELECT 1"))
+        assert raised.value.asset_id == "asset_123"
+        assert calls == ["POST"]
+    else:
+        result = exercise(handler, asynchronous, lambda assets: assets.import_query("db", "SELECT 1"))
+        assert result.state == "ready"
+        assert calls == ["POST", "GET"]
+    assert sleeps == [0.002]
+
 
 @pytest.mark.parametrize("asynchronous", [False, True])
 def test_query_poll_transport_failure_keeps_admitted_asset_identity(asynchronous, monkeypatch):
