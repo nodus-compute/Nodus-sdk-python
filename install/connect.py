@@ -92,11 +92,12 @@ def apply_edits(edits: list[Edit | None]) -> None:
             backup = None
             if edit.before is not None:
                 backup = stage(edit, edit.before, edit.path.name + ".nodus-backup-")
-                temporary_paths.remove(backup)
             staged.append((edit, stage(edit, edit.after, ".nodus-"), backup))
         for edit, temporary, backup in staged:
             if read(edit.path) != edit.before:
                 raise SetupError("Settings changed during setup.")
+            if backup is not None:
+                temporary_paths.remove(backup)
             attempted.append((edit, backup))
             os.replace(temporary, edit.path)
     except (Exception, KeyboardInterrupt) as exc:

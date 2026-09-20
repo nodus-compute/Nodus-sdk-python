@@ -179,6 +179,7 @@ def test_staging_write_failure_leaves_all_originals_untouched(installer, edit_ba
     assert not skill.path.exists()
     assert last.path.read_bytes() == last.before
     assert not list(first.path.parent.glob(".nodus-*"))
+    assert not list(first.path.parent.glob("*.nodus-backup-*"))
     assert isinstance(caught.value, installer.SetupError)
     assert "private-config-value" not in str(caught.value)
 
