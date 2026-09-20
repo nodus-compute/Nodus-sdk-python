@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from ._connections import _ref as _connection_ref
 from .errors import APIConnectionError, APIError, APITimeoutError, ValidationError
 
 _TIMEOUT = 660.0
@@ -27,6 +28,7 @@ class Asset:
     stored_bytes: int | None = None
     imported_bytes: int | None = None
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
+    export: dict[str, Any] | None = None
 
     @classmethod
     def from_dict(cls, row: Any) -> Asset:
@@ -34,7 +36,7 @@ class Asset:
             raise APIError("The API returned an invalid asset")
         return cls(row["id"], row.get("state", ""), row.get("kind", ""),
                    row.get("name", ""), row.get("stored_bytes"),
-                   row.get("imported_bytes"), dict(row))
+                   row.get("imported_bytes"), dict(row), row.get("export"))
 
 
 def _id(value: str) -> str:
@@ -83,6 +85,26 @@ def _import(kind: str, value: str, ref: str | None = None,
             raise ValidationError("Import token must be a nonempty credential without whitespace")
         payload["token"] = token
     return payload
+
+
+def _query(connection: str, sql: str, format: str, branch: str | None, reuse: bool) -> dict[str, Any]:
+    connection = _connection_ref(connection)
+    keyword = re.match(r"[A-Za-z_][A-Za-z0-9_$]*", sql.lstrip()) if isinstance(sql, str) else None
+    if keyword is None or keyword[0].upper() not in ("SELECT", "WITH"):
+        raise ValidationError("Query must start with SELECT or WITH")
+    if len(sql.encode("utf-8")) > 60000 or "\x00" in sql:
+        raise ValidationError("Invalid connection query")
+    if format not in ("parquet", "csv"):
+        raise ValidationError("format must be parquet or csv")
+    if not isinstance(reuse, bool):
+        raise ValidationError("reuse must be a boolean")
+    body: dict[str, Any] = {"kind": "connection_query", "connection_id": connection,
+                            "sql": sql, "format": format, "reuse": reuse}
+    if branch is not None:
+        if not isinstance(branch, str) or not branch or len(branch) > 255 or re.search(r"[\x00-\x1f\x7f]", branch):
+            raise ValidationError("Invalid query branch")
+        body["branch"] = branch
+    return body
 
 
 def _response(client: Any, method: str, path: str, response: httpx.Response) -> Any:
@@ -177,6 +199,16 @@ class Assets:
         """Import selected files from a Hugging Face dataset repository."""
         return Asset.from_dict(self._request("POST", "/v1/assets/import", json=_import("huggingface", repo, ref, files, token)))
 
+    def import_query(self, connection: str, sql: str, *, format: str = "parquet",
+                     branch: str | None = None, reuse: bool = False) -> Asset:
+        """Export a read-only database query as a normal input asset."""
+        return Asset.from_dict(self._request("POST", "/v1/assets/import",
+            json=_query(connection, sql, format, branch, reuse)))
+
+    def get(self, asset_id: str) -> Asset:
+        """Get an asset and its optional query export metadata."""
+        return Asset.from_dict(self._request("GET", f"/v1/assets/{_id(asset_id)}"))
+
     def delete(self, asset_id: str) -> None:
         """Delete an asset that no active workload uses."""
         self._request("DELETE", f"/v1/assets/{_id(asset_id)}")
@@ -221,6 +253,16 @@ class AsyncAssets:
                                  files: list[str] | None = None, token: str | None = None) -> Asset:
         """Import selected files from a Hugging Face dataset repository."""
         return Asset.from_dict(await self._request("POST", "/v1/assets/import", json=_import("huggingface", repo, ref, files, token)))
+
+    async def import_query(self, connection: str, sql: str, *, format: str = "parquet",
+                           branch: str | None = None, reuse: bool = False) -> Asset:
+        """Export a read-only database query as a normal input asset."""
+        return Asset.from_dict(await self._request("POST", "/v1/assets/import",
+            json=_query(connection, sql, format, branch, reuse)))
+
+    async def get(self, asset_id: str) -> Asset:
+        """Get an asset and its optional query export metadata."""
+        return Asset.from_dict(await self._request("GET", f"/v1/assets/{_id(asset_id)}"))
 
     async def delete(self, asset_id: str) -> None:
         """Delete an asset that no active workload uses."""
