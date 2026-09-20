@@ -23,7 +23,7 @@ from typing import Any
 from . import Client, SandboxExec, __version__, _is_header_safe, _redact, _resolve_base_url, _current_hosted_url, config, login
 from ._terminal import clean, compute_label, format_cost, show_table, show_workload, status_label
 from ._brief import STATUS_FILTERS
-from .errors import ValidationError, NodusError, NotFoundError, AuthenticationError, APIConnectionError, APITimeoutError
+from .errors import ValidationError, NodusError, NotFoundError, AuthenticationError, APIConnectionError, APITimeoutError, asset_id_from_error
 from .types import _num
 from ._workload_file import load_workload_file, write_workload_file
 
@@ -259,17 +259,29 @@ def _cmd_connection(args: argparse.Namespace) -> int:
 
 
 def _query_recovery(exc: BaseException) -> str | None:
-    asset_id = getattr(exc, "asset_id", None)
-    if isinstance(asset_id, str) and re.fullmatch(r"asset_[A-Za-z0-9-]{1,64}", asset_id):
-        return f"Query export {asset_id} was admitted. Inspect it with nodus assets before repeating the import."
+    asset_id = asset_id_from_error(exc)
+    if asset_id is not None:
+        return f"Query export {asset_id} was admitted. Inspect it with nodus asset get {asset_id} before repeating the import."
     return None
 
 
 def _cmd_asset(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
-        asset = client.assets.import_query(args.connection, args.sql, format=args.format,
-                                           branch=args.branch, reuse=args.reuse)
-    print(_safe_line(asset.id))
+        if args.asset_cmd == "get":
+            asset = client.assets.get(args.asset_id)
+            for label, value in (("Asset", asset.id), ("Status", asset.state),
+                                 ("Name", asset.name), ("Stored bytes", asset.stored_bytes)):
+                print(f"{label}: {_safe_line(value)}")
+            if asset.error:
+                print(f"Error: {_safe_line(asset.error)}")
+            if isinstance(asset.export, dict):
+                for label, key in (("Format", "format"), ("Rows", "row_count"), ("Export bytes", "bytes")):
+                    if key in asset.export:
+                        print(f"{label}: {_safe_line(asset.export[key])}")
+        else:
+            asset = client.assets.import_query(args.connection, args.sql, format=args.format,
+                                               branch=args.branch, reuse=args.reuse)
+            print(_safe_line(asset.id))
     return 0
 
 
@@ -921,8 +933,10 @@ Use nodus COMMAND --help for command options.""",
     u = sub.add_parser("upload", help="upload a data file or archive")
     u.add_argument("file")
     sub.add_parser("assets", help="list uploaded and imported data")
-    asset = sub.add_parser("asset", help="import query results as input assets")
+    asset = sub.add_parser("asset", help="import or inspect input assets")
     asset_sub = asset.add_subparsers(dest="asset_cmd", required=True)
+    asset_get = asset_sub.add_parser("get", help="inspect an asset by ID, including its export error")
+    asset_get.add_argument("asset_id")
     query = asset_sub.add_parser("import-query", help="export a read-only database query")
     query.add_argument("connection", help="connection name or ID")
     query.add_argument("sql", help="SELECT or WITH query")
