@@ -97,6 +97,77 @@ keys cannot enable it. The action is recorded in team activity.
 
 Only wandb supports the live flag, with `write` or `readwrite` scope. Its declared
 hosts are `api.wandb.ai`, `files.wandb.ai` and `storage.googleapis.com`. Database
-connections keep credentials on the control plane. This guide covers connection
-management. Attaching live connections to runs and importing or loading data are
-not available through these management operations.
+connections keep credentials on the control plane. Database query imports are
+described below.
+
+## Import a database query
+
+Export a query to a normal input asset. The query runs on the control plane and
+the database credential never reaches the workload.
+
+```python
+from nodus import Client
+
+with Client() as client:
+    dataset = client.assets.import_query(
+        "lab-db", "SELECT id, uri, label FROM clips WHERE split='train'"
+    )
+    metadata = client.assets.get(dataset.id)
+    print(metadata.export["row_count"])
+```
+
+Pass `dataset.id` in your workload's `inputs`, for example
+`inputs={"clips": dataset.id}`. The input is a directory containing
+`data.parquet`. A training program can read it with
+`pandas.read_parquet(os.path.join(os.environ["NODUS_INPUT_clips"], "data.parquet"))`.
+Install the appropriate Parquet reader in your training environment.
+
+```sh
+nodus asset import-query lab-db "SELECT id, uri, label FROM clips" --format parquet
+nodus asset import-query lab-db "SELECT id, uri, label FROM clips" --format csv --reuse
+```
+
+`AsyncClient.assets.import_query` and `get` provide the same interface with
+`await`. `format` defaults to `parquet`. CSV exports contain a header and use an
+empty field for SQL nulls. Parquet preserves nullable integer, floating point,
+boolean, UTF-8 text, UTC microsecond timestamp and JSON logical types. Other
+Postgres types become UTF-8 strings. Use unique nonempty column aliases.
+
+Queries must begin with `SELECT` or `WITH`. Each export uses a read-only
+transaction, a ten-minute timeout and 10000-row cursor batches. Modifying CTEs
+and multiple statements are refused. The maximum is 5 GB or 50 million rows,
+with no request override. Existing storage quota can impose a smaller byte
+limit. A limit error includes the row count reached.
+
+`reuse=True` may return an existing ready asset from the last 24 hours for the
+same team, connection, SQL, branch and format. Only outer SQL whitespace is
+ignored. Rotated or revoked credentials cannot create or reuse an export.
+`reuse=False` creates a fresh asset. An optional `branch` must match the Neon
+branch already configured and verified on the connection. Create a separate
+connection to use another branch.
+
+An admitted export keeps its original credential version even if the secret is
+rotated during execution. Delete the export asset before removing its connection.
+The HTTP API returns 202 immediately after durable admission. Poll
+`GET /v1/assets/{id}` until `state` is `ready` or `failed`. Failed assets expose
+an `error` message, including the reached row count for size or row limits.
+They remain visible after cleanup and have zero stored bytes once their
+reservation is released. Delete a failed asset when you no longer need its error.
+
+The SDK and CLI poll automatically with short HTTP requests for up to twelve
+minutes, returning the ready asset or raising an error with its asset ID.
+Execution and queue time together have a ten-minute limit. If observation times
+out or you interrupt the client, inspect that asset before repeating the import.
+Disconnecting stops observation and leaves the admitted export owned by the
+server. Server shutdown cancels active queries and attempts cleanup. After a
+restart, pending work resumes while expired active work is failed and cleaned.
+Temporary storage failures retain the reservation until cleanup succeeds.
+
+Query assets retain their connection's declared region when used as workload
+inputs, workload or stage source assets, or sandbox source assets. If you set
+`policy.data_regions`, include each input source's declared region. A connection
+without a region and a run without a region constraint remain unrestricted.
+
+After query admission, SDK observation errors expose the admitted ID in
+`error.asset_id`. The CLI preserves that ID and tells you to inspect the asset
+before repeating the import, including when observation is interrupted.

@@ -258,6 +258,21 @@ def _cmd_connection(args: argparse.Namespace) -> int:
     return 0
 
 
+def _query_recovery(exc: BaseException) -> str | None:
+    asset_id = getattr(exc, "asset_id", None)
+    if isinstance(asset_id, str) and re.fullmatch(r"asset_[A-Za-z0-9-]{1,64}", asset_id):
+        return f"Query export {asset_id} was admitted. Inspect it with nodus assets before repeating the import."
+    return None
+
+
+def _cmd_asset(args: argparse.Namespace) -> int:
+    with Client(base_url=args.base_url) as client:
+        asset = client.assets.import_query(args.connection, args.sql, format=args.format,
+                                           branch=args.branch, reuse=args.reuse)
+    print(_safe_line(asset.id))
+    return 0
+
+
 def _cmd_assets(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
         show_table(["Asset", "Status", "Name"],
@@ -834,7 +849,7 @@ class _CommandHelpFormatter(argparse.RawDescriptionHelpFormatter):
                 ("Run", ("run", "submit", "sandbox", "devbox")),
                 ("Monitor", ("list", "status", "wait", "logs", "cancel")),
                 ("Results", ("download",)),
-                ("Advanced", ("upload", "assets", "pools", "events", "artifacts", "ledger", "explain")),
+                ("Advanced", ("upload", "assets", "asset", "pools", "events", "artifacts", "ledger", "explain")),
             )
             return "\n".join(
                 f"  {title}:\n" + "".join(
@@ -906,6 +921,14 @@ Use nodus COMMAND --help for command options.""",
     u = sub.add_parser("upload", help="upload a data file or archive")
     u.add_argument("file")
     sub.add_parser("assets", help="list uploaded and imported data")
+    asset = sub.add_parser("asset", help="import query results as input assets")
+    asset_sub = asset.add_subparsers(dest="asset_cmd", required=True)
+    query = asset_sub.add_parser("import-query", help="export a read-only database query")
+    query.add_argument("connection", help="connection name or ID")
+    query.add_argument("sql", help="SELECT or WITH query")
+    query.add_argument("--format", choices=("parquet", "csv"), default="parquet")
+    query.add_argument("--branch", help="must match the connection's verified Neon branch")
+    query.add_argument("--reuse", action="store_true", help="reuse an eligible export from the last 24 hours")
     secret = sub.add_parser("secret", help="store and manage write-only tenant secrets")
     secret_sub = secret.add_subparsers(dest="secret_cmd", required=True)
     secret_set = secret_sub.add_parser("set", help="store a new version from stdin or a file")
@@ -1132,6 +1155,7 @@ def main(argv: list[str] | None = None) -> int:
         "download": lambda: _cmd_download(args),
         "upload": lambda: _cmd_upload(args),
         "assets": lambda: _cmd_assets(args),
+        "asset": lambda: _cmd_asset(args),
         "secret": lambda: _cmd_secret(args),
         "connection": lambda: _cmd_connection(args),
         "pools": lambda: _cmd_pools(args),
@@ -1180,9 +1204,13 @@ def main(argv: list[str] | None = None) -> int:
                 message += " Look up the connection by name before retrying."
         elif args.cmd in ("secret", "connection") and isinstance(exc, NodusError) and (exc.status_code is not None or not isinstance(exc, ValidationError)):
             message = ("Secret" if args.cmd == "secret" else "Connection") + " operation failed. Check your credentials, reference, and connection."
+        if args.cmd == "asset" and (recovery := _query_recovery(exc)):
+            message = recovery
         print(f"Error: {message}", file=sys.stderr)
         return 2
-    except KeyboardInterrupt:
+    except KeyboardInterrupt as exc:
+        if args.cmd == "asset" and (recovery := _query_recovery(exc)):
+            print(recovery, file=sys.stderr)
         return 130
 
 
