@@ -262,5 +262,5 @@ Observed Act monetary outcomes identify their `measurement_basis`. The basis
 ## MCP clients
 
 Use the separate `nodus-mcp` executable to submit and monitor workloads from an
-MCP client. See [MCP setup and the seven tools](docs/guides/mcp.md) for executable
+MCP client. See [MCP setup and the seven tools](https://nodus-compute.ai/docs/guides/mcp/) for executable
 access, API key configuration, tool arguments, pagination, logs and cancellation.
