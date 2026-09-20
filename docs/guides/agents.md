@@ -6,6 +6,9 @@ workload, observes its status, and retrieves declared results. A GPU does not
 automatically make a small task faster or cheaper. Start with a bounded run
 that checks the environment and output before scaling up.
 
+For an MCP client, use the [MCP setup and tool reference](mcp.md). It covers
+the local server, API key setup and all seven workload tools.
+
 ## Install and authenticate
 
 Requires Python 3.10 or newer:

@@ -24,6 +24,7 @@ with Python 3.10 or newer, then sign in to get started.
 - [Train or fine-tune a model](guides/gpu-workloads.md)
 - [Run from a workload file](getting-started/workload-files.md)
 - [Run an agent sandbox](guides/agent-sandboxes.md)
+- [Connect MCP tools](guides/mcp.md)
 
 ## Go further
 
