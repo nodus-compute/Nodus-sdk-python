@@ -347,7 +347,7 @@ def error_from_response(
     # Only the code the API actually writes counts.
     if status_code == 401 and code == "invalid_signature":
         cls: type[NodusError] = SignatureError
-    elif status_code == 409 and code == "connection_not_retryable":
+    elif status_code == 409 and code in {"connection_not_retryable", "workspace_save_pending", "workspace_capture_failed", "workspace_no_saved_files", "workspace_source_unavailable", "workspace_not_ready", "workspace_saving"}:
         cls = APIError
     elif status_code == 409 and code == "asset_in_use":
         cls = AssetInUseError

@@ -75,6 +75,12 @@ def docs_api(monkeypatch):
             calls.append(("GET", path))
             if self.headers.get("Authorization") != "Bearer nk_docs":
                 return self.reply({"error": "unauthorized"}, 401)
+            if path == "/v1/research-workspaces/capabilities":
+                return self.reply({"available": True, "storage_limit_bytes": 536870912,
+                    "workload_source_limit_bytes": 268435456,
+                    "environments": [{"id": "pytorch-cuda", "name": "PyTorch and CUDA", "description": "Development image"}],
+                    "gpu_counts": [1, 2, 4, 8], "editors": ["vscode", "jupyter", "ssh"],
+                    "browser_available": True, "workload_submission": True})
             if path == "/v1/pools/pool_docs/proposals":
                 query = parse_qs(urlsplit(self.path).query)
                 if query != {"limit": ["25"], "state": ["pending"]}:
@@ -218,6 +224,20 @@ def docs_api(monkeypatch):
                     "last_error": "", "saving_for_termination": False,
                     "billing_status": "disabled_no_approved_storage_rate",
                 }, 201)
+            if path == "/v1/research-workspaces":
+                assert payload == {"name": "kernel-lab", "environment": "pytorch-cuda", "editor": "jupyter",
+                    "gpu": "H100", "gpu_count": 1, "gpu_memory_gb": 80, "budget_usd": 8,
+                    "max_hours": 2, "size_gb": 0.25}
+                return self.reply({"id": "ws_1234-abcd", "name": "kernel-lab", "configuration": payload,
+                    "state": "stopped", "session": None}, 201)
+            if path == "/v1/research-workspaces/ws_1234-abcd/start":
+                assert self.headers.get("Idempotency-Key") == "kernel-lab-session-1"
+                assert payload == {}
+                return self.reply({"id": "ws_1234-abcd", "state": "creating"}, 202)
+            if path == "/v1/research-workspaces/ws_1234-abcd/workloads":
+                assert self.headers.get("Idempotency-Key") == "kernel-lab-training-1"
+                assert payload == {"command": "python train.py", "budget_usd": 6}
+                return self.reply({"id": "wl_docs", "workload_id": "wl_docs", "status": "accepted", "revision": 1}, 202)
             if path == "/v1/research-workspaces/ws_1234-abcd/connections/retry":
                 assert payload in ({"tool": "editor"}, {"tool": "notebook"})
                 assert self.headers.get("Idempotency-Key") is None

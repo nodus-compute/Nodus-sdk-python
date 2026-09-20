@@ -3209,7 +3209,12 @@
           "environment": {
             "type": "string",
             "enum": ["pytorch-cuda"],
-            "description": "Operator-qualified PyTorch and CUDA image with browser VS Code, JupyterLab and SSH. Customers cannot override its image digest."
+            "description": "Operator-qualified PyTorch and CUDA image with the selected development tool. Customers cannot override its image digest."
+          },
+          "editor": {
+            "type": "string",
+            "enum": ["vscode", "jupyter", "ssh"],
+            "description": "Choose browser VS Code, JupyterLab or SSH only. SSH remains available with either browser tool when a public key is supplied. Omission preserves both browser tools for existing configurations. SSH only requires ssh_authorized_key."
           },
           "repository": {
             "type": "string",
@@ -3250,8 +3255,8 @@
           "size_gb": {
             "type": "number",
             "minimum": 0.00000095367431640625,
-            "maximum": 0.5,
-            "description": "Project capacity in GiB, with a minimum of 1024 bytes and a maximum given by capabilities.storage_limit_bytes. The current implementation never exceeds 512 MiB."
+            "maximum": 10,
+            "description": "Project capacity within capabilities.storage_limit_bytes. With storage_policy_version included-10gb-v1, send exactly 10 for the included 10,000,000,000-byte capacity. Other deployments use GiB and their displayed capacity limit."
           },
           "ssh_authorized_key": {
             "type": "string",
@@ -3264,7 +3269,7 @@
       },
       "ResearchWorkspaceCapabilities": {
         "type": "object",
-        "required": ["available", "storage_limit_bytes", "environments", "gpu_counts"],
+        "required": ["available", "storage_limit_bytes", "environments", "gpu_counts", "editors", "browser_available", "workload_submission", "workload_source_limit_bytes"],
         "properties": {
           "available": {
             "type": "boolean",
@@ -3273,8 +3278,12 @@
           "storage_limit_bytes": {
             "type": "integer",
             "format": "int64",
-            "maximum": 536870912,
+            "maximum": 10000000000,
             "description": "Configured project capacity limit in bytes."
+          },
+          "storage_policy_version": {
+            "type": "string",
+            "description": "The value included-10gb-v1 enables an included decimal 10 GB workspace. Empty or absent retains the deployment's existing storage policy and capacity."
           },
           "environments": {
             "type": "array",
@@ -3292,8 +3301,57 @@
             "type": "array",
             "items": {"type": "integer", "enum": [1, 2, 4, 8]},
             "description": "Accepted single-machine request counts. This is not a per-model qualification or availability inventory."
+          },
+          "editors": {
+            "type": "array",
+            "items": {"type": "string", "enum": ["vscode", "jupyter", "ssh"]},
+            "description": "Supported development tool choices for a new workspace."
+          },
+          "browser_available": {
+            "type": "boolean",
+            "description": "Whether browser connection infrastructure is currently available. Individual connections still require current session and tool readiness."
+          },
+          "workload_submission": {
+            "type": "boolean",
+            "description": "Whether this deployment supports submitting an independent workload from a saved or running workspace."
+          },
+          "workload_source_limit_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Maximum captured project source size for an independent workload. This can be smaller than the saved workspace capacity."
           }
         }
+      },
+      "WorkspaceWorkloadRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["command", "budget_usd"],
+        "properties": {
+          "command": {"type": "string", "minLength": 1, "maxLength": 8192, "description": "Command run from the captured project directory through the environment shell. Whitespace-only commands, NUL characters and commands longer than 8192 UTF-8 bytes are rejected."},
+          "budget_usd": {"type": "number", "minimum": 0.000001, "description": "Required independent workload spending limit in USD. Account spending controls also apply. Workspace compute retains its own session limit."},
+          "gpu": {"type": "string", "maxLength": 64, "description": "Optional GPU model override. Omit or send an empty string to inherit the workspace configuration."},
+          "gpu_count": {"type": "integer", "enum": [0, 1, 2, 4, 8], "description": "Exact GPUs on one machine. Omitted or zero inherits the workspace configuration."},
+          "gpu_memory_gb": {"type": "number", "minimum": 0, "maximum": 1024, "description": "Memory per GPU in GB. Omitted or zero inherits the workspace configuration."}
+        },
+        "x-go-source": "internal/api/workspace_workloads.go",
+        "x-go-type": "workspaceWorkloadRequest"
+      },
+      "WorkspaceWorkload": {
+        "type": "object",
+        "required": ["id", "status", "created_at", "source_revision"],
+        "properties": {
+          "id": {"type": "string"},
+          "status": {"type": "string"},
+          "created_at": {"type": "string", "format": "date-time"},
+          "source_revision": {"type": "string", "description": "Digest identifying the immutable saved project revision used for this workload."}
+        },
+        "x-go-source": "internal/store/workspace_workloads.go",
+        "x-go-type": "WorkspaceWorkload"
+      },
+      "WorkspaceWorkloadList": {
+        "type": "object",
+        "required": ["workloads"],
+        "properties": {"workloads": {"type": "array", "maxItems": 100, "items": {"$ref": "#/components/schemas/WorkspaceWorkload"}}}
       },
       "ResearchWorkspaceMeter": {
         "type": "object",
@@ -3438,6 +3496,20 @@
         "x-go-source": "internal/workspacessh/client.go",
         "x-go-type": "ConnectionConfig"
       },
+      "WorkspaceWebSocketSSHConnection": {
+        "type": "object",
+        "required": ["host", "ssh_config", "transport", "workspace_id", "session_id", "generation"],
+        "properties": {
+          "host": {"type": "string", "description": "OpenSSH configuration alias to open from a terminal or VS Code Remote SSH."},
+          "ssh_config": {"type": "string", "description": "OpenSSH configuration using nodus workspaces ssh-proxy as ProxyCommand. The command reads the existing Nodus sign-in and contains no credential. The matching SSH private key is still required. Confirm the project host key on first use."},
+          "transport": {"type": "string", "const": "websocket"},
+          "workspace_id": {"type": "string"},
+          "session_id": {"type": "string"},
+          "generation": {"type": "integer", "minimum": 1}
+        },
+        "x-go-source": "internal/api/workspace_ssh_stream.go",
+        "x-go-type": "workspaceWebSocketSSHConnection"
+      },
       "WorkspaceCreateRequest": {
         "type": "object",
         "additionalProperties": false,
@@ -3505,7 +3577,8 @@
             "type": "string",
             "enum": [
               "disabled_no_approved_storage_rate",
-              "metered_subject_to_account_limits"
+              "metered_subject_to_account_limits",
+              "included_workspace_storage"
             ]
           }
         }
@@ -9652,6 +9725,46 @@
         }
       }
     },
+    "/v1/research-workspaces/{id}/workloads": {
+      "post": {
+        "operationId": "submitWorkspaceWorkload",
+        "summary": "Submit an independent workload from this project",
+        "tags": ["Research workspaces"],
+        "description": "Captures current project files from ready compute, or pins the last successful saved revision while stopped. The command uses that immutable project revision and the workspace environment image. Optional GPU overrides apply only to the submitted workload. Running workspace capture returns 409 workspace_save_pending until saving finishes. Reuse the exact body and Idempotency-Key to check progress or retry an uncertain reply. A 202 response means ordinary workload admission succeeded. It does not establish execution or completion. Later edits and stopping workspace compute do not stop an admitted workload. Both incur charges while running.",
+        "parameters": [
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}, "description": "Workspace identifier owned by this account."},
+          {"name": "Idempotency-Key", "in": "header", "required": true, "schema": {"type": "string", "minLength": 1}, "description": "Stable key for this logical submission and its captured source revision. Reuse the same body and key after saving is pending or the reply is uncertain."}
+        ],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/WorkspaceWorkloadRequest"}}}},
+        "responses": {
+          "202": {
+            "description": "Independent workload admitted or replayed",
+            "headers": {"Idempotent-Replayed": {"description": "true when workload admission replays the original result.", "schema": {"type": "string"}}},
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SubmitResult"}}}
+          },
+          "409": {
+            "description": "workspace_save_pending requests the same key and body again after Retry-After. workspace_capture_failed requires correcting the save failure and beginning a new submission. workspace_no_saved_files requires adding project files. workspace_source_unavailable reports a source preparation failure. idempotency_conflict indicates a changed body for an existing key. Other state conflicts can also occur.",
+            "headers": {"Retry-After": {"description": "Seconds until the next capture progress check when workspace_save_pending is returned.", "schema": {"type": "string"}}},
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+          },
+          "default": {
+            "description": "400 for invalid command, budget or GPU configuration. 402 for payment, credit or spending limits. 404 for a workspace outside this account. 503 when submission is unavailable. Ordinary workload admission checks, authentication, rate limits and transient failures also apply.",
+            "content": {"application/json": {"schema": {"oneOf": [{"$ref": "#/components/schemas/Error"}, {"$ref": "#/components/schemas/SandboxError"}]}}}
+          }
+        }
+      },
+      "get": {
+        "operationId": "listWorkspaceWorkloads",
+        "summary": "List workloads submitted from this workspace",
+        "tags": ["Research workspaces"],
+        "description": "Returns up to 100 admitted workloads, newest first, with the captured source revision. Pending saves without an admitted workload are not listed. Use the ordinary workload endpoints for logs, results, costs and cancellation.",
+        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}, "description": "Workspace identifier owned by this account."}],
+        "responses": {
+          "200": {"description": "Admitted workspace workloads", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/WorkspaceWorkloadList"}}}},
+          "default": {"description": "404 for a workspace outside this account. Authentication, rate limits and transient failures also apply.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      }
+    },
     "/v1/research-workspaces/{id}/start": {
       "post": {
         "operationId": "startResearchWorkspace",
@@ -9734,7 +9847,7 @@
         "operationId": "connectResearchWorkspace",
         "summary": "Open a ready browser tool or get desktop SSH configuration",
         "tags": ["Research workspaces"],
-        "description": "Requires a current authorized compute session with reachable, healthy tools. editor and notebook return a one-time HTTPS URL. ssh returns connection configuration and a gateway known_hosts entry, and requires a saved SSH public key. Browser tools use isolated per-tool origins, not the API or console origin. Account credentials never reach the guest. Revocation, session replacement or expired authorization closes access, including active browser streams. Closing a client does not stop compute.",
+        "description": "Requires a current authorized compute session with reachable, healthy tools. editor and notebook return a one-time HTTPS URL. ssh requires a saved SSH public key and returns OpenSSH configuration, using either the authenticated HTTPS proxy command or a direct gateway with a known_hosts entry. Browser tools use isolated per-tool origins, not the API or console origin. Account credentials never reach the guest. Revocation, session replacement or expired authorization closes access, including active browser streams. Closing a client does not stop compute.",
         "parameters": [
           {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}, "description": "Saved workspace identifier."}
         ],
@@ -9750,7 +9863,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "oneOf": [{"$ref": "#/components/schemas/ResearchWorkspaceBrowserConnection"}, {"$ref": "#/components/schemas/ResearchWorkspaceSSHConnection"}]
+                  "oneOf": [{"$ref": "#/components/schemas/ResearchWorkspaceBrowserConnection"}, {"$ref": "#/components/schemas/ResearchWorkspaceSSHConnection"}, {"$ref": "#/components/schemas/WorkspaceWebSocketSSHConnection"}]
                 }
               }
             }
@@ -9761,6 +9874,24 @@
               "application/json": {"schema": {"$ref": "#/components/schemas/SandboxError"}}
             }
           }
+        }
+      }
+    },
+    "/v1/research-workspaces/{id}/ssh-stream": {
+      "get": {
+        "operationId": "streamWorkspaceSSH",
+        "summary": "Connect an authenticated SSH stream to the current workspace session",
+        "tags": ["Research workspaces"],
+        "description": "Upgrades an authenticated request to a WebSocket using nodus-workspace-ssh-v1. Binary messages carry the SSH byte stream. Use the session and generation from a fresh SSH connection response. Query strings, Origin and Cookie headers are rejected. Authorization must contain one current Bearer credential. Nodus checks workspace ownership and the pinned session before connecting and while forwarding. The guest still authenticates the customer's SSH public key. Either side closing or authorization expiry closes the stream. The CLI proxy opens this endpoint without a browser or credential in its command line.",
+        "parameters": [
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "X-Nodus-Workspace-Session", "in": "header", "required": true, "schema": {"type": "string"}, "description": "Pinned compute session identifier from the SSH connection response."},
+          {"name": "X-Nodus-Workspace-Generation", "in": "header", "required": true, "schema": {"type": "string", "pattern": "^[1-9][0-9]*$"}, "description": "Exact positive decimal session generation from the SSH connection response."},
+          {"name": "Sec-WebSocket-Protocol", "in": "header", "required": true, "schema": {"type": "string", "const": "nodus-workspace-ssh-v1"}}
+        ],
+        "responses": {
+          "101": {"description": "Authenticated binary SSH stream. The standard WebSocket handshake headers apply."},
+          "default": {"description": "400 invalid_ssh_connection for an invalid handshake identity. 409 workspace_not_ready for a stale or unavailable session. 503 ssh_unavailable when the stream or guest is unavailable. Authentication and rate limits also apply.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SandboxError"}}}}
         }
       }
     },
@@ -11442,6 +11573,7 @@
       "delete": {
         "operationId": "deleteConnection",
         "summary": "Delete an external connection",
+        "description": "Removes the connection from listing and future use. Returns 409 while a workload, export, load or metadata refresh is active. Completed workload and transfer history is retained. Stored credentials and external data are unchanged.",
         "tags": [
           "Connections"
         ],

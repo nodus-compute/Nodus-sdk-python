@@ -16,6 +16,15 @@ which capabilities your SDK version provides.
 
 For headless machines and automation, see [authentication](../getting-started/authentication.md).
 
+## Interactive workspace SSH
+
+`nodus workspaces ssh-proxy WORKSPACE_ID --session SESSION_ID --generation N`
+is the binary transport used by workspace OpenSSH connection instructions.
+This command is not released yet. Use the complete SSH configuration returned
+for your current session. It reads the existing Nodus sign-in and takes no
+credential argument. It writes only SSH bytes to standard output and reports
+errors on standard error. See [interactive workspaces](../workspaces.md#ssh-from-your-computer).
+
 ## Run
 
 | Command | What it does |
