@@ -1154,7 +1154,12 @@ def main(argv: list[str] | None = None) -> int:
                 message = "Add a payment method at https://console.nodus-compute.ai/?view=billing before running workloads, including runs using starter credits."
             else:
                 message = "This run cannot start within your current spending limit. Review your account limit and available credits in the console."
-        if args.cmd in ("secret", "connection") and isinstance(exc, NodusError) and (exc.status_code is not None or not isinstance(exc, ValidationError)):
+        if args.cmd in ("secret", "connection") and isinstance(exc, (APIConnectionError, APITimeoutError)):
+            message = ("Request to Nodus timed out." if isinstance(exc, APITimeoutError) else "Could not connect to Nodus.")
+            message += " Check your connection. Your saved sign-in is unchanged."
+            if args.cmd == "connection" and args.connection_cmd == "add":
+                message += " Look up the connection by name before retrying."
+        elif args.cmd in ("secret", "connection") and isinstance(exc, NodusError) and (exc.status_code is not None or not isinstance(exc, ValidationError)):
             message = ("Secret" if args.cmd == "secret" else "Connection") + " operation failed. Check your credentials, reference, and connection."
         print(f"Error: {message}", file=sys.stderr)
         return 2

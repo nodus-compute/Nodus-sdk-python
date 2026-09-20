@@ -82,3 +82,43 @@ def test_connection_name_cannot_shadow_connection_id():
     with sync_client(lambda request: pytest.fail("reserved name reached HTTP")) as client:
         with pytest.raises(nodus.ValidationError):
             client.connections.create("conn_reserved", "postgres", secret="DB")
+
+@pytest.mark.parametrize("failure", ["connection", "timeout", 429, 503])
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_connection_create_never_retries_uncertain_submission(failure, asynchronous):
+    calls = []
+    def handler(request):
+        calls.append(request)
+        assert request.method == "POST" and request.url.path == "/v1/connections"
+        if failure == "connection":
+            raise httpx.ReadError("response lost", request=request)
+        if failure == "timeout":
+            raise httpx.ReadTimeout("response lost", request=request)
+        return httpx.Response(failure, json={"error": "unavailable", "message": "temporarily unavailable"})
+    async def run():
+        client = nodus.AsyncClient(api_key="nk_test", base_url="https://nodus.invalid")
+        client._http = httpx.AsyncClient(base_url="https://nodus.invalid", transport=httpx.MockTransport(handler))
+        async with client:
+            with pytest.raises(nodus.NodusError):
+                await client.connections.create("lab-db", "postgres", secret="DB")
+    if asynchronous:
+        asyncio.run(run())
+    else:
+        with sync_client(handler) as client:
+            with pytest.raises(nodus.NodusError):
+                client.connections.create("lab-db", "postgres", secret="DB")
+    assert len(calls) == 1
+    assert "Idempotency-Key" not in calls[0].headers
+
+@pytest.mark.parametrize("failure, guidance", [(httpx.ConnectError, "Could not connect to Nodus"), (httpx.ReadTimeout, "timed out")])
+@pytest.mark.parametrize("debug", [False, True])
+def test_connection_cli_preserves_safe_transport_guidance(monkeypatch, capsys, failure, guidance, debug):
+    def handler(request):
+        raise failure("private-credential", request=request)
+    monkeypatch.setattr(cli, "Client", client_factory(handler))
+    argv = (["--debug"] if debug else []) + ["connection", "add", "postgres", "--name", "lab-db", "--secret", "DB"]
+    assert cli.main(argv) == 2
+    output = capsys.readouterr()
+    assert guidance in output.err
+    assert "private-credential" not in output.out + output.err
+    assert "Check your credentials" not in output.err

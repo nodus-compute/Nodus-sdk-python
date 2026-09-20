@@ -47,6 +47,12 @@ the key. Verification has a five-second limit. Failure or timeout saves no
 connection. Verification confirms authentication, not table permissions or
 access to the selected wandb project.
 
+Connection creation is submitted once and is not automatically retried, including
+on transport errors or transient HTTP responses. If the response is lost, the
+connection may already exist. Look it up with `client.connections.get("lab-db")`
+or `nodus connection ls` before submitting another create request. The name is
+unique within your team.
+
 ## Python
 
 ```python

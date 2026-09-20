@@ -59,7 +59,7 @@ class Connections:
                live: bool = False, scope: str | None = None, branch: str | None = None,
                entity: str | None = None, project: str | None = None) -> dict[str, Any]:
         """Verify and save a secret reference. Scope defaults to read, or write for wandb."""
-        return self._client._request("POST", "/v1/connections", json=_create(name, kind, secret, region, live, scope, branch, entity, project))
+        return self._client._request("POST", "/v1/connections", json=_create(name, kind, secret, region, live, scope, branch, entity, project), max_retries=0)
 
     def list(self) -> list[dict[str, Any]]:
         """List connection metadata without credential values."""
@@ -88,7 +88,7 @@ class AsyncConnections:
                      live: bool = False, scope: str | None = None, branch: str | None = None,
                      entity: str | None = None, project: str | None = None) -> dict[str, Any]:
         """Verify and save a secret reference. Scope defaults to read, or write for wandb."""
-        return await self._client._request("POST", "/v1/connections", json=_create(name, kind, secret, region, live, scope, branch, entity, project))
+        return await self._client._request("POST", "/v1/connections", json=_create(name, kind, secret, region, live, scope, branch, entity, project), max_retries=0)
 
     async def list(self) -> list[dict[str, Any]]:
         """List connection metadata without credential values."""
