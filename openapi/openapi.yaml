@@ -385,7 +385,7 @@
           },
           "state": {
             "type": "string",
-            "description": "Current asset state, such as importing, ready or deleting."
+            "description": "Current asset state: importing, ready, failed, deleting or deleted."
           },
           "revision": {
             "type": "string"
@@ -416,6 +416,13 @@
               "null"
             ],
             "format": "date-time"
+          },
+          "export": {
+            "$ref": "#/components/schemas/ConnectionExport"
+          },
+          "error": {
+            "type": "string",
+            "description": "Value-free terminal query export error. Failed assets remain observable after cleanup, with zero stored bytes once their reservation is released."
           }
         },
         "x-go-source": "internal/store/assets.go",
@@ -432,7 +439,8 @@
             "enum": [
               "github",
               "huggingface",
-              "url"
+              "url",
+              "connection_query"
             ]
           },
           "url": {
@@ -464,11 +472,37 @@
             "type": "string",
             "writeOnly": true,
             "description": "Optional GitHub or Hugging Face credential. Rejected for URL imports."
+          },
+          "connection_id": {
+            "type": "string",
+            "description": "Database connection name or ID for connection_query. Requires read or readwrite scope and an active pinned credential."
+          },
+          "sql": {
+            "type": "string",
+            "maxLength": 60000,
+            "description": "One SELECT or WITH statement, executed in a read-only transaction with a ten-minute timeout."
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "parquet",
+              "csv"
+            ],
+            "default": "parquet"
+          },
+          "branch": {
+            "type": "string",
+            "description": "Optional Neon branch assertion. Must match the branch already verified on the connection."
+          },
+          "reuse": {
+            "type": "boolean",
+            "default": false,
+            "description": "Reuse an eligible ready export for this tenant, connection, exact SQL apart from outer whitespace, branch and format from the last 24 hours."
           }
         },
         "x-go-source": "internal/assets/import.go",
         "x-go-type": "Request",
-        "description": "The server requires the source appropriate to kind. Import limits are deployment specific and returned by GET /v1/assets. Archives cannot contain links, special files, unsafe paths or more than 10000 files."
+        "description": "The server requires the source appropriate to kind. Import limits are deployment specific and returned by GET /v1/assets. Archives cannot contain links, special files, unsafe paths or more than 10000 files. Connection queries produce data.parquet or data.csv inside a normal input asset, with a 5 GB and 50 million row limit. Existing tenant storage quota also applies. Credentials remain on the control plane."
       },
       "AssetList": {
         "type": "object",
@@ -1035,6 +1069,22 @@
           },
           "download": {
             "type": "string"
+          },
+          "sink_state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "loading",
+              "loaded",
+              "failed"
+            ]
+          },
+          "sink_rows": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sink_error": {
+            "type": "string"
           }
         },
         "required": [
@@ -1057,6 +1107,22 @@
               "type": "string"
             },
             "description": "Allowed placement regions. SDK data_regions maps here. Empty/omitted imposes no region filter."
+          },
+          "secret_refs": {
+            "type": "array",
+            "maxItems": 32,
+            "items": {
+              "type": "string"
+            },
+            "description": "Tenant secret references pinned at admission and delivered only to the authorized execution."
+          },
+          "egress_allow": {
+            "type": "array",
+            "maxItems": 128,
+            "items": {
+              "type": "string"
+            },
+            "description": "HTTPS hostnames added to the connection host allowlist. Isolated execution blocks all other network access."
           }
         },
         "x-go-source": "internal/models/models.go",
@@ -1605,6 +1671,15 @@
               }
             },
             "additionalProperties": false
+          },
+          "connections": {
+            "type": "array",
+            "maxItems": 1,
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,127}$"
+            },
+            "description": "One live wandb connection name or ID. Admission pins its metadata and credential version. Requires write scope and administrator-enabled live mode."
           }
         },
         "required": null,
@@ -1690,6 +1765,15 @@
           },
           "workspace": {
             "$ref": "#/components/schemas/WorkspaceSelection"
+          },
+          "connections": {
+            "type": "array",
+            "maxItems": 1,
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,127}$"
+            },
+            "description": "One live wandb connection name or ID. Admission pins its metadata and credential version. Requires write scope and administrator-enabled live mode."
           }
         },
         "required": [
@@ -2598,9 +2682,16 @@
               "null"
             ],
             "additionalProperties": {
-              "type": "string"
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "$ref": "#/components/schemas/OutputDeclaration"
+                }
+              ]
             },
-            "description": "Named output paths relative to the stage working directory. Declare files produced by your command. Downstream from_output must match a declared name."
+            "description": "Named output paths or file and database sink declarations. Sinks support CSV, JSONL and flat Parquet files. Credentials stay on the control plane. Outputs in one stage must use distinct connection and table targets."
           }
         },
         "x-go-source": "internal/models/models.go",
@@ -2815,6 +2906,17 @@
                 "type": "null"
               }
             ]
+          },
+          "links": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkloadLink"
+            },
+            "description": "Run links captured from live output, available before completion."
+          },
+          "sink_error": {
+            "type": "string",
+            "description": "Value-free database sink failure. Workload completion is independent of sink loading."
           }
         },
         "x-go-source": "internal/models/models.go",
@@ -2951,6 +3053,13 @@
             "type": "string",
             "maxLength": 120,
             "description": "Optional display name for the run, saved across sessions. Control characters are not allowed."
+          },
+          "links": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkloadLink"
+            },
+            "description": "Run links captured from live output, available before completion."
           }
         },
         "x-go-source": "internal/store/pilot.go",
@@ -3034,6 +3143,21 @@
           },
           "placement": {
             "$ref": "#/components/schemas/Placement"
+          },
+          "connections": {
+            "type": "array",
+            "maxItems": 1,
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,127}$"
+            },
+            "description": "One live wandb connection name or ID. Admission pins its metadata and credential version. Requires write scope and administrator-enabled live mode."
+          },
+          "sweep_id": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "description": "Optional wandb run group. Defaults to the workload ID. This does not create or schedule a sweep."
           }
         },
         "x-go-source": "internal/models/models.go",
@@ -5933,6 +6057,130 @@
         "x-go-source": "internal/models/rl.go",
         "x-go-type": "RLMetadata"
       },
+      "RLGradingResults": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Verified public grading receipts for one parent workload revision. Private cases, candidate source and child resource identities are excluded.",
+        "required": [
+          "schema_version",
+          "workload_id",
+          "revision",
+          "plan_sha256",
+          "parent_status",
+          "grading_cleanup_complete",
+          "receipts"
+        ],
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 1
+          },
+          "workload_id": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647
+          },
+          "plan_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "parent_status": {
+            "type": "string",
+            "description": "Current parent workload status, read with the receipts in one consistent snapshot."
+          },
+          "grading_cleanup_complete": {
+            "type": "boolean",
+            "description": "Whether all grading attempts in this revision have completed cleanup. True for an empty receipt list. This does not establish parent cleanup, cleanup of other revisions or final billing settlement."
+          },
+          "receipts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RLGradingReceipt"
+            },
+            "description": "All admitted attempts in the requested revision, ordered by creation time and attempt identity. An empty list means no admitted attempts."
+          }
+        },
+        "x-go-source": "internal/store/rl_grading_results.go",
+        "x-go-type": "RLGradingResults"
+      },
+      "RLGradingReceipt": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "A grading attempt bound to its candidate, private plan and execution manifest by hashes. A reward is present only after trusted grading completes. Infrastructure failure never supplies a model reward.",
+        "required": [
+          "attempt_id",
+          "request_id",
+          "task_id",
+          "candidate_sha256",
+          "plan_sha256",
+          "manifest_sha256",
+          "state",
+          "cleanup_complete"
+        ],
+        "properties": {
+          "attempt_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "task_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "candidate_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "plan_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "manifest_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "completed",
+              "infrastructure_failure"
+            ]
+          },
+          "reward": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Present only for a completed grading attempt. A zero reward is a measured grading result."
+          },
+          "cleanup_complete": {
+            "type": "boolean",
+            "description": "Cleanup of this attempt is independent of its grading state and reward."
+          },
+          "infrastructure_code": {
+            "type": "string",
+            "enum": [
+              "execution_lost",
+              "execution_cancelled",
+              "execution_failed",
+              "output_incomplete",
+              "grading_unavailable"
+            ],
+            "description": "Present only when state is infrastructure_failure."
+          }
+        },
+        "x-go-source": "internal/protocol/rl_grading.go",
+        "x-go-type": "RLGradingResponse"
+      },
       "RLEvent": {
         "type": "object",
         "additionalProperties": false,
@@ -6824,6 +7072,152 @@
         },
         "x-go-source": "internal/connections/connections.go",
         "x-go-type": "Connection"
+      },
+      "ConnectionExport": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "connection_id": {
+            "type": "string"
+          },
+          "asset_id": {
+            "type": "string"
+          },
+          "query_hash": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "parquet",
+              "csv"
+            ]
+          },
+          "row_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "running",
+              "cleanup",
+              "ready"
+            ],
+            "description": "Durable export state. Failed exports release this record after object cleanup."
+          }
+        },
+        "x-go-source": "internal/store/connection_exports.go",
+        "x-go-type": "ConnectionExport"
+      },
+      "WorkloadLink": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "wandb"
+            ]
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Validated HTTPS wandb run URL for the admitted entity and project."
+          }
+        },
+        "required": [
+          "kind",
+          "url"
+        ],
+        "x-go-package": "internal/models",
+        "x-go-type": "WorkloadLink"
+      },
+      "OutputDeclaration": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "sink": {
+            "$ref": "#/components/schemas/OutputSink"
+          }
+        }
+      },
+      "OutputSink": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "connection",
+          "table"
+        ],
+        "properties": {
+          "connection": {
+            "type": "string"
+          },
+          "table": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,62}$",
+            "description": "One PostgreSQL table identifier. The nodus_ prefix is reserved. Uppercase letters fold to lowercase."
+          }
+        }
+      },
+      "ConnectionLoad": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "workload_id": {
+            "type": "string"
+          },
+          "stage": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "table": {
+            "type": "string"
+          },
+          "rows": {
+            "type": "integer"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "loading",
+              "loaded",
+              "failed"
+            ]
+          },
+          "sink_error": {
+            "type": "string"
+          }
+        },
+        "x-go-source": "internal/store/connection_loads.go",
+        "x-go-type": "ConnectionLoad"
       }
     },
     "securitySchemes": {
@@ -6893,7 +7287,7 @@
         "tags": [
           "Assets"
         ],
-        "description": "Import a GitHub repository, a Hugging Face dataset repository, or a public HTTPS file or archive. GitHub imports can use the team's connected GitHub account. URL imports use signed links for private downloads and reject tokens. The operation may take up to ten minutes. It has no idempotency contract. After a timeout, inspect the asset list before repeating the request.",
+        "description": "Import a GitHub repository, a Hugging Face dataset repository, or a public HTTPS file or archive. GitHub imports can use the team's connected GitHub account. URL imports use signed links for private downloads and reject tokens. GitHub, Hugging Face and URL imports may take up to ten minutes. It has no idempotency contract. After a timeout, inspect the asset list before repeating the request. Database connection queries return 202 after durable admission and export to Parquet or CSV in bounded workers. Poll the returned asset until ready or failed. Execution including queue time is bounded to ten minutes. reuse may return a ready export from the last 24 hours. New requests otherwise create fresh assets. Failed exports expose a safe error and retain their storage reservation until object cleanup succeeds.",
         "requestBody": {
           "required": true,
           "content": {
@@ -6961,6 +7355,26 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Eligible query export reused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Asset"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Database query admitted. Poll GET /v1/assets/{id} until ready or failed. Disconnecting does not cancel admitted work.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Asset"
                 }
               }
             }
@@ -11377,6 +11791,98 @@
         }
       }
     },
+    "/v1/workloads/{id}/rl-grading-results": {
+      "get": {
+        "operationId": "getWorkloadRLGradingResults",
+        "summary": "Read verified public grading receipts",
+        "tags": [
+          "Workloads"
+        ],
+        "description": "Read a consistent snapshot of grading attempts for one parent workload revision in the authenticated tenant. Requires a server-admitted private grading plan. This endpoint does not enable private-code training. It excludes private cases, candidate source, runner credentials and grading child identities. Receipts are verified before publication and a corrupt snapshot returns an error. Cleanup covers only the requested revision's grading attempts.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            },
+            "description": "One explicit parent revision. Duplicate revision parameters and other query parameters are rejected."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Verified grading snapshot",
+            "headers": {
+              "Cache-Control": {
+                "description": "Grading evidence must not be cached.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RLGradingResults"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or missing revision. Error code is invalid_revision.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No grading plan exists for this parent workload revision in the authenticated tenant. Grading children are not accessible through this operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The grading snapshot could not be verified or read. Error code is grading_results_unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, rate limits and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/workloads/{id}/rl-events": {
       "get": {
         "operationId": "listWorkloadRLEvents",
@@ -11745,6 +12251,7 @@
       "delete": {
         "operationId": "deleteConnection",
         "summary": "Delete an external connection",
+        "description": "Removes the connection from listing and future use. Returns 409 while a workload, export, load or metadata refresh is active. Completed workload and transfer history is retained. Stored credentials and external data are unchanged.",
         "tags": [
           "Connections"
         ],
@@ -11816,6 +12323,67 @@
             }
           }
         ]
+      }
+    },
+    "/v1/workloads/{id}/outputs/{name}/reload": {
+      "post": {
+        "operationId": "reloadWorkloadOutput",
+        "summary": "Retry a database sink load",
+        "tags": [
+          "Workloads"
+        ],
+        "description": "Retry the latest saved output using its immutable admission credential. A pending or loading job is reused. Supply stage when names repeat.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "id"
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "name"
+          },
+          {
+            "name": "stage",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required to disambiguate duplicate output names across stages. Otherwise 409 ambiguous_output."
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Load pending or already loading",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionLoad"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
       }
     }
   },
