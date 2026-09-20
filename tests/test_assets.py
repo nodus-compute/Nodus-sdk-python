@@ -298,4 +298,76 @@ def test_query_observation_cancellation_preserves_identity(asynchronous, monkeyp
         raise interruption
     with pytest.raises(interruption) as raised:
         exercise(handler, asynchronous, lambda assets: assets.import_query("db", "SELECT 1"))
-    assert raised.value.asset_id == "asset_123"
+    assert nodus.asset_id_from_error(raised.value) == "asset_123"
+    if not asynchronous:
+        assert raised.value.asset_id == "asset_123"
+
+
+def test_query_cli_recovers_failed_export_by_exact_id(monkeypatch, capsys):
+    import nodus._assets as module
+    from nodus import cli
+    from test_sandbox_cli import client_factory
+    monkeypatch.setattr(module, "_QUERY_POLL_SECONDS", 0.001)
+    calls = []
+    def handler(req):
+        calls.append((req.method, req.url.path))
+        if req.method == "POST":
+            return httpx.Response(202, json={**ROW, "state": "importing"})
+        if len(calls) == 2:
+            return httpx.Response(503, json={"error": "unavailable", "message": "private-response-detail"})
+        return httpx.Response(200, json={**ROW, "state": "failed", "error": "query cancelled or timed out at 5 rows", "export": {"format": "parquet", "row_count": 5}, "private_future": "not-displayable"})
+    monkeypatch.setattr(cli, "Client", client_factory(handler))
+    assert cli.main(["asset", "import-query", "db", "SELECT 1"]) == 2
+    recovery = capsys.readouterr().err
+    assert "nodus asset get asset_123" in recovery
+    assert "private-response-detail" not in recovery
+    assert cli.main(["asset", "get", "asset_123"]) == 0
+    detail = capsys.readouterr().out
+    for value in ["asset_123", "failed", "query cancelled or timed out at 5 rows", "parquet"]:
+        assert value in detail
+    assert "not-displayable" not in detail
+    assert calls == [("POST", "/v1/assets/import"), ("GET", "/v1/assets/asset_123"), ("GET", "/v1/assets/asset_123")]
+
+
+def test_query_cancellation_identity_survives_task_boundary(monkeypatch):
+    import nodus._assets as module
+    monkeypatch.setattr(module, "_QUERY_POLL_SECONDS", 0.001)
+    async def run():
+        observing = asyncio.Event()
+        calls = []
+        async def handler(req):
+            calls.append(req.method)
+            if req.method == "POST":
+                return httpx.Response(202, json={**ROW, "state": "importing"})
+            observing.set()
+            await asyncio.Event().wait()
+        async with nodus.AsyncClient(api_key="nk_test", base_url="https://nodus.invalid") as client:
+            await client._http.aclose()
+            client._http = httpx.AsyncClient(base_url="https://nodus.invalid", transport=httpx.MockTransport(handler))
+            async def observe():
+                try:
+                    return await client.assets.import_query("db", "SELECT 1")
+                except asyncio.CancelledError as exc:
+                    assert exc.asset_id == "asset_123"
+                    raise
+            task = asyncio.create_task(observe())
+            await observing.wait()
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError) as raised:
+                await task
+            assert task.cancelled()
+            assert nodus.asset_id_from_error(raised.value) == "asset_123"
+            assert calls == ["POST", "GET"]
+    asyncio.run(run())
+
+
+def test_asset_identity_accessor_uses_validated_metadata_without_error_text():
+    original = asyncio.CancelledError("private transport detail")
+    original.asset_id = "asset_admitted"
+    wrapper = asyncio.CancelledError()
+    wrapper.__context__ = original
+    assert nodus.asset_id_from_error(wrapper) == "asset_admitted"
+    original.asset_id = "asset_admitted\nforged output"
+    original.__cause__ = wrapper
+    assert nodus.asset_id_from_error(wrapper) is None
+    assert nodus.asset_id_from_error(nodus.APIError("asset_from_untrusted_text")) is None

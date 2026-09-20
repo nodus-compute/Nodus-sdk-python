@@ -169,8 +169,22 @@ inputs, workload or stage source assets, or sandbox source assets. If you set
 without a region and a run without a region constraint remain unrestricted.
 
 After query admission, SDK observation errors expose the admitted ID in
-`error.asset_id`. The CLI preserves that ID and tells you to inspect the asset
-before repeating the import, including when observation is interrupted.
+`error.asset_id`. Async cancellation remains `asyncio.CancelledError` and should
+be re-raised after your cleanup. Some Python versions wrap that exception at a
+task boundary, so use `nodus.asset_id_from_error(error)` to recover the ID from
+the preserved exception chain. This returns `None` if no admission ID is
+available, including when another layer discards the original exception chain.
+
+The CLI preserves the ID on failure or interruption. Inspect the exact asset
+before repeating the import:
+
+```sh
+nodus asset get asset_ID
+```
+
+This displays the current state, stored bytes, export format and row count when
+available, and the safe export error for a failed asset. The Python equivalent
+is `client.assets.get(asset_id)` or `await client.assets.get(asset_id)`.
 
 ## Attach live wandb to a run
 
