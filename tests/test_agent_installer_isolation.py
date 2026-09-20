@@ -23,6 +23,7 @@ def installer(monkeypatch, tmp_path):
     for key in list(os.environ):
         if key.startswith(("CODEX_", "CLAUDE_", "XDG_")):
             monkeypatch.delenv(key)
+    monkeypatch.setenv("APPDATA", str(tmp_path / "AppData/Roaming"))
     return module
 
 

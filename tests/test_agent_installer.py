@@ -46,7 +46,8 @@ def test_config_merge_preserves_settings_and_backup_and_is_repeatable(installer,
     assert content == {"mcpServers": {"other": {"command": "keep"}, "nodus": server}, "theme": "dark"}
     backups = list(tmp_path.glob("*.nodus-backup-*"))
     assert len(backups) == 1 and backups[0].read_text() == original
-    assert backups[0].stat().st_mode & 0o777 == 0o600
+    if os.name == "posix":
+        assert backups[0].stat().st_mode & 0o777 == 0o600
     assert installer.config_edit(path, "json", "mcpServers", server) is None
     assert len(list(tmp_path.glob("*.nodus-backup-*"))) == 1
 
@@ -78,13 +79,23 @@ def test_invalid_or_conflicting_settings_are_not_overwritten(installer, tmp_path
     assert list(tmp_path.iterdir()) == before
 
 
-def test_symlinks_and_changes_during_setup_are_refused(installer, tmp_path):
+def test_symlinks_are_refused(installer, tmp_path):
     actual = tmp_path / "actual.json"
     actual.write_text('{}')
     link = tmp_path / "linked.json"
-    link.symlink_to(actual)
+    try:
+        link.symlink_to(actual)
+    except OSError as exc:
+        if os.name == "nt" and getattr(exc, "winerror", None) == 1314:
+            pytest.skip("Windows symlink creation requires Developer Mode or the symlink privilege")
+        raise
     with pytest.raises(installer.SetupError):
         installer.config_edit(link, "json", "mcpServers", {"command": "/nodus-mcp"})
+
+
+def test_changes_during_setup_are_refused(installer, tmp_path):
+    actual = tmp_path / "actual.json"
+    actual.write_text('{}')
     edit = installer.config_edit(actual, "json", "mcpServers", {"command": "/nodus-mcp"})
     actual.write_text('{"new":"setting"}')
     with pytest.raises(installer.SetupError):
