@@ -19,6 +19,7 @@ are not sent, except the default image and continuity policy.
 | `requirements` | `requirements` | [Resources](requirements.md) |
 | `budget`, `finish_by` | `outcome.max_cost_usd`, `outcome.complete_by` | [Budget and deadline](outcome.md) |
 | `continuity` | `continuity` | [Recovery](continuity.md) |
+| `connections`, `sweep_id` | Same top-level keys | [Live connections](../../guides/connections.md#attach-live-wandb-to-a-run) |
 | `data_regions`, `policy` | `policy.data_regions`, `policy` | [Policy](policy.md) |
 | `stages` | `stages` | [Stages](stages.md) |
 | `idempotency_key` | `Idempotency-Key` header | [Safe retries](../../guides/ci-and-idempotency.md) |

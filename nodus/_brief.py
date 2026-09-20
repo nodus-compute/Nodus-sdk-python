@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from .types import WorkloadStatus
+from ._connections import _live_refs, _group
 from ._outputs import portable_output_name
 
 _PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -178,6 +179,8 @@ def build_payload(
     finish_by: datetime | str | None = None,
     continuity: Any = None,
     data_regions: list[str] | None = None,
+    connections: list[str] | None = None,
+    sweep_id: str | None = None,
     stages: list[dict[str, Any]] | None = None,
     framework: str | None = None,
     policy: dict[str, Any] | None = None,
@@ -301,7 +304,15 @@ def build_payload(
 
     if placement is not None:
         payload["placement"] = validate_placement(placement)
+    if connections is not None:
+        payload["connections"] = connections
+    if sweep_id is not None:
+        payload["sweep_id"] = sweep_id
     _merge_extra(payload, extra)
+    if "connections" in payload:
+        payload["connections"] = _live_refs(payload["connections"])
+    if "sweep_id" in payload:
+        payload["sweep_id"] = _group(payload["sweep_id"])
     if payload.get("placement") is not None:
         payload["placement"] = validate_placement(payload["placement"])
     if "expected_runtime_hours" in payload:

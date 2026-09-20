@@ -16,6 +16,7 @@ except ModuleNotFoundError:  # Python 3.10
     import tomli as tomllib
 
 from ._brief import _validate_assets, _validate_bucket_regions, _validate_outputs, validate_requirements, UNSUPPORTED
+from ._connections import _live_refs, _group
 from .requests import ContinuitySpec, Policy, Requirements, Source, StageInput, StageSpec
 
 _TEMPLATE = '''# Edit the image and command for your workload.
@@ -28,7 +29,7 @@ _FIELDS = {
     'command', 'image', 'model', 'peak_memory_gb', 'optimization', 'gpu', 'gpu_count', 'gpu_interconnect',
     'budget', 'compute_class', 'continuity', 'finish_by', 'data_regions',
     'stages', 'framework', 'policy', 'requirements', 'idempotency_key',
-    'source_asset_id', 'inputs', 'outputs',
+    'source_asset_id', 'inputs', 'outputs', 'connections', 'sweep_id',
 }
 
 
@@ -214,8 +215,13 @@ def load_workload_file(path: str | Path = 'nodus.toml') -> dict[str, Any]:
             _continuity(value, key)
         elif key == 'policy':
             _table(value, key, set(Policy.__annotations__))
-            if 'data_regions' in value:
-                _strings(value['data_regions'], 'policy.data_regions')
+            for name in ('data_regions', 'egress_allow', 'secret_refs'):
+                if name in value:
+                    _strings(value[name], 'policy.' + name)
+        elif key == 'connections':
+            _live_refs(value)
+        elif key == 'sweep_id':
+            _group(value)
         elif key == 'data_regions':
             _strings(value, key)
         elif key == 'inputs':

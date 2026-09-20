@@ -1091,6 +1091,22 @@
               "type": "string"
             },
             "description": "Allowed placement regions. SDK data_regions maps here. Empty/omitted imposes no region filter."
+          },
+          "secret_refs": {
+            "type": "array",
+            "maxItems": 32,
+            "items": {
+              "type": "string"
+            },
+            "description": "Tenant secret references pinned at admission and delivered only to the authorized execution."
+          },
+          "egress_allow": {
+            "type": "array",
+            "maxItems": 128,
+            "items": {
+              "type": "string"
+            },
+            "description": "HTTPS hostnames added to the connection host allowlist. Isolated execution blocks all other network access."
           }
         },
         "x-go-source": "internal/models/models.go",
@@ -1639,6 +1655,15 @@
               }
             },
             "additionalProperties": false
+          },
+          "connections": {
+            "type": "array",
+            "maxItems": 1,
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,127}$"
+            },
+            "description": "One live wandb connection name or ID. Admission pins its metadata and credential version. Requires write scope and administrator-enabled live mode."
           }
         },
         "required": null,
@@ -1724,6 +1749,15 @@
           },
           "workspace": {
             "$ref": "#/components/schemas/WorkspaceSelection"
+          },
+          "connections": {
+            "type": "array",
+            "maxItems": 1,
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,127}$"
+            },
+            "description": "One live wandb connection name or ID. Admission pins its metadata and credential version. Requires write scope and administrator-enabled live mode."
           }
         },
         "required": [
@@ -2849,6 +2883,13 @@
                 "type": "null"
               }
             ]
+          },
+          "links": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkloadLink"
+            },
+            "description": "Run links captured from live output, available before completion."
           }
         },
         "x-go-source": "internal/models/models.go",
@@ -2985,6 +3026,13 @@
             "type": "string",
             "maxLength": 120,
             "description": "Optional display name for the run, saved across sessions. Control characters are not allowed."
+          },
+          "links": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkloadLink"
+            },
+            "description": "Run links captured from live output, available before completion."
           }
         },
         "x-go-source": "internal/store/pilot.go",
@@ -3057,6 +3105,21 @@
           },
           "placement": {
             "$ref": "#/components/schemas/Placement"
+          },
+          "connections": {
+            "type": "array",
+            "maxItems": 1,
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,127}$"
+            },
+            "description": "One live wandb connection name or ID. Admission pins its metadata and credential version. Requires write scope and administrator-enabled live mode."
+          },
+          "sweep_id": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "description": "Optional wandb run group. Defaults to the workload ID. This does not create or schedule a sweep."
           }
         },
         "x-go-source": "internal/models/models.go",
@@ -6060,6 +6123,28 @@
         },
         "x-go-source": "internal/store/connection_exports.go",
         "x-go-type": "ConnectionExport"
+      },
+      "WorkloadLink": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "wandb"
+            ]
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Validated HTTPS wandb run URL for the admitted entity and project."
+          }
+        },
+        "required": [
+          "kind",
+          "url"
+        ],
+        "x-go-package": "internal/models",
+        "x-go-type": "WorkloadLink"
       }
     },
     "securitySchemes": {

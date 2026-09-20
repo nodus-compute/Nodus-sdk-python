@@ -106,6 +106,7 @@ def workload_rows(workload: Any) -> list[tuple[str, str]]:
         if stage.metric_rate is not None:
             label += f"  {stage.metric_rate:g} steps/s"
         rows.append((clean(stage.id, line=True) or "Progress", label))
+    rows.extend(("wandb", link.url) for link in getattr(workload, "links", []))
     reason = workload.raw.get("failure_reason") or workload.raw.get("error")
     if isinstance(reason, str) and reason:
         rows.append(("Details", clean(reason, line=True)))

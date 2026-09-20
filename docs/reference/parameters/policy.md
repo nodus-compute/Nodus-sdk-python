@@ -33,4 +33,11 @@ submitting. Do not use unrestricted execution for a location-sensitive workload.
 `policy["data_regions"]` wins over the flat `data_regions` argument. Regions
 belong under policy, not requirements. Omission does not promise execution in any
 particular geography. Deployment and account policies may still constrain it.
-`data_regions` is the only policy field documented for this SDK interface.
+`policy.secret_refs` accepts tenant secret names or IDs. Admission pins each
+version and supplies it as `NODUS_SECRET_<NAME>` in the execution environment.
+`policy.egress_allow` accepts HTTPS hostnames to add to a live connection's
+allowlist. These fields require an isolated execution provider.
+
+Attach a wandb connection with `connections=["lab-wandb"]` and optionally set
+`sweep_id="experiment-42"` to group runs. See [live connections](../../guides/connections.md#attach-live-wandb-to-a-run)
+for credential delivery, network restrictions and captured run links.

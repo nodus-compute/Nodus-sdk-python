@@ -18,6 +18,20 @@ def _ref(value: str) -> str:
     return value
 
 
+def _live_refs(value: Any) -> list[str] | None:
+    if value is None:
+        return None
+    if not isinstance(value, list) or len(value) > 1 or any(not isinstance(v, str) or not _NAME.fullmatch(v) for v in value):
+        raise ValidationError("connections accepts at most one connection name or ID")
+    return list(value)
+
+
+def _group(value: Any) -> str:
+    if not isinstance(value, str) or not _FIELD.fullmatch(value):
+        raise ValidationError("sweep_id must be a scalar token of at most 128 characters")
+    return value
+
+
 def _create(name: str, kind: str, secret: str, region: str | None, live: bool,
             scope: str | None, branch: str | None, entity: str | None,
             project: str | None) -> dict[str, Any]:
