@@ -49,8 +49,9 @@ foreach ($key in $before.Keys) {{
 }}
 if ($failed) {{ exit 1 }}
 """
+    native_env = {key: value for key, value in env.items() if key.upper() != "PSMODULEPATH"}
     return subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", driver],
-                          env=env, capture_output=True, timeout=300)
+                          env=native_env, capture_output=True, timeout=300)
 
 
 def verify(installer: Path) -> None:
