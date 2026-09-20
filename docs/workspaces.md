@@ -95,6 +95,11 @@ For browser VS Code use `tool="editor"`. SSH uses `tool="ssh"` and returns
 connection instructions. The existing `create` and `list` methods retain their
 named sandbox file-storage behavior.
 
+The included storage policy is disabled unless the deployment explicitly
+activates it. The SDK and console do not yet provide a stopped-workspace folder
+uploader. Add project files through a connected repository or a running editor
+or SSH session.
+
 ## Submit your project as a workload
 
 Save changes in your editor before submitting. A running workspace captures

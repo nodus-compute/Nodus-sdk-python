@@ -3336,6 +3336,87 @@
         "x-go-source": "internal/api/workspace_workloads.go",
         "x-go-type": "workspaceWorkloadRequest"
       },
+      "WorkspaceArchiveSegment": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sha256", "offset", "bytes"],
+        "properties": {
+          "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "offset": {"type": "integer", "format": "int64", "minimum": 0, "multipleOf": 512},
+          "bytes": {"type": "integer", "format": "int64", "minimum": 512, "maximum": 67108864, "multipleOf": 512}
+        },
+        "description": "One contiguous segment of the canonical archive. Offsets begin at zero with no gaps or overlap, and lengths sum to archive_bytes.",
+        "x-go-source": "internal/researcharchive/manifest.go",
+        "x-go-type": "Segment"
+      },
+      "WorkspaceArchiveInventory": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sha256", "payload_bytes", "entries"],
+        "properties": {
+          "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$", "description": "Versioned inventory digest derived from ordered paths, file bytes and metadata. The server verifies it against the uploaded archive."},
+          "payload_bytes": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 10000000000},
+          "entries": {"type": "integer", "minimum": 1, "maximum": 100000}
+        },
+        "x-go-source": "internal/researcharchive/manifest.go",
+        "x-go-type": "inventoryWire"
+      },
+      "WorkspaceArchiveManifest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["version", "archive_sha256", "archive_bytes", "inventory", "segments"],
+        "properties": {
+          "version": {"type": "integer", "const": 3},
+          "archive_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "archive_bytes": {"type": "integer", "format": "int64", "minimum": 1024, "maximum": 10536870912, "multipleOf": 512},
+          "inventory": {"$ref": "#/components/schemas/WorkspaceArchiveInventory"},
+          "segments": {"type": "array", "minItems": 1, "maxItems": 100160, "items": {"$ref": "#/components/schemas/WorkspaceArchiveSegment"}}
+        },
+        "description": "Version 3 canonical workspace archive commitment, limited to 16 MiB of manifest JSON. Requires a qualified archive writer. Arbitrary tar, zip or compressed bytes are not accepted. The archive permits ordered regular files, directories and confined symbolic links, with at most 10 GB of payload and 512 MiB of archive metadata. Verification checks the complete archive and inventory before replacing saved files.",
+        "x-go-source": "internal/researcharchive/manifest.go",
+        "x-go-type": "manifestWire"
+      },
+      "WorkspaceTransferRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["idempotency_key", "manifest"],
+        "properties": {
+          "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 128, "description": "Caller-retained key without leading or trailing whitespace. Retain the same manifest and replacement revision when retrying."},
+          "manifest": {"$ref": "#/components/schemas/WorkspaceArchiveManifest"},
+          "replace_revision": {"type": "integer", "format": "int64", "minimum": 0, "description": "Observed storage_revision required to replace previously saved files. A changed revision conflicts instead of overwriting newer files."}
+        }
+      },
+      "WorkspacePricePreview": {
+        "type": "object",
+        "required": ["hourly_usd", "currency", "gpu_count", "observed_at", "expires_at", "estimate_only"],
+        "properties": {
+          "hourly_usd": {"type": "number", "exclusiveMinimum": 0, "description": "Estimated USD per hour for the entire machine. Do not multiply by gpu_count."},
+          "currency": {"type": "string", "const": "USD"},
+          "gpu_count": {"type": "integer", "enum": [1, 2, 4, 8]},
+          "observed_at": {"type": "string", "format": "date-time"},
+          "expires_at": {"type": "string", "format": "date-time", "description": "Refresh the estimate after this timestamp."},
+          "estimate_only": {"type": "boolean", "const": true}
+        },
+        "description": "Read-only current price estimate for an exact workspace configuration. Does not allocate compute, reserve capacity or lock a price. Admission refreshes price and availability within the customer's spending controls.",
+        "x-go-source": "internal/sandboxproducer/preview.go",
+        "x-go-type": "PricePreview"
+      },
+      "WorkspaceTransfer": {
+        "type": "object",
+        "required": ["id", "workspace_id", "state", "base_revision", "manifest_sha256", "manifest_bytes", "uploaded_segments"],
+        "properties": {
+          "id": {"type": "string", "format": "uuid"},
+          "workspace_id": {"type": "string"},
+          "failure_code": {"type": "string", "description": "Recorded verification failure when present. Inspect state before retrying or beginning a replacement transfer."},
+          "state": {"type": "string", "enum": ["uploading", "queued", "verifying", "committed", "abandoned"]},
+          "base_revision": {"type": "integer", "format": "int64", "minimum": 0},
+          "manifest_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "manifest_bytes": {"type": "integer", "format": "int64", "minimum": 1, "maximum": 16777216},
+          "uploaded_segments": {"type": "array", "items": {"type": "integer", "minimum": 0}, "description": "Zero-based indexes already verified for this transfer. Empty when no segment is present."}
+        },
+        "x-go-source": "internal/store/research_workspace_transfers.go",
+        "x-go-type": "ResearchTransfer"
+      },
       "WorkspaceWorkload": {
         "type": "object",
         "required": ["id", "status", "created_at", "source_revision"],
@@ -3392,9 +3473,11 @@
           {"$ref": "#/components/schemas/WorkspaceRecord"},
           {
             "type": "object",
-            "required": ["holder_id", "saved_at", "stored_bytes", "last_error", "saving_for_termination", "configuration", "session", "meter", "state", "status_message", "connections", "storage"],
+            "required": ["holder_id", "saved_at", "stored_bytes", "last_error", "saving_for_termination", "configuration", "storage_revision", "storage_policy_version", "session", "meter", "state", "status_message", "connections", "storage"],
             "properties": {
               "configuration": {"$ref": "#/components/schemas/ResearchWorkspaceConfiguration"},
+              "storage_revision": {"type": "integer", "format": "int64", "minimum": 0, "description": "Current saved-file revision used to guard a stopped-workspace replacement."},
+              "storage_policy_version": {"type": "string", "description": "Storage policy recorded for this workspace. Transfer endpoints require included-10gb-v1 to be active on the workspace and deployment."},
               "session": {
                 "oneOf": [{"$ref": "#/components/schemas/Sandbox"}, {"type": "null"}],
                 "description": "Current associated compute session, or null before one is available. Use session.id in the stop request."
@@ -9701,6 +9784,20 @@
         }
       }
     },
+    "/v1/research-workspaces/quote": {
+      "post": {
+        "operationId": "quoteWorkspacePrice",
+        "summary": "Preview the whole-machine hourly price",
+        "tags": ["Research workspaces"],
+        "description": "Read-only estimate for the supplied configuration, including exact GPU count and per-device memory. Send the same configuration used for workspace creation. A successful estimate does not reserve capacity, lock the price or start compute. Refresh expired estimates before starting. Launch checks price and capacity again against session and account spending controls.",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ResearchWorkspaceConfiguration"}}}},
+        "responses": {
+          "200": {"description": "Current exact-configuration estimate", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/WorkspacePricePreview"}}}},
+          "503": {"description": "quote_unavailable when a current eligible price cannot be confirmed. No compute is allocated.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SandboxError"}}}},
+          "default": {"description": "400 for invalid configuration. Authentication, rate limits and transient failures apply.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SandboxError"}}}}
+        }
+      }
+    },
     "/v1/research-workspaces/{id}": {
       "get": {
         "operationId": "getResearchWorkspace",
@@ -9720,6 +9817,310 @@
             "description": "404 if this account does not own the workspace. Authentication, rate limits and transient failures also apply.",
             "content": {
               "application/json": {"schema": {"$ref": "#/components/schemas/SandboxError"}}
+            }
+          }
+        }
+      }
+    },
+    "/v1/research-workspaces/{id}/transfers": {
+      "post": {
+        "operationId": "beginWorkspaceTransfer",
+        "summary": "Begin a stopped-workspace file replacement",
+        "tags": [
+          "Research workspaces"
+        ],
+        "description": "Available only when included-10gb-v1 is explicitly active for the deployment and workspace. Compute must be stopped. Requires a nonempty canonical version 3 archive manifest, not a generic archive upload. Retain idempotency_key, manifest and replace_revision together across retries. Previously saved files require the current storage_revision as replace_revision. Beginning a transfer does not change saved files. No general folder uploader is provided by the SDK or console.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Workspace identifier owned by this account."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceTransferRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Transfer created or original intent replayed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceTransfer"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "400 for malformed input. 404 workspace_transfer_not_found for a missing or inaccessible transfer. 409 workspace_storage_inactive when the policy is disabled, or workspace_transfer_conflict when state, revision or retry identity changed. 413 workspace_storage_capacity when capacity is exhausted. 503 workspace_transfer_unavailable or workspace_storage_unavailable for transient failures. Authentication and rate limits apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/research-workspaces/{id}/transfers/{transfer}": {
+      "get": {
+        "operationId": "getWorkspaceTransfer",
+        "summary": "Read upload and verification progress",
+        "tags": [
+          "Research workspaces"
+        ],
+        "description": "Read state and uploaded_segments before resuming an interrupted upload. A committed transfer has replaced the guarded saved-file revision. Queued or verifying does not establish a successful save. Requires stopped compute and the active workspace storage policy.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Workspace identifier owned by this account."
+          },
+          {
+            "name": "transfer",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Transfer identifier returned by begin."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current transfer state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceTransfer"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "400 for malformed input. 404 workspace_transfer_not_found for a missing or inaccessible transfer. 409 workspace_storage_inactive when the policy is disabled, or workspace_transfer_conflict when state, revision or retry identity changed. 413 workspace_storage_capacity when capacity is exhausted. 503 workspace_transfer_unavailable or workspace_storage_unavailable for transient failures. Authentication and rate limits apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "abandonWorkspaceTransfer",
+        "summary": "Abandon a pending file replacement",
+        "tags": [
+          "Research workspaces"
+        ],
+        "description": "Abandons the transfer and schedules cleanup of its owned upload data. Existing saved files remain intact. A successful response does not claim that uncertain writes or their cleanup have completed.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Workspace identifier owned by this account."
+          },
+          {
+            "name": "transfer",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Transfer identifier returned by begin."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Transfer abandoned"
+          },
+          "default": {
+            "description": "400 for malformed input. 404 workspace_transfer_not_found for a missing or inaccessible transfer. 409 workspace_storage_inactive when the policy is disabled, or workspace_transfer_conflict when state, revision or retry identity changed. 413 workspace_storage_capacity when capacity is exhausted. 503 workspace_transfer_unavailable or workspace_storage_unavailable for transient failures. Authentication and rate limits apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/research-workspaces/{id}/transfers/{transfer}/segments/{segment}": {
+      "put": {
+        "operationId": "uploadWorkspaceTransferSegment",
+        "summary": "Upload one declared archive segment",
+        "tags": [
+          "Research workspaces"
+        ],
+        "description": "Send the exact bytes identified by this zero-based segment index in the manifest. Content-Length is required and must match the declared segment. Content-Type must be exactly application/octet-stream. Chunked transfer encoding is not accepted. Segments are checked against their declared size and SHA256. Retry with the same transfer and segment after an uncertain reply.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Workspace identifier owned by this account."
+          },
+          {
+            "name": "transfer",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Transfer identifier returned by begin."
+          },
+          {
+            "name": "segment",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Zero-based manifest segment index."
+          },
+          {
+            "name": "Content-Length",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 512,
+              "maximum": 67108864,
+              "multipleOf": 512
+            },
+            "description": "Exact segment byte length."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary",
+                "description": "Exact declared canonical archive segment, at most 64 MiB."
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Segment accepted and verified"
+          },
+          "default": {
+            "description": "400 for malformed input. 404 workspace_transfer_not_found for a missing or inaccessible transfer. 409 workspace_storage_inactive when the policy is disabled, or workspace_transfer_conflict when state, revision or retry identity changed. 413 workspace_storage_capacity when capacity is exhausted. 503 workspace_transfer_unavailable or workspace_storage_unavailable for transient failures. Authentication and rate limits apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/research-workspaces/{id}/transfers/{transfer}/finalize": {
+      "post": {
+        "operationId": "finalizeWorkspaceTransfer",
+        "summary": "Queue verification of uploaded project files",
+        "tags": [
+          "Research workspaces"
+        ],
+        "description": "Send an empty JSON object after every segment has been uploaded. A 202 response means verification is queued or still running. Poll the transfer until state is committed or abandoned. Repeating finalize returns 200 only once the transfer is committed. Verification checks the archive, inventory and unchanged replacement revision before publishing saved files.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Workspace identifier owned by this account."
+          },
+          {
+            "name": "transfer",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Transfer identifier returned by begin."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Files committed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceTransfer"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Verification pending",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceTransfer"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "400 for malformed input. 404 workspace_transfer_not_found for a missing or inaccessible transfer. 409 workspace_storage_inactive when the policy is disabled, or workspace_transfer_conflict when state, revision or retry identity changed. 413 workspace_storage_capacity when capacity is exhausted. 503 workspace_transfer_unavailable or workspace_storage_unavailable for transient failures. Authentication and rate limits apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
             }
           }
         }
