@@ -868,6 +868,8 @@ Use nodus COMMAND --help for command options.""",
     i.add_argument("--force", action="store_true", help="sign in again even when already signed in")
 
     sub.add_parser("logout", help="delete the stored API key")
+    m = sub.add_parser("mcp", help="start the local MCP server for AI clients")
+    m.add_argument("--base-url", default=argparse.SUPPRESS, help="custom API origin")
 
     i = sub.add_parser("init", help="create a starter workload file")
     i.add_argument("file", nargs="?", default="nodus.toml")
@@ -1100,12 +1102,29 @@ Use nodus COMMAND --help for command options.""",
     return p
 
 
+def _cmd_mcp(args: argparse.Namespace) -> int:
+    try:
+        from ._mcp import create_server
+    except ModuleNotFoundError as exc:
+        if exc.name != "mcp":
+            raise
+        raise ValueError('Install MCP support with: pip install "nodus-compute[mcp]"') from None
+    create_server(base_url=args.base_url).run(transport="stdio")
+    return 0
+
+
+def mcp_main() -> int:
+    """Start the MCP server through the nodus-mcp executable."""
+    return main(["mcp", *sys.argv[1:]])
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     args = build_parser().parse_args(argv)
 
     handlers = {
         "login": lambda: _cmd_login(args),
+        "mcp": lambda: _cmd_mcp(args),
         "logout": lambda: _cmd_logout(args),
         "init": lambda: _cmd_init(args),
         "run": lambda: _cmd_run(args),
