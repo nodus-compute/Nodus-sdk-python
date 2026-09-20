@@ -557,3 +557,21 @@ class UnitMetrics:
             return item if type(item) is int and item >= 0 else None
         return cls(count("units_completed"), number("p50_ms"), number("p95_ms"),
                    number("cost_per_unit_usd"), count("dropped_observations"))
+
+
+@dataclass(frozen=True)
+class WorkloadLink:
+    """A validated live run link captured from workload output."""
+
+    kind: str
+    url: str
+
+    @classmethod
+    def from_dict(cls, value: Any) -> "WorkloadLink | None":
+        import re
+        value = _obj(value)
+        url = value.get("url")
+        token = r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}"
+        if value.get("kind") != "wandb" or not isinstance(url, str) or not re.fullmatch(r"https://wandb\.ai/" + token + "/" + token + "/runs/" + token, url):
+            return None
+        return cls(kind="wandb", url=url)

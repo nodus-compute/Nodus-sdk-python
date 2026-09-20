@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from email.utils import parsedate_to_datetime
 from importlib.metadata import PackageNotFoundError, version as _distribution_version
-from typing import Any, AsyncIterator, Iterator
+from typing import Any, AsyncIterator, Iterator, Callable
 from pathlib import Path
 
 from ._freeze import WorkloadFreeze
@@ -104,6 +104,7 @@ from .types import (
     StageRun,
     UnitMetrics,
     WorkloadStatus,
+    WorkloadLink,
 )
 
 try:
@@ -146,6 +147,7 @@ __all__ = [
     "Client",
     "AsyncClient",
     "Workload",
+    "WorkloadLink",
     "AsyncWorkload",
     "Sandboxes",
     "Connections",
@@ -500,6 +502,7 @@ class _WorkloadState:
     meter: Meter | None = None
     revision: int = 1
     stages: list[StageRun] = field(default_factory=list)
+    links: list[WorkloadLink] = field(default_factory=list)
     unit_metrics: UnitMetrics | None = None
     #: True when the control plane answered from an idempotency record: the
     #: submission already existed, this call did not create a second run.
@@ -543,6 +546,8 @@ class _WorkloadState:
             self.unit_metrics = UnitMetrics.from_dict(d["unit_metrics"])
         if "stages" in d:
             self.stages = [StageRun.from_dict(s) for s in _rows(d.get("stages"))]
+        if "links" in d:
+            self.links = [link for row in _rows(d.get("links")) if (link := WorkloadLink.from_dict(row)) is not None]
         self.created_at = _dt(d.get("created_at")) or self.created_at
         self.updated_at = _dt(d.get("updated_at")) or self.updated_at
         self.raw = d
@@ -815,6 +820,8 @@ class Client(_Transport):
         continuity: ContinuityMode | str | ContinuitySpec | dict[str, Any] | None = None,
         finish_by: datetime | str | None = None,
         data_regions: list[str] | None = None,
+        connections: list[str] | None = None,
+        sweep_id: str | None = None,
         stages: list[StageSpec] | list[dict[str, Any]] | None = None,
         framework: str | None = None,
         policy: Policy | dict[str, Any] | None = None,
@@ -861,6 +868,8 @@ class Client(_Transport):
             continuity=continuity,
             finish_by=finish_by,
             data_regions=data_regions,
+            connections=connections,
+            sweep_id=sweep_id,
             stages=stages,
             framework=framework,
             policy=policy,
@@ -1126,11 +1135,13 @@ class Client(_Transport):
     def wait(
         self, workload_id: str, *, poll_seconds: float = 2.0,
         timeout_seconds: float | None = None, progress: bool | None = None,
+        on_update: Callable[[Any], None] | None = None,
     ) -> "Workload":
         """Wait for completion with optional live output on stderr.
 
         Progress is automatic in a terminal. Ctrl+C requests cancellation.
         A timeout ends observation and leaves the remote workload running.
+        ``on_update`` receives each successful workload read before completion.
         """
         _valid_id(workload_id)
         policy = _WaitPolicy(poll_seconds, timeout_seconds)
@@ -1141,6 +1152,8 @@ class Client(_Transport):
                 except NodusError as exc:
                     delay = policy.failed(exc)
                 else:
+                    if on_update is not None:
+                        on_update(wl)
                     display.update(wl)
                     for kind, path, params in display.requests():
                         if kind == "saved_logs" and display.live_available and not display.live_empty:
@@ -1267,10 +1280,10 @@ class Workload(_WorkloadState):
         return self
 
     def wait(self, *, poll_seconds: float = 2.0, timeout_seconds: float | None = None,
-             progress: bool | None = None) -> "Workload":
+             progress: bool | None = None, on_update: Callable[[Any], None] | None = None) -> "Workload":
         """Wait in place. A timeout leaves the remote workload running."""
         done = self._client.wait(self.id, poll_seconds=poll_seconds,
-                                 timeout_seconds=timeout_seconds, progress=progress)
+                                 timeout_seconds=timeout_seconds, progress=progress, on_update=on_update)
         self._absorb(done.raw)
         return self
 
@@ -1499,6 +1512,8 @@ class AsyncClient(_Transport):
         continuity: ContinuityMode | str | ContinuitySpec | dict[str, Any] | None = None,
         finish_by: datetime | str | None = None,
         data_regions: list[str] | None = None,
+        connections: list[str] | None = None,
+        sweep_id: str | None = None,
         stages: list[StageSpec] | list[dict[str, Any]] | None = None,
         framework: str | None = None,
         policy: Policy | dict[str, Any] | None = None,
@@ -1526,6 +1541,8 @@ class AsyncClient(_Transport):
             continuity=continuity,
             finish_by=finish_by,
             data_regions=data_regions,
+            connections=connections,
+            sweep_id=sweep_id,
             stages=stages,
             framework=framework,
             policy=policy,
@@ -1757,6 +1774,7 @@ class AsyncClient(_Transport):
     async def wait(
         self, workload_id: str, *, poll_seconds: float = 2.0,
         timeout_seconds: float | None = None, progress: bool | None = None,
+        on_update: Callable[[Any], None] | None = None,
     ) -> "AsyncWorkload":
         """Wait with live output. Task cancellation requests remote cancellation."""
         _valid_id(workload_id)
@@ -1769,6 +1787,8 @@ class AsyncClient(_Transport):
                     except NodusError as exc:
                         delay = policy.failed(exc)
                     else:
+                        if on_update is not None:
+                            on_update(wl)
                         display.update(wl)
                         for kind, path, params in display.requests():
                             if kind == "saved_logs" and display.live_available and not display.live_empty:
@@ -1866,10 +1886,10 @@ class AsyncWorkload(_WorkloadState):
         return self
 
     async def wait(self, *, poll_seconds: float = 2.0, timeout_seconds: float | None = None,
-                   progress: bool | None = None) -> "AsyncWorkload":
+                   progress: bool | None = None, on_update: Callable[[Any], None] | None = None) -> "AsyncWorkload":
         """Wait in place with the same behavior as AsyncClient.wait."""
         done = await self._client.wait(self.id, poll_seconds=poll_seconds,
-                                       timeout_seconds=timeout_seconds, progress=progress)
+                                       timeout_seconds=timeout_seconds, progress=progress, on_update=on_update)
         self._absorb(done.raw)
         return self
 
