@@ -255,6 +255,47 @@ def test_directory_changes_after_scan_cannot_omit_new_files(tmp_path, monkeypatc
             pytest.fail("directory changes were silently omitted")
 
 
+@pytest.mark.parametrize("change", ["add", "remove", "rename"])
+def test_directory_membership_changes_are_rejected_with_unchanged_metadata(tmp_path, monkeypatch, change):
+    project = tmp_path / "project"
+    project.mkdir()
+    child = project / "data"
+    child.mkdir()
+    existing = child / "existing"
+    existing.write_bytes(b"first")
+    (project / "z-final").write_bytes(b"last")
+    initial = child.stat()
+    original_lstat = Path.lstat
+    original_header = archive._header
+
+    def windows_directory_lstat(path, *args, **kwargs):
+        info = original_lstat(path, *args, **kwargs)
+        if path == child:
+            # Windows directories have zero size, independent of membership.
+            return SimpleNamespace(st_dev=info.st_dev, st_ino=info.st_ino,
+                                   st_mode=info.st_mode, st_size=0,
+                                   st_mtime_ns=info.st_mtime_ns)
+        return info
+
+    def change_after_child_was_copied(name, *args, **kwargs):
+        if name == "z-final":
+            if change == "add":
+                (child / "new").write_bytes(b"must not be omitted")
+            elif change == "remove":
+                existing.unlink()
+            else:
+                existing.rename(child / "renamed")
+            os.utime(child, ns=(initial.st_atime_ns, initial.st_mtime_ns))
+            assert child.stat().st_mtime_ns == initial.st_mtime_ns
+        return original_header(name, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "lstat", windows_directory_lstat)
+    monkeypatch.setattr(archive, "_header", change_after_child_was_copied)
+    with pytest.raises(ValidationError, match="directory changed"):
+        with archive.build_workspace_archive(project):
+            pytest.fail("changed directory membership was published")
+
+
 def test_oversized_directory_stops_enumerating_at_the_entry_bound(tmp_path, monkeypatch):
     project = tmp_path / "project"
     project.mkdir()

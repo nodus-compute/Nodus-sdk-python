@@ -107,6 +107,7 @@ def build_workspace_archive(directory: str | os.PathLike[str]) -> Iterator[Works
         raise ValidationError("Choose a project directory to upload")
     entries: list[tuple[str, Path, os.stat_result]] = []
     directories: list[tuple[Path, os.stat_result]] = [(root, root.stat())]
+    directory_members: dict[Path, set[str]] = {}
     pending = directories.copy()
     payload = 0
     while pending:
@@ -116,10 +117,15 @@ def build_workspace_archive(directory: str | os.PathLike[str]) -> Iterator[Works
                 raise ValidationError("Project directory changed while preparing upload. Retry after saving your files")
             # os.walk materializes an entire directory before yielding. Iterate
             # incrementally so an oversized directory cannot bypass the bound.
+            names: set[str] = set()
+            directory_members[parent] = names
             with os.scandir(parent) as children:
                 for child in children:
                     if len(entries) >= _ENTRY_LIMIT:
                         raise ValidationError("Project exceeds the workspace file count or 10 GB capacity")
+                    if child.name in names:
+                        raise ValidationError("Project directory changed while preparing upload. Retry after saving your files")
+                    names.add(child.name)
                     path = parent / child.name
                     relative = path.relative_to(root).as_posix()
                     _path_bytes(relative)
@@ -190,9 +196,6 @@ def build_workspace_archive(directory: str | os.PathLike[str]) -> Iterator[Works
                     raise ValidationError("Project archive exceeds the metadata allowance")
             records.append((output.tell(), 1024))
             output.write(bytes(1024))
-        for path, initial in directories:
-            if _identity(path.lstat()) != _identity(initial):
-                raise ValidationError("Project directory changed while preparing upload. Retry after saving your files")
         whole = hashlib.sha256()
         segments = []
         with archive.open("rb") as source:
@@ -212,6 +215,23 @@ def build_workspace_archive(directory: str | os.PathLike[str]) -> Iterator[Works
                     segments.append({"sha256": digest.hexdigest(), "offset": offset, "bytes": count})
                     offset += count
                     length -= count
+        for path, initial in directories:
+            try:
+                if _identity(path.lstat()) != _identity(initial):
+                    raise ValidationError("Project directory changed while preparing upload. Retry after saving your files")
+                # Directory timestamps can remain unchanged after membership
+                # changes on Windows. Consume only the bounded discovered names
+                # and reject the first unexpected entry without materializing it.
+                remaining_names = directory_members[path].copy()
+                with os.scandir(path) as children:
+                    for child in children:
+                        if child.name not in remaining_names:
+                            raise ValidationError("Project directory changed while preparing upload. Retry after saving your files")
+                        remaining_names.remove(child.name)
+                if remaining_names or _identity(path.lstat()) != _identity(initial):
+                    raise ValidationError("Project directory changed while preparing upload. Retry after saving your files")
+            except OSError as exc:
+                raise ValidationError("Could not verify every project directory") from exc
         yield WorkspaceArchive({
             "version": 3,
             "archive_sha256": whole.hexdigest(),
