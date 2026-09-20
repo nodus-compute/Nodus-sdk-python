@@ -167,7 +167,7 @@ def _stages(stages: Any) -> None:
                 _fail(name + '.outputs', 'expected a table of names and paths')
             for key, item in stage['outputs'].items():
                 _text(key, name + '.outputs')
-                _text(item, name + '.outputs.' + key)
+                _text(item['path'] if isinstance(item, dict) else item, name + '.outputs.' + key)
         if 'inputs' in stage:
             if not isinstance(stage['inputs'], list):
                 _fail(name + '.inputs', 'expected a list of inputs')
@@ -237,7 +237,7 @@ def load_workload_file(path: str | Path = 'nodus.toml') -> dict[str, Any]:
                 _fail(key, 'expected a table of output names and paths')
             for name, output_path in value.items():
                 _text(name, key)
-                _text(output_path, f'outputs.{name}')
+                _text(output_path['path'] if isinstance(output_path, dict) else output_path, f'outputs.{name}')
         elif key == 'stages':
             _stages(value)
         elif key == 'finish_by':
