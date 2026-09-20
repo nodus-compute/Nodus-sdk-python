@@ -1083,6 +1083,7 @@
             "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
             "maxLength": 64,
             "enum": [
+              "custom",
               "reasoning-gym",
               "swe-smith",
               "textarena",
@@ -1090,7 +1091,7 @@
               "officeqa",
               "appworld"
             ],
-            "description": "A catalog environment accepted by this deployment. Catalog membership does not establish runtime readiness or asset access."
+            "description": "Use custom for researcher-supplied training or evaluation without a catalog association, or choose an accepted catalog environment. This label does not establish runtime readiness or asset access."
           },
           "mode": {
             "type": "string",
@@ -1098,7 +1099,7 @@
               "train",
               "evaluate"
             ],
-            "description": "Must be supported by the selected catalog environment. OfficeQA supports evaluate only."
+            "description": "Custom workloads support train or evaluate. Catalog environments must support the selected mode. OfficeQA supports evaluate only."
           },
           "model": {
             "type": "string",

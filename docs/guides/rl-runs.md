@@ -1,4 +1,49 @@
-# Review and launch an RL run
+# Run your own RL code or a prepared recipe
+
+You can start with your own training command and optional data. You do not need
+to select a catalog environment. To show reported RL task progress, add the
+optional `rl` metadata to a normal run:
+
+```python
+def launch_custom_rl(
+    client, *, image, source_asset_id, budget, stable_run_id,
+    model_label, planned_tasks,
+):
+    if not isinstance(stable_run_id, str) or not stable_run_id:
+        raise ValueError("stable_run_id must be a nonempty stable key for this run")
+    if budget is None:
+        raise ValueError("budget must be an explicit spending limit for this run")
+    return client.run(
+        image=image,
+        source_asset_id=source_asset_id,
+        command=["python", "train.py"],
+        outputs={"results": "outputs"},
+        budget=budget,
+        compute_class="accelerator",
+        idempotency_key=stable_run_id,
+        extra={
+            "rl": {
+                "schema_version": 1,
+                "environment_id": "custom",
+                "mode": "train",
+                "model": model_label,
+                "planned_tasks": planned_tasks,
+            }
+        },
+    )
+```
+
+Use an imported source asset containing your `train.py`, a compatible runtime
+image and an explicit spending limit. The command must write final results
+under `outputs` and write and load its own checkpoint state. Adjust the command
+and output path to match your project.
+
+The metadata describes your experiment. Your code implements the trainer,
+model, task limit and task-event reporting. Use `mode="evaluate"` for evaluation
+without training. Custom runs cannot set `rl.recipe` or claim managed recipe
+validation. A completed command without task events has no reported RL score.
+
+## Use a prepared recipe
 
 RL recipes describe supported evaluation and training runs. Recipe availability
 reflects operator qualification and current launch settings. Admission and
