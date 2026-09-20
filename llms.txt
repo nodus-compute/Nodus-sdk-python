@@ -10,6 +10,8 @@ Authenticate: nodus login. Python clients reuse the saved login. Use the authent
 
 ## Start here
 
+- [MCP tools](https://nodus-compute.ai/docs/source/guides/mcp.md): Configure the local MCP server and use its seven workload tools, including safe retries, pagination, logs and cancellation.
+
 - [Official PyPI package](https://pypi.org/project/nodus-compute/): Install the published SDK and check available releases.
 - [Agent execution guide](https://nodus-compute.ai/docs/source/guides/agents.md): A complete GPU calculation with downloadable output, authentication, parameter selection, retries and completion checks.
 - [Agent sandbox guide](https://nodus-compute.ai/docs/source/guides/agent-sandboxes.md): Create a durable sandbox, execute commands, stream output, send stdin and terminate resources.

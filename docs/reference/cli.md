@@ -8,6 +8,7 @@ which capabilities your SDK version provides.
 
 | Command | What it does |
 |---|---|
+| `nodus mcp` | Start the local MCP server using your saved login. Requires `nodus-compute[mcp]` |
 | `nodus login` | Reuse a valid login or open browser sign-in |
 | `nodus login --force` | Start a fresh browser sign-in |
 | `nodus logout` | Remove the locally saved key |

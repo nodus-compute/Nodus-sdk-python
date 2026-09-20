@@ -31,7 +31,7 @@ def main() -> int:
     source.add_argument('--version', help='published PyPI version to verify')
     parser.add_argument('--report', type=Path, help='save the verification result as JSON')
     args = parser.parse_args()
-    target = str(args.wheel.resolve()) if args.wheel else f'nodus-compute=={args.version.removeprefix("v")}'
+    target = str(args.wheel.resolve()) + "[mcp]" if args.wheel else f'nodus-compute[mcp]=={args.version.removeprefix("v")}'
     report = {'artifact': target, 'status': 'failed', 'stage': 'setup'}
     result = 1
     try:

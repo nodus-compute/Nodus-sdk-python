@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.4.1
+
+- Install the local MCP server from the public `nodus-compute[mcp]` package.
+- Connect AI clients with `nodus-mcp` or `nodus mcp` and reuse the saved `nodus login` session.
+- Provide seven workload tools with retry-safe submission, cancellation, logs, events and outputs.
 
 - Submit benchmark matrices with an explicit total budget and idempotency key, then inspect the server report through the SDK or CLI.
 - Add registered sandbox services, bounded HTTP requests and a scheduled micro-batch example.
