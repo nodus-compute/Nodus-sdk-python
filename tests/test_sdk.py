@@ -726,10 +726,30 @@ def test_ledger_parses_entries_and_settlement():
 
 
 def test_the_ledger_totals_what_the_customer_was_charged():
-    """The charge is the sum of customer_charge credits, not the settlement balance."""
+    """Posted customer charges are separate from the settlement balance."""
     with client_with(lambda r: httpx.Response(200, json=LEDGER)) as c:
         led = c.ledger("wl_abc")
     assert led.charged_usd == 5.0
+
+
+def test_ledger_total_includes_only_compute_and_platform_fee_credits():
+    entries = [
+        {**LEDGER["entries"][0], "id": f"led_billing_{index}",
+         "entry_type": kind, "debit_usd": debit, "credit_usd": credit}
+        for index, (kind, debit, credit) in enumerate([
+            ("customer_charge", 0.0, 5.0),
+            ("platform_fee", 0.0, 2.5),
+            ("customer_charge", 1.0, 0.0),
+            ("platform_fee", 0.5, 0.0),
+            ("usage", 80.0, 80.0),
+            ("supplier_expense", 0.0, 60.0),
+            ("transfer", 0.0, 40.0),
+            ("platform_fault", 0.0, 70.0),
+            ("settle_close", 7.5, 0.0),
+        ])
+    ]
+    ledger = nodus.Ledger.from_dict({**LEDGER, "entries": entries})
+    assert ledger.charged_usd == 7.5
 
 
 def test_a_settlement_carries_no_total_the_server_never_sends():
