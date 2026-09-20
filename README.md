@@ -264,7 +264,7 @@ Observed Act monetary outcomes identify their `measurement_basis`. The basis
 Sign in once, then connect Claude, Cursor, Codex or another MCP client:
 
 ```sh
-uvx --from 'nodus-compute[mcp]==0.4.1' nodus login
+uvx --from 'nodus-compute[mcp]==0.4.2' nodus login
 ```
 
 ```json
@@ -272,7 +272,7 @@ uvx --from 'nodus-compute[mcp]==0.4.1' nodus login
   "mcpServers": {
     "nodus": {
       "command": "uvx",
-      "args": ["--from", "nodus-compute[mcp]==0.4.1", "nodus-mcp"]
+      "args": ["--from", "nodus-compute[mcp]==0.4.2", "nodus-mcp"]
     }
   }
 }

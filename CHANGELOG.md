@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.2
+
+- Reuse HTTP connections across MCP tool calls and close the pool on server shutdown.
+- Refresh saved credentials and API origins on each call without retaining response cookies.
+
 ## 0.4.1
 
 - Install the local MCP server from the public `nodus-compute[mcp]` package.
