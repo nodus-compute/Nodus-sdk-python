@@ -37,7 +37,30 @@ __all__ = [
     "APIConnectionError",
     "APITimeoutError",
     "error_from_response",
+    "asset_id_from_error",
 ]
+
+
+def asset_id_from_error(error: BaseException) -> str | None:
+    """Recover an admitted query asset ID, including wrapped cancellation errors.
+
+    Some asyncio versions replace CancelledError at a task boundary and keep
+    the original exception in its context chain. Cancellation is not suppressed.
+    """
+    pending = [error]
+    visited: set[int] = set()
+    while pending:
+        current = pending.pop()
+        if id(current) in visited:
+            continue
+        visited.add(id(current))
+        asset_id = getattr(current, "asset_id", None)
+        if isinstance(asset_id, str) and re.fullmatch(r"asset_[A-Za-z0-9-]{1,64}", asset_id):
+            return asset_id
+        for nested in (current.__context__, current.__cause__):
+            if nested is not None:
+                pending.append(nested)
+    return None
 
 
 class NodusError(Exception):
@@ -56,6 +79,7 @@ class NodusError(Exception):
         self.status_code = status_code
         self.body = body
         self.request_id = request_id
+        self.asset_id: str | None = None
 
     @property
     def code(self) -> str | None:

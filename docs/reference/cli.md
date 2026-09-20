@@ -66,6 +66,8 @@ other settings unchanged to avoid submitting duplicate work.
 |---|---|
 | `nodus upload FILE` | Upload a file or archive and print its asset ID |
 | `nodus assets` | List stored assets |
+| `nodus asset get ID` | Inspect one asset and its safe export error |
+| `nodus asset import-query CONNECTION SQL` | Export a database query and wait for its asset |
 
 See [code and datasets](../guides/assets.md) for imports and attaching assets to work.
 

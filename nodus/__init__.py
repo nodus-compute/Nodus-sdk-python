@@ -85,6 +85,7 @@ from .errors import (
     SpendCheckUnavailableError,
     ValidationError,
     error_from_response,
+    asset_id_from_error,
 )
 from .types import (
     TERMINAL,
@@ -202,6 +203,7 @@ __all__ = [
     "AssetInUseError",
     "APIConnectionError",
     "APITimeoutError",
+    "asset_id_from_error",
     "__version__",
 ]
 
