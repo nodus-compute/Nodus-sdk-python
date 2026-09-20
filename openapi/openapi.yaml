@@ -3256,7 +3256,7 @@
             "type": "number",
             "minimum": 0.00000095367431640625,
             "maximum": 10,
-            "description": "Project capacity within capabilities.storage_limit_bytes. With storage_policy_version included-10gb-v1, send exactly 10 for the included 10,000,000,000-byte capacity. Other deployments use GiB and their displayed capacity limit."
+            "description": "Project capacity within capabilities.storage_limit_bytes. With storage_policy_version included-10gb-v1 or r2-standard-10gb-account-v1, send exactly 10 for the 10,000,000,000-byte per-workspace capacity. The account policy shares its free allowance across workspaces. Other deployments use GiB and their displayed capacity limit."
           },
           "ssh_authorized_key": {
             "type": "string",
@@ -3283,7 +3283,7 @@
           },
           "storage_policy_version": {
             "type": "string",
-            "description": "The value included-10gb-v1 enables an included decimal 10 GB workspace. Empty or absent retains the deployment's existing storage policy and capacity."
+            "description": "The value r2-standard-10gb-account-v1 shares a free decimal 10 GB allowance across the account, with storage-only overage at the server-reported rate. The older included-10gb-v1 policy retains its per-workspace allowance. Both retain a 10 GB per-workspace operational limit. Empty or absent retains existing storage behavior."
           },
           "environments": {
             "type": "array",
@@ -3454,6 +3454,209 @@
         "x-go-source": "internal/store/meter.go",
         "x-go-type": "Meter"
       },
+      "ResearchWorkspaceAccountStorage": {
+        "type": "object",
+        "required": [
+          "policy_version",
+          "included_bytes",
+          "retained_bytes",
+          "billable_bytes",
+          "rate_usd_gb_month",
+          "charged_usd",
+          "status",
+          "as_of"
+        ],
+        "properties": {
+          "policy_version": {
+            "type": "string",
+            "description": "Version of the account's saved-file storage policy."
+          },
+          "included_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Shared free allowance across eligible workspaces. The account policy includes 10,000,000,000 bytes."
+          },
+          "retained_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Combined verified logical saved-file payload, excluding metadata, requests and retained recovery copies."
+          },
+          "billable_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Saved payload above the account allowance."
+          },
+          "rate_usd_gb_month": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Server-reported USD rate per decimal GB-month. The account policy uses 0.015 and includes requests."
+          },
+          "charged_usd": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Lifetime posted account saved-file charges, separate from compute."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "inactive",
+              "included",
+              "funded",
+              "funding_required"
+            ]
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "description": "Account-wide saved-file usage and posted charges. Account-policy overage is prorated continuously by logical payload bytes and time over a fixed 30-day month. This uses the R2 Standard unit rate without reproducing its daily-peak invoice. Unfunded retention is not backcharged. File export and deletion remain available with stopped compute.",
+        "x-go-source": "internal/store/research_account_storage.go",
+        "x-go-type": "ResearchAccountStorageSummary"
+      },
+      "ResearchWorkspaceFileRevision": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "storage_revision"
+        ],
+        "properties": {
+          "storage_revision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Observed saved-file revision, required to guard the selected export or deletion."
+          }
+        }
+      },
+      "ResearchWorkspaceExportSegment": {
+        "type": "object",
+        "required": [
+          "index",
+          "sha256",
+          "offset",
+          "bytes",
+          "url",
+          "download_path"
+        ],
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 512,
+            "maximum": 67108864
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Short-lived signed HTTPS object URL. Do not forward Nodus authentication or cookies to this URL."
+          },
+          "download_path": {
+            "type": "string",
+            "description": "Authenticated API-relative path for downloading this segment without cross-origin browser requests."
+          }
+        },
+        "x-go-source": "internal/api/research_workspace_files.go",
+        "x-go-type": "ResearchWorkspaceExportSegment"
+      },
+      "ResearchWorkspaceFileExport": {
+        "type": "object",
+        "required": [
+          "id",
+          "workspace_id",
+          "storage_revision",
+          "format",
+          "expires_at",
+          "urls_expire_at",
+          "manifest",
+          "segments"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workspace_id": {
+            "type": "string"
+          },
+          "storage_revision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "format": {
+            "type": "string",
+            "const": "research-archive-v3"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Fixed expiry of the retained export revision, 24 hours after admission."
+          },
+          "urls_expire_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Earliest signed URL expiry on this page, at most 15 minutes. Read the page again for fresh URLs."
+          },
+          "manifest": {
+            "$ref": "#/components/schemas/WorkspaceArchiveManifest"
+          },
+          "segments": {
+            "type": "array",
+            "maxItems": 256,
+            "items": {
+              "$ref": "#/components/schemas/ResearchWorkspaceExportSegment"
+            }
+          },
+          "next_offset": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Read the next page at this offset. Omitted on the final page."
+          }
+        },
+        "x-go-source": "internal/api/research_workspace_files.go",
+        "x-go-type": "ResearchWorkspaceFileExport"
+      },
+      "ResearchWorkspaceFileDeletion": {
+        "type": "object",
+        "required": [
+          "workspace_id",
+          "storage_revision",
+          "deleted"
+        ],
+        "properties": {
+          "workspace_id": {
+            "type": "string"
+          },
+          "storage_revision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "deleted": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "x-go-source": "internal/store/research_workspace_files.go",
+        "x-go-type": "ResearchWorkspaceFileDeletion"
+      },
       "ResearchWorkspaceStorage": {
         "type": "object",
         "required": ["rate_usd_gib_month", "price_version", "retained_bytes", "charged_usd", "as_of"],
@@ -3477,7 +3680,7 @@
             "properties": {
               "configuration": {"$ref": "#/components/schemas/ResearchWorkspaceConfiguration"},
               "storage_revision": {"type": "integer", "format": "int64", "minimum": 0, "description": "Current saved-file revision used to guard a stopped-workspace replacement."},
-              "storage_policy_version": {"type": "string", "description": "Storage policy recorded for this workspace. Transfer endpoints require included-10gb-v1 to be active on the workspace and deployment."},
+              "storage_policy_version": {"type": "string", "description": "Storage policy recorded for this workspace. Transfer endpoints require a compatible versioned storage policy on the workspace and deployment."},
               "session": {
                 "oneOf": [{"$ref": "#/components/schemas/Sandbox"}, {"type": "null"}],
                 "description": "Current associated compute session, or null before one is available. Use session.id in the stop request."
@@ -3661,7 +3864,8 @@
             "enum": [
               "disabled_no_approved_storage_rate",
               "metered_subject_to_account_limits",
-              "included_workspace_storage"
+              "included_workspace_storage",
+              "account_workspace_storage"
             ]
           }
         }
@@ -9714,6 +9918,282 @@
         "description": "Ordered by stage ID and then generation. Nodus catalog identifiers and resource facts only."
       }
     },
+    "/v1/research-workspaces/storage": {
+      "get": {
+        "operationId": "getResearchWorkspaceAccountStorage",
+        "summary": "Read the shared account saved-file allowance and charges",
+        "tags": [
+          "Research workspaces"
+        ],
+        "description": "Requires account authentication. Reports combined saved-file usage and the account storage policy, independent of compute-session charges.",
+        "responses": {
+          "200": {
+            "description": "Account saved-file usage and billing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchWorkspaceAccountStorage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, rate limits and temporary storage failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/research-workspaces/{id}/files/export": {
+      "post": {
+        "operationId": "createResearchWorkspaceFileExport",
+        "summary": "Prepare a pinned export of stopped saved files",
+        "tags": [
+          "Research workspaces"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "id"
+          }
+        ],
+        "description": "Requires stopped compute, no active transfer and the observed current revision. Repeating the same live revision reuses its fixed 24-hour export. Does not start compute or require credits. Concatenate segments in manifest order and verify their hashes and the complete archive before publishing the local file. Saved files use version 3 storage.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchWorkspaceFileRevision"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "First page of a pinned saved-file export",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchWorkspaceFileExport"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "404 for an unavailable owned workspace or export, 409 for stale revision, active compute, pending transfer, empty files or legacy format, 410 for expired export, 429 for too many retained export revisions, and 503 for temporary storage failures. Authentication and rate limits apply. No credit balance is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/research-workspaces/{id}/files/exports/{export}": {
+      "get": {
+        "operationId": "getResearchWorkspaceFileExport",
+        "summary": "Read an export page and refresh signed download URLs",
+        "tags": [
+          "Research workspaces"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "id"
+          },
+          {
+            "name": "export",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "export"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100160
+            },
+            "description": "Segment index from next_offset, zero when omitted."
+          }
+        ],
+        "description": "Each page has at most 256 segment URLs. Existing exports remain readable after current saved files are deleted or compute resumes, until the fixed export expiry. This does not extend that expiry.",
+        "responses": {
+          "200": {
+            "description": "Pinned export page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchWorkspaceFileExport"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "404 for an unavailable owned workspace or export, 409 for stale revision, active compute, pending transfer, empty files or legacy format, 410 for expired export, 429 for too many retained export revisions, and 503 for temporary storage failures. Authentication and rate limits apply. No credit balance is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/research-workspaces/{id}/files/exports/{export}/segments/{segment}": {
+      "get": {
+        "operationId": "downloadResearchWorkspaceFileSegment",
+        "summary": "Stream one pinned saved-file segment through the authenticated API",
+        "tags": [
+          "Research workspaces"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "id"
+          },
+          {
+            "name": "export",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "export"
+          },
+          {
+            "name": "segment",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "segment"
+          }
+        ],
+        "description": "Requires account authentication and a live owned export. Streams at most 64 MiB, with a 50-second server deadline. Verify Content-Length and X-Nodus-SHA256 against the manifest. A disconnected stream is incomplete and must be downloaded again.",
+        "responses": {
+          "200": {
+            "description": "Exact saved-file segment",
+            "headers": {
+              "Content-Length": {
+                "schema": {
+                  "type": "integer",
+                  "maximum": 67108864
+                }
+              },
+              "X-Nodus-SHA256": {
+                "schema": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                }
+              }
+            },
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "404 for an unavailable owned workspace or export, 409 for stale revision, active compute, pending transfer, empty files or legacy format, 410 for expired export, 429 for too many retained export revisions, and 503 for temporary storage failures. Authentication and rate limits apply. No credit balance is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/research-workspaces/{id}/files": {
+      "delete": {
+        "operationId": "deleteResearchWorkspaceFiles",
+        "summary": "Delete the observed stopped saved-file revision",
+        "tags": [
+          "Research workspaces"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "id"
+          }
+        ],
+        "description": "Requires stopped compute, no active transfer and an unchanged observed revision. Removes current saved files while preserving workspace configuration. Existing export pins expire separately. Available independently of compute admission and credit balance. Refresh after an uncertain response before choosing a new deletion intent.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchWorkspaceFileRevision"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved files deleted and revision advanced",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchWorkspaceFileDeletion"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "404 for an unavailable owned workspace or export, 409 for stale revision, active compute, pending transfer, empty files or legacy format, 410 for expired export, 429 for too many retained export revisions, and 503 for temporary storage failures. Authentication and rate limits apply. No credit balance is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/research-workspaces/capabilities": {
       "get": {
         "operationId": "getResearchWorkspaceCapabilities",
@@ -9829,7 +10309,7 @@
         "tags": [
           "Research workspaces"
         ],
-        "description": "Available only when included-10gb-v1 is explicitly active for the deployment and workspace. Compute must be stopped. Requires a nonempty canonical version 3 archive manifest, not a generic archive upload. Retain idempotency_key, manifest and replace_revision together across retries. Previously saved files require the current storage_revision as replace_revision. Beginning a transfer does not change saved files. No general folder uploader is provided by the SDK or console.",
+        "description": "Available only when included-10gb-v1 or r2-standard-10gb-account-v1 is explicitly active for the deployment and workspace. Compute must be stopped. Requires a nonempty canonical version 3 archive manifest, not a generic archive upload. Retain idempotency_key, manifest and replace_revision together across retries. Previously saved files require the current storage_revision as replace_revision. Beginning a transfer does not change saved files. The SDK folder uploader prepares this canonical manifest and uploads bounded segments.",
         "parameters": [
           {
             "name": "id",
@@ -10144,7 +10624,7 @@
             "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SubmitResult"}}}
           },
           "409": {
-            "description": "workspace_save_pending requests the same key and body again after Retry-After. workspace_capture_failed requires correcting the save failure and beginning a new submission. workspace_no_saved_files requires adding project files. workspace_source_unavailable reports a source preparation failure. idempotency_conflict indicates a changed body for an existing key. Other state conflicts can also occur.",
+            "description": "workspace_save_pending requests the same key and body again after Retry-After. workspace_capture_failed requires correcting the save failure and beginning a new submission. workspace_source_rejected requires reducing or correcting the project source and using a new submission key. workspace_no_saved_files requires adding project files. workspace_source_unavailable reports a source preparation failure. idempotency_conflict indicates a changed body for an existing key. Other state conflicts can also occur.",
             "headers": {"Retry-After": {"description": "Seconds until the next capture progress check when workspace_save_pending is returned.", "schema": {"type": "string"}}},
             "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
           },

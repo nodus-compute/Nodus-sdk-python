@@ -130,3 +130,27 @@ def test_ssh_only_creation_requires_a_public_key_before_transport(asynchronous):
     with pytest.raises(nodus.ValidationError):
         invoke(lambda request: calls.append(request), asynchronous, "create_interactive", **{**CONFIG, "editor": "ssh"})
     assert calls == []
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_account_storage_preserves_server_values_without_computing_charges(asynchronous):
+    response = {"policy_version": "r2-standard-10gb-account-v1",
+                "included_bytes": 10000000000, "retained_bytes": 12000000000,
+                "billable_bytes": 2000000000, "rate_usd_gb_month": 0.015,
+                "charged_usd": 0.0007, "status": "funded", "as_of": "2026-09-20T12:00:00Z"}
+    def handler(request):
+        assert request.method == "GET"
+        assert request.url.path == BASE + "/storage"
+        assert request.headers["Authorization"] == "Bearer " + API_KEY
+        return httpx.Response(200, json=response)
+    assert invoke(handler, asynchronous, "storage") == response
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_rejected_workspace_source_is_not_an_idempotency_conflict(asynchronous):
+    def handler(request):
+        return httpx.Response(409, json={"error": "workspace_source_rejected", "message": "Project exceeds source limits."})
+    with pytest.raises(nodus.APIError) as error:
+        invoke(handler, asynchronous, "submit", "ws_lab", command="python train.py", budget_usd=2, idempotency_key="source-rejected")
+    assert not isinstance(error.value, nodus.IdempotencyConflictError)
+    assert error.value.code == "workspace_source_rejected"

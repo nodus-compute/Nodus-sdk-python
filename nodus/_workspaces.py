@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import re
+import os
+from pathlib import Path
 import math
 from typing import Any, TYPE_CHECKING
 
@@ -128,6 +130,40 @@ class Workspaces:
         """Read available workspace tools, storage limits and supported GPU counts."""
         return self._client._request("GET", "/v1/research-workspaces/capabilities")
 
+    def storage(self) -> dict[str, Any]:
+        """Read the account's shared saved-file allowance, usage and charges."""
+        return self._client._request("GET", "/v1/research-workspaces/storage")
+
+    def delete_files(self, workspace_id: str, *, storage_revision: int) -> dict[str, Any]:
+        """Delete stopped saved files once, guarded by the observed revision."""
+        from ._workspace_files import revision
+        return self._client._request("DELETE", _path(workspace_id) + "/files",
+                                           json={"storage_revision": revision(storage_revision)}, max_retries=0)
+
+    def export_files(self, workspace_id: str, destination: str | os.PathLike[str], *,
+                           storage_revision: int, overwrite: bool = False) -> Path:
+        """Stream saved files to a verified local tar archive without extracting it."""
+        from ._workspace_files import export_files
+        return export_files(self._client, workspace_id, destination,
+                                         storage_revision=storage_revision, overwrite=overwrite)
+
+    def upload_files(self, workspace_id: str, directory: str | os.PathLike[str], *,
+                           idempotency_key: str, replace_revision: int | None = None) -> dict[str, Any]:
+        """Upload a stopped project once and return its pending verification status."""
+        from ._workspace_files import upload_files
+        return upload_files(self._client, workspace_id, directory,
+                                         idempotency_key=idempotency_key, replace_revision=replace_revision)
+
+    def transfer(self, workspace_id: str, transfer_id: str) -> dict[str, Any]:
+        """Read uploaded segments and durable verification progress."""
+        identifier = _path(transfer_id).rsplit("/", 1)[1]
+        return self._client._request("GET", _path(workspace_id) + "/transfers/" + identifier)
+
+    def abort_transfer(self, workspace_id: str, transfer_id: str) -> None:
+        """Request abandoning an upload once without changing saved files."""
+        identifier = _path(transfer_id).rsplit("/", 1)[1]
+        self._client._request("DELETE", _path(workspace_id) + "/transfers/" + identifier, max_retries=0)
+
     def create_interactive(self, name: str, *, environment: str, editor: str, gpu: str,
                            gpu_count: int, gpu_memory_gb: float, budget_usd: float,
                            max_hours: int, size_gb: float, repository: str | None = None,
@@ -196,6 +232,40 @@ class AsyncWorkspaces:
     async def capabilities(self) -> dict[str, Any]:
         """Read available workspace tools, storage limits and supported GPU counts."""
         return await self._client._request("GET", "/v1/research-workspaces/capabilities")
+
+    async def storage(self) -> dict[str, Any]:
+        """Read the account's shared saved-file allowance, usage and charges."""
+        return await self._client._request("GET", "/v1/research-workspaces/storage")
+
+    async def delete_files(self, workspace_id: str, *, storage_revision: int) -> dict[str, Any]:
+        """Delete stopped saved files once, guarded by the observed revision."""
+        from ._workspace_files import revision
+        return await self._client._request("DELETE", _path(workspace_id) + "/files",
+                                           json={"storage_revision": revision(storage_revision)}, max_retries=0)
+
+    async def export_files(self, workspace_id: str, destination: str | os.PathLike[str], *,
+                           storage_revision: int, overwrite: bool = False) -> Path:
+        """Stream saved files to a verified local tar archive without extracting it."""
+        from ._workspace_files import export_files_async
+        return await export_files_async(self._client, workspace_id, destination,
+                                         storage_revision=storage_revision, overwrite=overwrite)
+
+    async def upload_files(self, workspace_id: str, directory: str | os.PathLike[str], *,
+                           idempotency_key: str, replace_revision: int | None = None) -> dict[str, Any]:
+        """Upload a stopped project once and return its pending verification status."""
+        from ._workspace_files import upload_files_async
+        return await upload_files_async(self._client, workspace_id, directory,
+                                         idempotency_key=idempotency_key, replace_revision=replace_revision)
+
+    async def transfer(self, workspace_id: str, transfer_id: str) -> dict[str, Any]:
+        """Read uploaded segments and durable verification progress."""
+        identifier = _path(transfer_id).rsplit("/", 1)[1]
+        return await self._client._request("GET", _path(workspace_id) + "/transfers/" + identifier)
+
+    async def abort_transfer(self, workspace_id: str, transfer_id: str) -> None:
+        """Request abandoning an upload once without changing saved files."""
+        identifier = _path(transfer_id).rsplit("/", 1)[1]
+        await self._client._request("DELETE", _path(workspace_id) + "/transfers/" + identifier, max_retries=0)
 
     async def create_interactive(self, name: str, *, environment: str, editor: str, gpu: str,
                                  gpu_count: int, gpu_memory_gb: float, budget_usd: float,

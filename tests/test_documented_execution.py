@@ -76,7 +76,7 @@ def docs_api(monkeypatch):
             if self.headers.get("Authorization") != "Bearer nk_docs":
                 return self.reply({"error": "unauthorized"}, 401)
             if path == "/v1/research-workspaces/capabilities":
-                return self.reply({"available": True, "storage_limit_bytes": 536870912,
+                return self.reply({"available": True, "storage_limit_bytes": 10000000000, "storage_policy_version": "r2-standard-10gb-account-v1",
                     "workload_source_limit_bytes": 268435456,
                     "environments": [{"id": "pytorch-cuda", "name": "PyTorch and CUDA", "description": "Development image"}],
                     "gpu_counts": [1, 2, 4, 8], "editors": ["vscode", "jupyter", "ssh"],
@@ -227,7 +227,7 @@ def docs_api(monkeypatch):
             if path == "/v1/research-workspaces":
                 assert payload == {"name": "kernel-lab", "environment": "pytorch-cuda", "editor": "jupyter",
                     "gpu": "H100", "gpu_count": 1, "gpu_memory_gb": 80, "budget_usd": 8,
-                    "max_hours": 2, "size_gb": 0.25}
+                    "max_hours": 2, "size_gb": 10}
                 return self.reply({"id": "ws_1234-abcd", "name": "kernel-lab", "configuration": payload,
                     "state": "stopped", "session": None}, 201)
             if path == "/v1/research-workspaces/ws_1234-abcd/start":

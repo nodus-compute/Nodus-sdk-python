@@ -62,6 +62,10 @@ import nodus
 
 with nodus.Client() as client:
     capabilities = client.workspaces.capabilities()
+    decimal_policy = capabilities.get("storage_policy_version") in {
+        "included-10gb-v1", "r2-standard-10gb-account-v1"
+    }
+    project_size = 10 if decimal_policy else capabilities["storage_limit_bytes"] / 1_073_741_824
     workspace = client.workspaces.create_interactive(
         "kernel-lab",
         environment="pytorch-cuda",
@@ -71,7 +75,7 @@ with nodus.Client() as client:
         gpu_memory_gb=80,
         budget_usd=8,
         max_hours=2,
-        size_gb=0.25,
+        size_gb=project_size,
     )
     session = client.workspaces.start(
         workspace["id"], idempotency_key="kernel-lab-session-1"
@@ -80,8 +84,8 @@ with nodus.Client() as client:
 ```
 
 Choose storage within `capabilities["storage_limit_bytes"]`. When
-`capabilities.get("storage_policy_version") == "included-10gb-v1"`, use
-`size_gb=10` for the included 10 GB of project files. Other deployments use GiB
+`capabilities.get("storage_policy_version")` is `included-10gb-v1` or
+`r2-standard-10gb-account-v1`, use `size_gb=10` for the 10 GB project capacity. Other deployments use GiB
 and their displayed storage limit. Creating the
 configuration does not allocate compute. Start admits a session and can return
 before its GPU or connection is ready. Exact counts of 1, 2, 4 or 8 refer to
@@ -95,10 +99,60 @@ For browser VS Code use `tool="editor"`. SSH uses `tool="ssh"` and returns
 connection instructions. The existing `create` and `list` methods retain their
 named sandbox file-storage behavior.
 
-The included storage policy is disabled unless the deployment explicitly
-activates it. The SDK and console do not yet provide a stopped-workspace folder
-uploader. Add project files through a connected repository or a running editor
-or SSH session.
+Versioned storage policies require explicit deployment support. Under
+`r2-standard-10gb-account-v1`, the first **10 decimal GB across your account**
+is free. Additional saved-file payload costs **$0.015 per GB-month**, with
+requests included. Charges are prorated continuously by saved bytes and time
+using a fixed 30-day month. Compute is billed separately. The 10 GB capacity
+of each workspace is an operational limit, separate from the shared allowance.
+The older `included-10gb-v1` policy retains its existing allowance.
+
+Read `client.workspaces.storage()` for `retained_bytes`, `included_bytes`,
+`billable_bytes`, `rate_usd_gb_month`, lifetime `charged_usd`, `status` and
+`as_of`. Values come from the server. Storage can continue after compute stops.
+If `status` is `funding_required`, additional paid storage needs credits or
+spending headroom. Saved files are preserved, and stopped-file export and
+deletion remain available. Unfunded retention is not charged later.
+
+## Upload, export and delete saved files
+
+File helpers require version 3 storage. Stop compute and wait for saving and
+active transfers to finish. Read `workspace = client.workspaces.get(workspace_id)`
+and retain its `storage_revision` before replacing or deleting files.
+
+Use `client.workspaces.upload_files(workspace_id, "./project",`
+`idempotency_key="project-upload-1", replace_revision=workspace["storage_revision"])`
+to upload a local folder. This prepares a bounded canonical archive on local
+disk, uploads segments and queues server verification. It does not start compute.
+The folder must fit the workspace limit. Symbolic links and special files are
+refused by this uploader. Files must remain unchanged while the archive is built.
+
+Retain the directory contents, key and replacement revision together. After an
+uncertain response, repeat that same upload to resume acknowledged segments.
+The SDK does not automatically retry mutations. Changed contents require a new
+intent after inspecting the existing transfer. The returned state can be
+`queued` or `verifying`. Read `client.workspaces.transfer(workspace_id, transfer_id)`
+until `committed` confirms replacement. A failed verification leaves prior saved
+files intact and reports `failure_code`. Use
+`client.workspaces.abort_transfer(workspace_id, transfer_id)` to abandon an upload.
+
+Use `client.workspaces.export_files(workspace_id, "project.tar",`
+`storage_revision=workspace["storage_revision"])` to stream an integrity-checked
+archive to your computer. The destination must not exist unless you explicitly
+pass `overwrite=True`. Failed downloads leave an existing destination intact.
+The SDK verifies segment and complete-archive hashes and does not extract files.
+Export links expire, so retry the export to refresh them. Exported revisions
+remain available for 24 hours even if the current saved project is deleted.
+The console streams downloads in Chrome or Edge. Other browsers can use this
+SDK helper.
+
+After keeping any export you need, call
+`client.workspaces.delete_files(workspace_id, storage_revision=workspace["storage_revision"])`
+to delete that saved revision. The workspace configuration stays available.
+A changed revision is refused instead of deleting newer files. Deletion cannot
+be undone through the workspace. Previously created exports expire separately.
+The asynchronous client provides the same methods with `await`, including
+archive preparation off the event loop.
 
 ## Submit your project as a workload
 
@@ -133,8 +187,8 @@ The SDK sends every interactive create, start, stop, connection and workload
 submission once. It does not automatically retry a failed or pending request.
 For `workspace_save_pending`, wait for the server's `Retry-After` interval and
 repeat the same submission. After an uncertain reply, also retain the same key
-and body. A definite `workspace_capture_failed` requires correcting the save
-problem and a new submission key. A different intended run gets a new key.
+and body. A definite `workspace_capture_failed` or `workspace_source_rejected` requires
+correcting the project problem and a new submission key. A different intended run gets a new key.
 
 An admitted workload is independent. Further edits do not change its captured
 source, and stopping workspace compute does not cancel it. Both can incur
