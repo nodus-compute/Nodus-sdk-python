@@ -130,6 +130,7 @@ async def test_installed_executables_complete_real_mcp_session(executable):
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
     from pathlib import Path
     import threading
+    import sysconfig
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
 
@@ -150,7 +151,7 @@ async def test_installed_executables_complete_real_mcp_session(executable):
     api_server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     thread = threading.Thread(target=api_server.serve_forever, daemon=True)
     thread.start()
-    command = Path(sys.executable).parent / (executable + (".exe" if os.name == "nt" else ""))
+    command = Path(sysconfig.get_path("scripts")) / (executable + (".exe" if os.name == "nt" else ""))
     params = StdioServerParameters(
         command=str(command), args=["mcp"] if executable == "nodus" else [],
         env={"NODUS_API_KEY": "integration-test-key",
