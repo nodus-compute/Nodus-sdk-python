@@ -38,6 +38,12 @@ file, while the backup keeps the original bytes. An existing different Nodus
 entry, an invalid file or a symbolic link stops setup with instructions.
 Repeating the same setup keeps matching Nodus entries and skills.
 
+Setup prepares replacement files and private backups before applying changes
+one file at a time. If an update fails, it attempts to restore completed
+changes. Detected concurrent edits are preserved. An incomplete rollback
+reports retained backups for manual recovery. Close the selected agents
+during setup to avoid competing edits.
+
 The installer uses a dedicated runtime under `~/.nodus/agent-tools`, so agents
 do not depend on your terminal's PATH. It does not require administrator access.
 Skills are named `nodus-setup` and `nodus-workloads`. If you already use the

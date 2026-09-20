@@ -13,7 +13,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import uuid
 
 import json5
 import tomlkit
@@ -70,27 +69,72 @@ def config_edit(path: Path, kind: str, key: str, server: dict) -> Edit | None:
 
 def apply_edits(edits: list[Edit | None]) -> None:
     pending = [edit for edit in edits if edit is not None]
-    for edit in pending:
-        if read(edit.path) != edit.before:
-            raise SetupError(f"{edit.path.name} changed during setup. Close the agent and retry.")
-    for edit in pending:
-        edit.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        if read(edit.path) != edit.before:
-            raise SetupError(f"{edit.path.name} changed during setup. Close the agent and retry.")
-        if edit.before is not None:
-            backup = edit.path.with_name(edit.path.name + ".nodus-backup-" + uuid.uuid4().hex)
-            with os.fdopen(os.open(backup, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as file:
-                file.write(edit.before)
-        descriptor, temporary = tempfile.mkstemp(prefix=".nodus-", dir=edit.path.parent)
-        try:
-            with os.fdopen(descriptor, "wb") as file:
-                file.write(edit.after)
+    staged = []
+    attempted = []
+    temporary_paths = []
+
+    def stage(edit: Edit, content: bytes, prefix: str) -> Path:
+        descriptor, name = tempfile.mkstemp(prefix=prefix, dir=edit.path.parent)
+        temporary = Path(name)
+        temporary_paths.append(temporary)
+        with os.fdopen(descriptor, "wb") as file:
+            file.write(content)
+        return temporary
+
+    try:
+        for edit in pending:
             if read(edit.path) != edit.before:
-                raise SetupError(f"{edit.path.name} changed during setup. Close the agent and retry.")
+                raise SetupError("Settings changed during setup.")
+        for edit in pending:
+            edit.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            if read(edit.path) != edit.before:
+                raise SetupError("Settings changed during setup.")
+            backup = None
+            if edit.before is not None:
+                backup = stage(edit, edit.before, edit.path.name + ".nodus-backup-")
+                temporary_paths.remove(backup)
+            staged.append((edit, stage(edit, edit.after, ".nodus-"), backup))
+        for edit, temporary, backup in staged:
+            if read(edit.path) != edit.before:
+                raise SetupError("Settings changed during setup.")
+            attempted.append((edit, backup))
             os.replace(temporary, edit.path)
-        finally:
-            if os.path.exists(temporary):
-                os.unlink(temporary)
+    except (Exception, KeyboardInterrupt) as exc:
+        incomplete = False
+        concurrent = False
+        for edit, backup in reversed(attempted):
+            try:
+                current = read(edit.path)
+                if current == edit.before:
+                    continue
+                if current != edit.after:
+                    concurrent = incomplete = True
+                    continue
+                if backup is None:
+                    edit.path.unlink()
+                else:
+                    if read(backup) != edit.before:
+                        raise SetupError("Cannot restore the original backup.")
+                    os.replace(backup, edit.path)
+            except (Exception, KeyboardInterrupt):
+                incomplete = True
+        if incomplete:
+            message = "Setup failed. Rollback incomplete. "
+            if concurrent:
+                message += "Concurrent changes were preserved. "
+            message += ("Original backups that were not restored remain in adjacent .nodus-backup-* files. "
+                        "Review the selected agent settings before retrying.")
+            raise SetupError(message) from None
+        if isinstance(exc, KeyboardInterrupt):
+            raise
+        status = "Earlier setup changes were restored." if attempted else "No agent files were changed by setup."
+        raise SetupError(f"Setup could not write all selected agent files. {status} Close the selected agents, check file permissions, and retry.") from None
+    finally:
+        for temporary in temporary_paths:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 def locations() -> dict:
