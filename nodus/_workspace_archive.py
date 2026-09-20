@@ -94,10 +94,6 @@ def _identity(info: os.stat_result) -> tuple[int, int, int, int, int]:
     return info.st_dev, info.st_ino, info.st_mode, info.st_size, info.st_mtime_ns
 
 
-def _walk_error(error: OSError) -> None:
-    raise ValidationError("Could not read every project directory") from error
-
-
 @contextmanager
 def build_workspace_archive(directory: str | os.PathLike[str]) -> Iterator[WorkspaceArchive]:
     """Snapshot regular project files to a private temporary archive.
@@ -111,22 +107,35 @@ def build_workspace_archive(directory: str | os.PathLike[str]) -> Iterator[Works
         raise ValidationError("Choose a project directory to upload")
     entries: list[tuple[str, Path, os.stat_result]] = []
     directories: list[tuple[Path, os.stat_result]] = [(root, root.stat())]
+    pending = directories.copy()
     payload = 0
-    for parent, dirs, files in os.walk(root, followlinks=False, onerror=_walk_error):
-        for name in dirs + files:
-            path = Path(parent) / name
-            relative = path.relative_to(root).as_posix()
-            _path_bytes(relative)
-            info = path.lstat()
-            if not (stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode)):
-                raise ValidationError("Upload regular files and directories only. Keep links and environment dependencies outside the project")
-            if stat.S_ISDIR(info.st_mode):
-                directories.append((path, info))
-            else:
-                payload += info.st_size
-            entries.append((relative, path, info))
-            if len(entries) > _ENTRY_LIMIT or payload > _PAYLOAD_LIMIT:
-                raise ValidationError("Project exceeds the workspace file count or 10 GB capacity")
+    while pending:
+        parent, initial = pending.pop()
+        try:
+            if _identity(parent.lstat()) != _identity(initial):
+                raise ValidationError("Project directory changed while preparing upload. Retry after saving your files")
+            # os.walk materializes an entire directory before yielding. Iterate
+            # incrementally so an oversized directory cannot bypass the bound.
+            with os.scandir(parent) as children:
+                for child in children:
+                    if len(entries) >= _ENTRY_LIMIT:
+                        raise ValidationError("Project exceeds the workspace file count or 10 GB capacity")
+                    path = parent / child.name
+                    relative = path.relative_to(root).as_posix()
+                    _path_bytes(relative)
+                    info = child.stat(follow_symlinks=False)
+                    if not (stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode)):
+                        raise ValidationError("Upload regular files and directories only. Keep links and environment dependencies outside the project")
+                    if stat.S_ISDIR(info.st_mode):
+                        directories.append((path, info))
+                        pending.append((path, info))
+                    else:
+                        payload += info.st_size
+                    entries.append((relative, path, info))
+                    if payload > _PAYLOAD_LIMIT:
+                        raise ValidationError("Project exceeds the workspace file count or 10 GB capacity")
+        except OSError as exc:
+            raise ValidationError("Could not read every project directory") from exc
     if not entries:
         raise ValidationError("The project directory is empty")
     entries.sort(key=lambda entry: entry[0].encode("utf-8"))
@@ -148,7 +157,13 @@ def build_workspace_archive(directory: str | os.PathLike[str]) -> Iterator[Works
                     # descriptor again after copying, including truncation/growth.
                     if not path.resolve(strict=True).is_relative_to(root):
                         raise ValidationError("Project path changed outside the selected directory")
-                    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0))
+                    # O_NONBLOCK prevents a replacement FIFO from blocking
+                    # before fstat can reject its changed identity and type.
+                    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0) | getattr(os, "O_NONBLOCK", 0)
+                    try:
+                        descriptor = os.open(path, flags)
+                    except OSError as exc:
+                        raise ValidationError("Project file changed or could not be read while preparing upload") from exc
                     with os.fdopen(descriptor, "rb") as source:
                         if _identity(os.fstat(source.fileno())) != _identity(initial):
                             raise ValidationError("Project changed while preparing upload. Retry after saving your files")
