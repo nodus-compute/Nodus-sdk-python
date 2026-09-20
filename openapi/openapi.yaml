@@ -385,7 +385,7 @@
           },
           "state": {
             "type": "string",
-            "description": "Current asset state, such as importing, ready or deleting."
+            "description": "Current asset state: importing, ready, failed, deleting or deleted."
           },
           "revision": {
             "type": "string"
@@ -419,6 +419,10 @@
           },
           "export": {
             "$ref": "#/components/schemas/ConnectionExport"
+          },
+          "error": {
+            "type": "string",
+            "description": "Value-free terminal query export error. Failed assets remain observable after cleanup, with zero stored bytes once their reservation is released."
           }
         },
         "x-go-source": "internal/store/assets.go",
@@ -6042,6 +6046,16 @@
           "created_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "running",
+              "cleanup",
+              "ready"
+            ],
+            "description": "Durable export state. Failed exports release this record after object cleanup."
           }
         },
         "x-go-source": "internal/store/connection_exports.go",
@@ -6115,7 +6129,7 @@
         "tags": [
           "Assets"
         ],
-        "description": "Import a GitHub repository, a Hugging Face dataset repository, or a public HTTPS file or archive. GitHub imports can use the team's connected GitHub account. URL imports use signed links for private downloads and reject tokens. The operation may take up to ten minutes. It has no idempotency contract. After a timeout, inspect the asset list before repeating the request. Database connection queries export to Parquet or CSV. reuse may return a ready export from the last 24 hours. New requests otherwise create fresh assets.",
+        "description": "Import a GitHub repository, a Hugging Face dataset repository, or a public HTTPS file or archive. GitHub imports can use the team's connected GitHub account. URL imports use signed links for private downloads and reject tokens. GitHub, Hugging Face and URL imports may take up to ten minutes. It has no idempotency contract. After a timeout, inspect the asset list before repeating the request. Database connection queries return 202 after durable admission and export to Parquet or CSV in bounded workers. Poll the returned asset until ready or failed. Execution including queue time is bounded to ten minutes. reuse may return a ready export from the last 24 hours. New requests otherwise create fresh assets. Failed exports expose a safe error and retain their storage reservation until object cleanup succeeds.",
         "requestBody": {
           "required": true,
           "content": {
@@ -6189,6 +6203,16 @@
           },
           "200": {
             "description": "Eligible query export reused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Asset"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Database query admitted. Poll GET /v1/assets/{id} until ready or failed. Disconnecting does not cancel admitted work.",
             "content": {
               "application/json": {
                 "schema": {

@@ -142,4 +142,17 @@ connection to use another branch.
 
 An admitted export keeps its original credential version even if the secret is
 rotated during execution. Delete the export asset before removing its connection.
-Failed imports release their asset reservation after object cleanup succeeds.
+The HTTP API returns 202 immediately after durable admission. Poll
+`GET /v1/assets/{id}` until `state` is `ready` or `failed`. Failed assets expose
+an `error` message, including the reached row count for size or row limits.
+They remain visible after cleanup and have zero stored bytes once their
+reservation is released. Delete a failed asset when you no longer need its error.
+
+The SDK and CLI poll automatically with short HTTP requests for up to twelve
+minutes, returning the ready asset or raising an error with its asset ID.
+Execution and queue time together have a ten-minute limit. If observation times
+out or you interrupt the client, inspect that asset before repeating the import.
+Disconnecting stops observation and leaves the admitted export owned by the
+server. Server shutdown cancels active queries and attempts cleanup. After a
+restart, pending work resumes while expired active work is failed and cleaned.
+Temporary storage failures retain the reservation until cleanup succeeds.

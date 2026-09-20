@@ -5,6 +5,7 @@ import asyncio
 from dataclasses import dataclass, field
 from pathlib import Path
 import re
+import time
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -14,6 +15,9 @@ from ._connections import _ref as _connection_ref
 from .errors import APIConnectionError, APIError, APITimeoutError, ValidationError
 
 _TIMEOUT = 660.0
+_QUERY_WAIT_SECONDS = 720.0
+_QUERY_HTTP_SECONDS = 15.0
+_QUERY_POLL_SECONDS = 1.0
 _ASSET_ID = re.compile(r"asset_[A-Za-z0-9-]{1,64}\Z")
 
 
@@ -29,6 +33,7 @@ class Asset:
     imported_bytes: int | None = None
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
     export: dict[str, Any] | None = None
+    error: str = ""
 
     @classmethod
     def from_dict(cls, row: Any) -> Asset:
@@ -36,7 +41,13 @@ class Asset:
             raise APIError("The API returned an invalid asset")
         return cls(row["id"], row.get("state", ""), row.get("kind", ""),
                    row.get("name", ""), row.get("stored_bytes"),
-                   row.get("imported_bytes"), dict(row), row.get("export"))
+                   row.get("imported_bytes"), dict(row), row.get("export"), row.get("error", ""))
+
+
+def _query_result(asset: Asset) -> Asset:
+    if asset.state != "ready":
+        raise APIError(f"Query export {asset.id} failed. Inspect the asset for its safe error and retry when corrected")
+    return asset
 
 
 def _id(value: str) -> str:
@@ -167,7 +178,7 @@ class Assets:
 
     def _request(self, method: str, path: str, **kwargs: Any) -> Any:
         try:
-            response = self._client._http.request(method, path, timeout=_TIMEOUT,
+            response = self._client._http.request(method, path, timeout=kwargs.pop("timeout", _TIMEOUT),
                                                   follow_redirects=False, **kwargs)
         except httpx.TimeoutException:
             raise APITimeoutError("Asset request timed out. Check assets before repeating an import or upload") from None
@@ -202,8 +213,19 @@ class Assets:
     def import_query(self, connection: str, sql: str, *, format: str = "parquet",
                      branch: str | None = None, reuse: bool = False) -> Asset:
         """Export a read-only database query as a normal input asset."""
-        return Asset.from_dict(self._request("POST", "/v1/assets/import",
+        deadline = time.monotonic() + _QUERY_WAIT_SECONDS
+        asset = Asset.from_dict(self._request("POST", "/v1/assets/import", timeout=_QUERY_HTTP_SECONDS,
             json=_query(connection, sql, format, branch, reuse)))
+        while asset.state == "importing":
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise APITimeoutError(f"Query export {asset.id} is still pending. Check this asset before repeating the import")
+            time.sleep(min(_QUERY_POLL_SECONDS, remaining))
+            try:
+                asset = Asset.from_dict(self._request("GET", f"/v1/assets/{_id(asset.id)}", timeout=min(_QUERY_HTTP_SECONDS, max(0.001, deadline-time.monotonic()))))
+            except (APIConnectionError, APITimeoutError) as exc:
+                raise type(exc)(f"Could not observe query export {asset.id}. Inspect this asset before repeating the import") from None
+        return _query_result(asset)
 
     def get(self, asset_id: str) -> Asset:
         """Get an asset and its optional query export metadata."""
@@ -222,7 +244,7 @@ class AsyncAssets:
 
     async def _request(self, method: str, path: str, **kwargs: Any) -> Any:
         try:
-            response = await self._client._http.request(method, path, timeout=_TIMEOUT,
+            response = await self._client._http.request(method, path, timeout=kwargs.pop("timeout", _TIMEOUT),
                                                         follow_redirects=False, **kwargs)
         except httpx.TimeoutException:
             raise APITimeoutError("Asset request timed out. Check assets before repeating an import or upload") from None
@@ -257,8 +279,19 @@ class AsyncAssets:
     async def import_query(self, connection: str, sql: str, *, format: str = "parquet",
                            branch: str | None = None, reuse: bool = False) -> Asset:
         """Export a read-only database query as a normal input asset."""
-        return Asset.from_dict(await self._request("POST", "/v1/assets/import",
+        deadline = time.monotonic() + _QUERY_WAIT_SECONDS
+        asset = Asset.from_dict(await self._request("POST", "/v1/assets/import", timeout=_QUERY_HTTP_SECONDS,
             json=_query(connection, sql, format, branch, reuse)))
+        while asset.state == "importing":
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise APITimeoutError(f"Query export {asset.id} is still pending. Check this asset before repeating the import")
+            await asyncio.sleep(min(_QUERY_POLL_SECONDS, remaining))
+            try:
+                asset = Asset.from_dict(await self._request("GET", f"/v1/assets/{_id(asset.id)}", timeout=min(_QUERY_HTTP_SECONDS, max(0.001, deadline-time.monotonic()))))
+            except (APIConnectionError, APITimeoutError) as exc:
+                raise type(exc)(f"Could not observe query export {asset.id}. Inspect this asset before repeating the import") from None
+        return _query_result(asset)
 
     async def get(self, asset_id: str) -> Asset:
         """Get an asset and its optional query export metadata."""

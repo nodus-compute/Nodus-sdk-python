@@ -195,3 +195,54 @@ def test_asset_import_query_cli_wire(monkeypatch, capsys):
     monkeypatch.setattr(cli, "Client", client_factory(handler))
     assert cli.main(["asset", "import-query", "db", "SELECT 1", "--reuse"]) == 0
     assert "asset_123" in capsys.readouterr().out
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_import_query_polls_durable_asset_until_ready(asynchronous, monkeypatch):
+    import nodus._assets as module
+    monkeypatch.setattr(module, "_QUERY_POLL_SECONDS", 0.001, raising=False)
+    calls = []
+    def handler(req):
+        calls.append(req.method)
+        if req.method == "POST":
+            return httpx.Response(202, json={**ROW, "kind": "connection_query", "state": "importing"})
+        assert req.url.path == "/v1/assets/asset_123"
+        return httpx.Response(200, json={**ROW, "kind": "connection_query", "state": "ready"})
+    result = exercise(handler, asynchronous, lambda assets: assets.import_query("db", "SELECT 1"))
+    assert result.state == "ready"
+    assert calls == ["POST", "GET"]
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_import_query_failed_asset_raises_safe_failure(asynchronous, monkeypatch):
+    import nodus._assets as module
+    monkeypatch.setattr(module, "_QUERY_POLL_SECONDS", 0.001, raising=False)
+    def handler(req):
+        return httpx.Response(202 if req.method == "POST" else 200, json={**ROW, "state": "importing" if req.method == "POST" else "failed", "error": "database query failed at 2 rows"})
+    with pytest.raises(nodus.APIError, match="asset_123"):
+        exercise(handler, asynchronous, lambda assets: assets.import_query("db", "SELECT 1"))
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_import_query_polling_has_overall_deadline(asynchronous, monkeypatch):
+    import nodus._assets as module
+    monkeypatch.setattr(module, "_QUERY_WAIT_SECONDS", 0.01)
+    monkeypatch.setattr(module, "_QUERY_POLL_SECONDS", 0.002)
+    def handler(req):
+        if req.method == "GET":
+            assert req.extensions["timeout"]["read"] <= 0.01
+        return httpx.Response(202 if req.method == "POST" else 200, json={**ROW, "state": "importing"})
+    with pytest.raises(nodus.APITimeoutError, match="asset_123"):
+        exercise(handler, asynchronous, lambda assets: assets.import_query("db", "SELECT 1"))
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_query_poll_transport_failure_keeps_admitted_asset_identity(asynchronous, monkeypatch):
+    import nodus._assets as module
+    monkeypatch.setattr(module, "_QUERY_POLL_SECONDS", 0.001)
+    calls = []
+    def handler(req):
+        calls.append(req.method)
+        if req.method == "POST":
+            return httpx.Response(202, json={**ROW, "state": "importing"})
+        raise httpx.ReadTimeout("private transport detail", request=req)
+    with pytest.raises(nodus.APITimeoutError, match="asset_123") as failure:
+        exercise(handler, asynchronous, lambda assets: assets.import_query("db", "SELECT 1"))
+    assert "private" not in str(failure.value)
+    assert calls == ["POST", "GET"]
