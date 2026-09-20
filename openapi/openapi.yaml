@@ -10944,6 +10944,7 @@
       "delete": {
         "operationId": "deleteConnection",
         "summary": "Delete an external connection",
+        "description": "Removes the connection from listing and future use. Returns 409 while a workload, export, load or metadata refresh is active. Completed workload and transfer history is retained. Stored credentials and external data are unchanged.",
         "tags": [
           "Connections"
         ],

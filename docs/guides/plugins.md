@@ -4,6 +4,10 @@ Install Nodus in Codex, Claude Code or Cursor to run GPU workloads from your
 coding agent. The plugin includes seven MCP tools and two skills for setup
 and workload execution. It downloads the public MCP package automatically.
 
+For a direct MCP connection or an Add to Cursor install link, use
+[Connect your coding agent](connect.md). Choose one MCP installation method
+per client to avoid duplicate tools.
+
 ## Sign in once
 
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then run:
