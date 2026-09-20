@@ -60,6 +60,7 @@ class Policy(TypedDict, total=False):
     """Placement constraints. Region identifiers depend on available capacity."""
 
     data_regions: list[str]
+    secret_refs: list[str]
 
 
 class ContinuitySpec(TypedDict, total=False):
