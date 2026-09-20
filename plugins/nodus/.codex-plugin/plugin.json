@@ -1,0 +1,36 @@
+{
+  "name": "nodus",
+  "version": "0.1.0",
+  "description": "Run GPU workloads with Nodus, monitor progress, read logs and inspect results.",
+  "author": {
+    "name": "Nodus, Inc."
+  },
+  "homepage": "https://nodus-compute.ai/docs/guides/mcp/",
+  "repository": "https://github.com/nodus-compute/Nodus-sdk-python",
+  "license": "Apache-2.0",
+  "keywords": [
+    "nodus",
+    "gpu",
+    "workloads",
+    "mcp"
+  ],
+  "mcpServers": "./.mcp.json",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Nodus",
+    "shortDescription": "Run and monitor GPU workloads.",
+    "longDescription": "Connect to Nodus with your saved browser sign-in. Submit GPU workloads with an explicit budget, follow progress, read logs and inspect output metadata.",
+    "developerName": "Nodus, Inc.",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://nodus-compute.ai",
+    "defaultPrompt": [
+      "List my Nodus workloads.",
+      "Help me connect Nodus.",
+      "Check the results of my Nodus workload."
+    ]
+  }
+}

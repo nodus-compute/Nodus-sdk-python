@@ -3,6 +3,10 @@
 Connect Claude, Cursor, Codex or another MCP client to Nodus. Ask your agent to
 submit GPU workloads, check progress, read logs and retrieve output metadata.
 
+For Codex, Claude Code or Cursor, use the [Nodus plugin](plugins.md) to install
+the tools and setup guidance together. The manual configuration below works
+with other MCP clients too.
+
 ## Connect in two steps
 
 You need [uv](https://docs.astral.sh/uv/getting-started/installation/) installed.

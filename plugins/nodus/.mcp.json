@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "nodus": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "nodus-compute[mcp]==0.4.2",
+        "nodus-mcp"
+      ]
+    }
+  }
+}

@@ -26,6 +26,7 @@ with Python 3.10 or newer, then sign in to get started.
 - [Run from a workload file](getting-started/workload-files.md)
 - [Run an agent sandbox](guides/agent-sandboxes.md)
 - [Connect MCP tools](guides/mcp.md)
+- [Install Codex, Claude Code and Cursor plugins](guides/plugins.md)
 
 ## Go further
 
