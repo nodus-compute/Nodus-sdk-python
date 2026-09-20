@@ -1065,6 +1065,22 @@
           },
           "download": {
             "type": "string"
+          },
+          "sink_state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "loading",
+              "loaded",
+              "failed"
+            ]
+          },
+          "sink_rows": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sink_error": {
+            "type": "string"
           }
         },
         "required": [
@@ -2662,9 +2678,16 @@
               "null"
             ],
             "additionalProperties": {
-              "type": "string"
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "$ref": "#/components/schemas/OutputDeclaration"
+                }
+              ]
             },
-            "description": "Named output paths relative to the stage working directory. Declare files produced by your command. Downstream from_output must match a declared name."
+            "description": "Named output paths or file and database sink declarations. Sinks support CSV, JSONL and flat Parquet files. Credentials stay on the control plane. Outputs in one stage must use distinct connection and table targets."
           }
         },
         "x-go-source": "internal/models/models.go",
@@ -2886,6 +2909,10 @@
               "$ref": "#/components/schemas/WorkloadLink"
             },
             "description": "Run links captured from live output, available before completion."
+          },
+          "sink_error": {
+            "type": "string",
+            "description": "Value-free database sink failure. Workload completion is independent of sink loading."
           }
         },
         "x-go-source": "internal/models/models.go",
@@ -6131,6 +6158,79 @@
         ],
         "x-go-package": "internal/models",
         "x-go-type": "WorkloadLink"
+      },
+      "OutputDeclaration": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "sink": {
+            "$ref": "#/components/schemas/OutputSink"
+          }
+        }
+      },
+      "OutputSink": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "connection",
+          "table"
+        ],
+        "properties": {
+          "connection": {
+            "type": "string"
+          },
+          "table": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,62}$",
+            "description": "One PostgreSQL table identifier. The nodus_ prefix is reserved. Uppercase letters fold to lowercase."
+          }
+        }
+      },
+      "ConnectionLoad": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "workload_id": {
+            "type": "string"
+          },
+          "stage": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "table": {
+            "type": "string"
+          },
+          "rows": {
+            "type": "integer"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "loading",
+              "loaded",
+              "failed"
+            ]
+          },
+          "sink_error": {
+            "type": "string"
+          }
+        },
+        "x-go-source": "internal/store/connection_loads.go",
+        "x-go-type": "ConnectionLoad"
       }
     },
     "securitySchemes": {
@@ -10891,6 +10991,67 @@
             }
           }
         ]
+      }
+    },
+    "/v1/workloads/{id}/outputs/{name}/reload": {
+      "post": {
+        "operationId": "reloadWorkloadOutput",
+        "summary": "Retry a database sink load",
+        "tags": [
+          "Workloads"
+        ],
+        "description": "Retry the latest saved output using its immutable admission credential. A pending or loading job is reused. Supply stage when names repeat.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "id"
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "name"
+          },
+          {
+            "name": "stage",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required to disambiguate duplicate output names across stages. Otherwise 409 ambiguous_output."
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Load pending or already loading",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionLoad"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
       }
     }
   },

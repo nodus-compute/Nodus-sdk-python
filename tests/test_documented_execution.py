@@ -197,6 +197,8 @@ def docs_api(monkeypatch):
             if path == "/v1/connections":
                 assert payload == {"name": "lab-db", "kind": "neon", "secret": "LAB_DB", "scope": "read", "region": "us-east-1", "live_mode": False}
                 return self.reply(connection, 201)
+            if path == "/v1/workloads/wl_docs/outputs/results/reload":
+                return self.reply({"id": "load_docs", "workload_id": "wl_docs", "stage": "main", "generation": 1, "name": "results", "table": "eval_results", "rows": 0, "state": "pending"}, 202)
             if path == "/v1/connections/conn_docs/verify":
                 return self.reply(connection)
             if path == "/v1/pools/pool_docs/enrollment-tokens":
@@ -307,7 +309,7 @@ def test_complete_example_programs(script, args, docs_api, tmp_path):
     ["status", "wl_docs"], ["wait", "wl_docs"],
     ["events", "wl_docs"], ["logs", "wl_docs"],
     ["artifacts", "wl_docs"], ["explain", "wl_docs"], ["ledger", "wl_docs"],
-    ["download", "wl_docs"], ["cancel", "wl_docs"], ["assets"], ["upload", "hello.py"],
+    ["download", "wl_docs"], ["workload", "outputs", "wl_docs"], ["workload", "outputs", "wl_docs", "--reload", "results", "--stage", "main"], ["cancel", "wl_docs"], ["assets"], ["upload", "hello.py"],
 ])
 def test_installed_terminal_commands(args, docs_api, tmp_path):
     from nodus._workload_file import write_workload_file

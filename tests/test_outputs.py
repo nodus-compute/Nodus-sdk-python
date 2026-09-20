@@ -202,3 +202,55 @@ def test_download_all_rejects_unsafe_server_paths(asynchronous, row, tmp_path):
     with pytest.raises(nodus.NodusError):
         exercise(handler, asynchronous, action)
     assert set(tmp_path.iterdir()) == existing
+
+@pytest.mark.parametrize('asynchronous', [False, True])
+def test_sink_state_and_reload_wire(asynchronous):
+    def handler(req):
+        if req.method == 'POST':
+            assert req.url.path == '/v1/workloads/wl_test/outputs/model/reload'
+            assert req.url.params['stage'] == 'train'
+            return httpx.Response(202, json={'state': 'pending', 'rows': 0})
+        return httpx.Response(200, json={'outputs': [{**ROW, 'sink_state': 'failed', 'sink_rows': 0, 'sink_error': 'Check target schema.'}]})
+    rows = exercise(handler, asynchronous, lambda c: c.outputs('wl_test'))
+    assert rows[0].sink_state == 'failed'
+    assert rows[0].sink_rows == 0
+    assert rows[0].sink_error == 'Check target schema.'
+    assert exercise(handler, asynchronous, lambda c: c.reload_output('wl_test', 'model', stage='train'))['state'] == 'pending'
+
+
+def test_structured_sink_declarations_validate_and_preserve_wire():
+    from nodus._brief import _validate_outputs
+    declaration = {'results': {'path': 'results.csv', 'sink': {'connection': 'warehouse', 'table': 'eval_results'}}}
+    _validate_outputs(declaration)
+    for table in ['public.results', 'nodus_runs', 'x; DROP TABLE y']:
+        with pytest.raises(ValueError):
+            _validate_outputs({'results': {'path': 'results.csv', 'sink': {'connection': 'warehouse', 'table': table}}})
+    with pytest.raises(ValueError):
+        _validate_outputs({**declaration, 'other': declaration['results']})
+
+@pytest.mark.parametrize('asynchronous', [False, True])
+def test_structured_sink_run_wire(asynchronous):
+    import json
+    declaration = {'results': {'path': 'results.jsonl', 'sink': {'connection': 'warehouse', 'table': 'eval_results'}}}
+    def handler(req):
+        body = json.loads(req.content)
+        assert body['stages'][0]['outputs'] == declaration
+        return httpx.Response(202, json={'workload_id': 'wl_sink', 'status': 'accepted'})
+    workload = exercise(handler, asynchronous, lambda c: c.run(command=['python', 'train.py'], outputs=declaration, budget=1))
+    assert workload.id == 'wl_sink'
+
+
+def test_cli_sink_outputs_and_reload(monkeypatch, capsys):
+    from nodus import cli
+    from test_sandbox_cli import client_factory
+    def handler(req):
+        if req.method == 'POST':
+            assert req.url.params['stage'] == 'train'
+            return httpx.Response(202, json={'state': 'pending'})
+        return httpx.Response(200, json={'outputs': [{**ROW, 'sink_state': 'loaded', 'sink_rows': 8}]})
+    monkeypatch.setattr(cli, 'Client', client_factory(handler))
+    assert cli.main(['workload', 'outputs', 'wl_test', '--plain']) == 0
+    output = capsys.readouterr().out
+    assert 'loaded' in output and '8' in output
+    assert cli.main(['workload', 'outputs', 'wl_test', '--reload', 'model', '--stage', 'train']) == 0
+    assert 'pending' in capsys.readouterr().out

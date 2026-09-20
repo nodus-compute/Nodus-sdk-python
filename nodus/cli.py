@@ -526,6 +526,23 @@ def _cmd_sandbox(args: argparse.Namespace) -> int:
         return 0
 
 
+def _cmd_outputs(args: argparse.Namespace) -> int:
+    with Client(base_url=args.base_url) as client:
+        if args.reload:
+            result = client.reload_output(args.workload_id, args.reload, stage=args.stage)
+            print(_safe_line(result.get("state", "")))
+        else:
+            outputs = client.outputs(args.workload_id)
+            if args.json:
+                print(json.dumps([o.raw for o in outputs], indent=2))
+            else:
+                show_table(["Stage", "Output", "Bytes", "Sink", "Rows", "Sink error"],
+                           [[o.stage_id, o.name, str(o.bytes), o.sink_state or "-",
+                             str(o.sink_rows) if o.sink_rows is not None else "-", o.sink_error]
+                            for o in outputs], empty="No outputs available yet.", plain=args.plain)
+    return 0
+
+
 def _cmd_download(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
         paths = client.get(args.workload_id).download()
@@ -922,6 +939,13 @@ Use nodus COMMAND --help for command options.""",
     workload_get.add_argument("--plain", action="store_true", default=argparse.SUPPRESS)
     workload_get.add_argument("--debug", action="store_true", default=argparse.SUPPRESS)
     workload_get.set_defaults(cmd="status")
+    outputs = workload_sub.add_parser("outputs", help="list output downloads and database load state")
+    outputs.add_argument("workload_id")
+    outputs.add_argument("--json", action="store_true")
+    outputs.add_argument("--reload", metavar="NAME", help="retry loading a named output")
+    outputs.add_argument("--stage", help="select a stage when names repeat")
+    outputs.add_argument("--plain", action="store_true", default=argparse.SUPPRESS)
+    outputs.set_defaults(cmd="outputs")
 
     d = sub.add_parser("download", help="download workload outputs")
     d.add_argument("workload_id")
@@ -1161,6 +1185,7 @@ def main(argv: list[str] | None = None) -> int:
         "run": lambda: _cmd_run(args),
         "submit": lambda: _cmd_run(args),
         "download": lambda: _cmd_download(args),
+        "outputs": lambda: _cmd_outputs(args),
         "upload": lambda: _cmd_upload(args),
         "assets": lambda: _cmd_assets(args),
         "asset": lambda: _cmd_asset(args),

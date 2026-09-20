@@ -66,7 +66,7 @@ import httpx
 
 from ._terminal import RunProgress
 from ._brief import build_payload, status_filter
-from .requests import Source, Requirements, Placement, Policy, ContinuitySpec, StageInput, StageSpec
+from .requests import OutputSink, OutputSpec, Source, Requirements, Placement, Policy, ContinuitySpec, StageInput, StageSpec
 from .config import _is_header_safe, read_credentials
 from .errors import (
     APIConnectionError,
@@ -176,6 +176,8 @@ __all__ = [
     "ContinuitySpec",
     "StageInput",
     "StageSpec",
+    "OutputSink",
+    "OutputSpec",
     "Artifact",
     "ManifestFile",
     "Event",
@@ -503,6 +505,7 @@ class _WorkloadState:
     revision: int = 1
     stages: list[StageRun] = field(default_factory=list)
     links: list[WorkloadLink] = field(default_factory=list)
+    sink_error: str = ""
     unit_metrics: UnitMetrics | None = None
     #: True when the control plane answered from an idempotency record: the
     #: submission already existed, this call did not create a second run.
@@ -531,6 +534,8 @@ class _WorkloadState:
         self.id = d.get("id") or d.get("workload_id") or self.id
         if "owner_user_id" in d:
             self.owner_user_id = d["owner_user_id"]
+        if "sink_error" in d:
+            self.sink_error = str(d.get("sink_error") or "")
         if "status" in d:
             self.status = WorkloadStatus.coerce(d.get("status"))
         self.route = Route.from_dict(d.get("route")) or self.route
@@ -808,7 +813,7 @@ class Client(_Transport):
         image: str | None = None,
         source_asset_id: str | None = None,
         inputs: list[dict[str, Any]] | None = None,
-        outputs: dict[str, str] | None = None,
+        outputs: dict[str, str | OutputSpec] | None = None,
         model: str | None = None,
         peak_memory_gb: float | None = None,
         optimization: str | None = None,
@@ -1063,6 +1068,11 @@ class Client(_Transport):
         res = self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/outputs")
         return [Output.from_dict(row) for row in (res or {}).get("outputs") or []]
 
+    def reload_output(self, workload_id: str, name: str, *, stage: str | None = None) -> dict[str, Any]:
+        """Retry loading a saved output into its admitted database sink."""
+        path = download_path(_valid_id(workload_id), name) + "/reload"
+        return self._request("POST", path, params={"stage": stage} if stage is not None else None)
+
     def routing(self, workload_id: str) -> list[dict[str, Any]]:
         """Return placement history ordered by stage ID, then generation."""
         res = self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/routing")
@@ -1303,6 +1313,10 @@ class Workload(_WorkloadState):
         """List customer outputs from completed stages."""
         return self._client.outputs(self.id)
 
+    def reload_output(self, name: str, *, stage: str | None = None) -> dict[str, Any]:
+        """Retry loading one saved output into its database sink."""
+        return self._client.reload_output(self.id, name, stage=stage)
+
     def routing(self) -> list[dict[str, Any]]:
         """Read this workload's placement history."""
         return self._client.routing(self.id)
@@ -1500,7 +1514,7 @@ class AsyncClient(_Transport):
         image: str | None = None,
         source_asset_id: str | None = None,
         inputs: list[dict[str, Any]] | None = None,
-        outputs: dict[str, str] | None = None,
+        outputs: dict[str, str | OutputSpec] | None = None,
         model: str | None = None,
         peak_memory_gb: float | None = None,
         optimization: str | None = None,
@@ -1714,6 +1728,11 @@ class AsyncClient(_Transport):
         res = await self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/outputs")
         return [Output.from_dict(row) for row in (res or {}).get("outputs") or []]
 
+    async def reload_output(self, workload_id: str, name: str, *, stage: str | None = None) -> dict[str, Any]:
+        """Retry loading a saved output into its admitted database sink."""
+        path = download_path(_valid_id(workload_id), name) + "/reload"
+        return await self._request("POST", path, params={"stage": stage} if stage is not None else None)
+
     async def routing(self, workload_id: str) -> list[dict[str, Any]]:
         """Return placement history ordered by stage ID, then generation."""
         res = await self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/routing")
@@ -1908,6 +1927,10 @@ class AsyncWorkload(_WorkloadState):
     async def outputs(self) -> list[Output]:
         """List customer outputs from completed stages."""
         return await self._client.outputs(self.id)
+
+    async def reload_output(self, name: str, *, stage: str | None = None) -> dict[str, Any]:
+        """Retry loading one saved output into its database sink."""
+        return await self._client.reload_output(self.id, name, stage=stage)
 
     async def routing(self) -> list[dict[str, Any]]:
         """Read this workload's placement history."""
