@@ -16,7 +16,7 @@ Prefer a `with` block. Otherwise call `close()`.
 | `list(limit=50, offset=0, status=None, scope=None)` | One page of workloads |
 | `list_page(limit=50, offset=0, status=None, scope=None)` | `(workloads, next_offset)` |
 | `iter_workloads(page_size=50, status=None, scope=None)` | Iterator over offset-based pages |
-| `wait(id, poll_seconds=2.0, timeout_seconds=None, progress=None)` | Terminal workload. Inspect `succeeded` |
+| `wait(id, poll_seconds=2.0, timeout_seconds=None, progress=None, on_update=None)` | Terminal workload. Inspect `succeeded` |
 | `cancel(id, idempotency_key=None)` | Request cancellation. Returns `None` |
 | `events(id, after=0)` | One page of `Event` objects |
 | `iter_events(id, after=0)` | Iterator over event history |
@@ -74,7 +74,8 @@ Generated keys protect the SDK transport retries within one method call.
 `Workload` offers `refresh`, `wait`, `cancel`, events, logs, artifacts, outputs,
 download, routing, and ledger methods without repeating the ID. Reads and waits
 with `refresh()` and `wait()` update it in place. Useful attributes are `id`, `status`,
-`succeeded`, `is_terminal`, `route`, `stages`, `meter`, `cost_now_usd`, and `raw`.
+`succeeded`, `is_terminal`, `route`, `stages`, `meter`, `cost_now_usd`, `links`, and `raw`.
+Each `WorkloadLink` has `kind` and `url`. Captured wandb links are available before completion.
 Unknown server enum values remain strings for forward compatibility.
 
 `workload.download(destination=None)` downloads all published customer outputs,
@@ -93,6 +94,7 @@ Use `download_output(name, destination, stage=...)` for one specific file.
 | `offset` | Number of workloads to skip, default `0`. `list_page()` returns the next offset, or `None` at the end |
 | `poll_seconds` | Seconds between successful polls, default `2.0` |
 | `timeout_seconds` | Local wait duration in seconds, default `None` for no deadline. A timeout leaves the workload running |
+| `on_update` | Optional synchronous callback called with each successful workload read during `wait()`, including the terminal read. Available on sync and async clients |
 | `progress` | `None` detects an interactive terminal, `True` enables output, `False` waits silently. [Live display](../../guides/monitoring-and-outputs.md#live-display) |
 | `events(after)`, `iter_events(after)` | Numeric sequence of the last event seen, default `0`. Returns events with later `seq` values, oldest first. `events()` returns at most 100 per page |
 | `live_logs(after)` | Opaque `next_cursor` string from the previous response, default `""` for the first page. This is not an event sequence. [Live log response](../../guides/monitoring-and-outputs.md#live-display) |

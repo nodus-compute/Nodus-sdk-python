@@ -198,9 +198,15 @@ def _cmd_run(args: argparse.Namespace) -> int:
         print(_safe_line(wl.id), flush=True)
         if args.cmd == "submit":
             return 0
+        seen_links: set[str] = set()
+        def show_live_links(current):
+            for link in current.links:
+                if link.url not in seen_links:
+                    print(f"wandb: {link.url}", flush=True)
+                    seen_links.add(link.url)
         with _cancel_on_interrupt(client, wl.id):
             wl.wait(poll_seconds=args.poll, timeout_seconds=args.timeout,
-                    progress=False if args.plain else None)
+                    progress=False if args.plain else None, on_update=show_live_links)
         show_workload(wl, plain=args.plain)
         return 0 if wl.succeeded else 1
 
@@ -537,6 +543,23 @@ def _cmd_sandbox(args: argparse.Namespace) -> int:
         sandbox.terminate()
         print(_safe_line(sandbox.id))
         return 0
+
+
+def _cmd_outputs(args: argparse.Namespace) -> int:
+    with Client(base_url=args.base_url) as client:
+        if args.reload:
+            result = client.reload_output(args.workload_id, args.reload, stage=args.stage)
+            print(_safe_line(result.get("state", "")))
+        else:
+            outputs = client.outputs(args.workload_id)
+            if args.json:
+                print(json.dumps([o.raw for o in outputs], indent=2))
+            else:
+                show_table(["Stage", "Output", "Bytes", "Sink", "Rows", "Sink error"],
+                           [[o.stage_id, o.name, str(o.bytes), o.sink_state or "-",
+                             str(o.sink_rows) if o.sink_rows is not None else "-", o.sink_error]
+                            for o in outputs], empty="No outputs available yet.", plain=args.plain)
+    return 0
 
 
 def _cmd_download(args: argparse.Namespace) -> int:
@@ -927,6 +950,22 @@ Use nodus COMMAND --help for command options.""",
             g.add_argument("--timeout", type=_positive_seconds, default=None)
             g.add_argument("--poll", type=_positive_seconds, default=2.0)
 
+    workload = sub.add_parser("workload", help="inspect a workload")
+    workload_sub = workload.add_subparsers(dest="workload_cmd", required=True)
+    workload_get = workload_sub.add_parser("get", help="show workload status, cost and live links")
+    workload_get.add_argument("workload_id")
+    workload_get.add_argument("--json", action="store_true")
+    workload_get.add_argument("--plain", action="store_true", default=argparse.SUPPRESS)
+    workload_get.add_argument("--debug", action="store_true", default=argparse.SUPPRESS)
+    workload_get.set_defaults(cmd="status")
+    outputs = workload_sub.add_parser("outputs", help="list output downloads and database load state")
+    outputs.add_argument("workload_id")
+    outputs.add_argument("--json", action="store_true")
+    outputs.add_argument("--reload", metavar="NAME", help="retry loading a named output")
+    outputs.add_argument("--stage", help="select a stage when names repeat")
+    outputs.add_argument("--plain", action="store_true", default=argparse.SUPPRESS)
+    outputs.set_defaults(cmd="outputs")
+
     d = sub.add_parser("download", help="download workload outputs")
     d.add_argument("workload_id")
 
@@ -1167,6 +1206,7 @@ def main(argv: list[str] | None = None) -> int:
         "run": lambda: _cmd_run(args),
         "submit": lambda: _cmd_run(args),
         "download": lambda: _cmd_download(args),
+        "outputs": lambda: _cmd_outputs(args),
         "upload": lambda: _cmd_upload(args),
         "assets": lambda: _cmd_assets(args),
         "asset": lambda: _cmd_asset(args),

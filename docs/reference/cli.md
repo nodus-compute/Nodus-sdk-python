@@ -130,3 +130,10 @@ filters `pending`, `approved`, `rejected`, `expired`, `no_op`, `applying`, or
 `nodus pools reject POOL_ID PROPOSAL_ID` rejects pending intent. These commands
 require a current account admin. Approval does not itself rent capacity and does
 not change the original expiry. Inspect the amount with `proposals` first.
+
+### Database output load state
+
+`nodus workload outputs WORKLOAD_ID` lists output names, sizes and database sink
+load state. Add `--json` for the API fields. Retry a saved sink output with
+`--reload NAME` and add `--stage STAGE` when output names repeat across stages.
+Loading happens independently of workload completion.
