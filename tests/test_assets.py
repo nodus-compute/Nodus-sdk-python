@@ -167,3 +167,31 @@ def test_asset_in_use_is_not_an_idempotency_error():
     assert isinstance(error, nodus.APIError)
     assert not isinstance(error, nodus.IdempotencyConflictError)
     assert error.status_code == 409
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_import_query_wire_and_export_metadata(asynchronous):
+    def handler(req):
+        assert req.url.path == "/v1/assets/import"
+        assert json.loads(req.content) == {"kind": "connection_query", "connection_id": "lab-db", "sql": "SELECT 'a  b'", "format": "csv", "branch": "main", "reuse": True}
+        return httpx.Response(201, json={**ROW, "export": {"row_count": 10, "format": "csv"}})
+    result = exercise(handler, asynchronous, lambda assets: assets.import_query("lab-db", "SELECT 'a  b'", format="csv", branch="main", reuse=True))
+    assert result.export == {"row_count": 10, "format": "csv"}
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("sql", ["UPDATE clips SET id=1", "SELECTED 1", "SELECT_1", "SELECT1", "WITH$bad$", ""])
+def test_import_query_validation_before_http(asynchronous, sql):
+    def handler(req):
+        pytest.fail("invalid query reached HTTP")
+    with pytest.raises(nodus.ValidationError):
+        exercise(handler, asynchronous, lambda assets: assets.import_query("lab-db", sql))
+
+
+def test_asset_import_query_cli_wire(monkeypatch, capsys):
+    from nodus import cli
+    from test_sandbox_cli import client_factory
+    def handler(req):
+        assert json.loads(req.content) == {"kind": "connection_query", "connection_id": "db", "sql": "SELECT 1", "format": "parquet", "reuse": True}
+        return httpx.Response(201, json=ROW)
+    monkeypatch.setattr(cli, "Client", client_factory(handler))
+    assert cli.main(["asset", "import-query", "db", "SELECT 1", "--reuse"]) == 0
+    assert "asset_123" in capsys.readouterr().out

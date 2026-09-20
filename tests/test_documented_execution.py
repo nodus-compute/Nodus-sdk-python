@@ -94,6 +94,10 @@ def docs_api(monkeypatch):
                 return self.reply({"connections": [connection]})
             if path == "/v1/connections/conn_docs":
                 return self.reply(connection)
+            if path == "/v1/assets/asset_docs":
+                return self.reply({"id": "asset_docs", "state": "ready", "name": "data.parquet", "kind": "connection_query",
+                                   "export": {"id": "export_docs", "connection_id": "conn_docs", "asset_id": "asset_docs", "query_hash": "a" * 64,
+                                              "format": "parquet", "row_count": 10, "bytes": 256, "created_at": "2026-09-19T00:00:00Z"}})
             if path == "/v1/assets":
                 return self.reply({"assets": [], "max_import_bytes": 1048576})
             if path == "/v1/workloads":
@@ -171,7 +175,14 @@ def docs_api(monkeypatch):
             if path in ("/v1/assets/upload", "/v1/assets/import"):
                 if self.headers.get("Authorization") != "Bearer nk_docs":
                     return self.reply({"error": "unauthorized"}, 401)
-                return self.reply({"id": "asset_docs", "state": "ready", "name": "fixture", "kind": "file"}, 201)
+                if path == "/v1/assets/import" and json.loads(raw).get("kind") == "connection_query":
+                    payload = json.loads(raw)
+                    assert payload["connection_id"] == "lab-db"
+                    assert payload["sql"].startswith("SELECT")
+                    return self.reply({"id": "asset_docs", "state": "ready", "name": "data.parquet", "kind": "connection_query",
+                                       "export": {"id": "export_docs", "connection_id": "conn_docs", "asset_id": "asset_docs", "query_hash": "a" * 64,
+                                                  "format": "parquet", "row_count": 10, "bytes": 256, "created_at": "2026-09-19T00:00:00Z"}}, 201)
+                return self.reply({"id": "asset_docs", "state": "ready", "name": "fixture", "kind": "upload"}, 201)
             payload = json.loads(raw or b"{}")
             calls.append(("POST", path))
             if path == "/v1/sandboxes/sb_docs/agent-runs":

@@ -416,6 +416,9 @@
               "null"
             ],
             "format": "date-time"
+          },
+          "export": {
+            "$ref": "#/components/schemas/ConnectionExport"
           }
         },
         "x-go-source": "internal/store/assets.go",
@@ -432,7 +435,8 @@
             "enum": [
               "github",
               "huggingface",
-              "url"
+              "url",
+              "connection_query"
             ]
           },
           "url": {
@@ -464,11 +468,37 @@
             "type": "string",
             "writeOnly": true,
             "description": "Optional GitHub or Hugging Face credential. Rejected for URL imports."
+          },
+          "connection_id": {
+            "type": "string",
+            "description": "Database connection name or ID for connection_query. Requires read or readwrite scope and an active pinned credential."
+          },
+          "sql": {
+            "type": "string",
+            "maxLength": 60000,
+            "description": "One SELECT or WITH statement, executed in a read-only transaction with a ten-minute timeout."
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "parquet",
+              "csv"
+            ],
+            "default": "parquet"
+          },
+          "branch": {
+            "type": "string",
+            "description": "Optional Neon branch assertion. Must match the branch already verified on the connection."
+          },
+          "reuse": {
+            "type": "boolean",
+            "default": false,
+            "description": "Reuse an eligible ready export for this tenant, connection, exact SQL apart from outer whitespace, branch and format from the last 24 hours."
           }
         },
         "x-go-source": "internal/assets/import.go",
         "x-go-type": "Request",
-        "description": "The server requires the source appropriate to kind. Import limits are deployment specific and returned by GET /v1/assets. Archives cannot contain links, special files, unsafe paths or more than 10000 files."
+        "description": "The server requires the source appropriate to kind. Import limits are deployment specific and returned by GET /v1/assets. Archives cannot contain links, special files, unsafe paths or more than 10000 files. Connection queries produce data.parquet or data.csv inside a normal input asset, with a 5 GB and 50 million row limit. Existing tenant storage quota also applies. Credentials remain on the control plane."
       },
       "AssetList": {
         "type": "object",
@@ -5975,6 +6005,47 @@
         },
         "x-go-source": "internal/connections/connections.go",
         "x-go-type": "Connection"
+      },
+      "ConnectionExport": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "connection_id": {
+            "type": "string"
+          },
+          "asset_id": {
+            "type": "string"
+          },
+          "query_hash": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "parquet",
+              "csv"
+            ]
+          },
+          "row_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "x-go-source": "internal/store/connection_exports.go",
+        "x-go-type": "ConnectionExport"
       }
     },
     "securitySchemes": {
@@ -6044,7 +6115,7 @@
         "tags": [
           "Assets"
         ],
-        "description": "Import a GitHub repository, a Hugging Face dataset repository, or a public HTTPS file or archive. GitHub imports can use the team's connected GitHub account. URL imports use signed links for private downloads and reject tokens. The operation may take up to ten minutes. It has no idempotency contract. After a timeout, inspect the asset list before repeating the request.",
+        "description": "Import a GitHub repository, a Hugging Face dataset repository, or a public HTTPS file or archive. GitHub imports can use the team's connected GitHub account. URL imports use signed links for private downloads and reject tokens. The operation may take up to ten minutes. It has no idempotency contract. After a timeout, inspect the asset list before repeating the request. Database connection queries export to Parquet or CSV. reuse may return a ready export from the last 24 hours. New requests otherwise create fresh assets.",
         "requestBody": {
           "required": true,
           "content": {
@@ -6112,6 +6183,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Eligible query export reused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Asset"
                 }
               }
             }
