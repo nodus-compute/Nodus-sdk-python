@@ -156,3 +156,12 @@ Disconnecting stops observation and leaves the admitted export owned by the
 server. Server shutdown cancels active queries and attempts cleanup. After a
 restart, pending work resumes while expired active work is failed and cleaned.
 Temporary storage failures retain the reservation until cleanup succeeds.
+
+Query assets retain their connection's declared region when used as workload
+inputs, workload or stage source assets, or sandbox source assets. If you set
+`policy.data_regions`, include each input source's declared region. A connection
+without a region and a run without a region constraint remain unrestricted.
+
+After query admission, SDK observation errors expose the admitted ID in
+`error.asset_id`. The CLI preserves that ID and tells you to inspect the asset
+before repeating the import, including when observation is interrupted.

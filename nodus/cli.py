@@ -258,6 +258,13 @@ def _cmd_connection(args: argparse.Namespace) -> int:
     return 0
 
 
+def _query_recovery(exc: BaseException) -> str | None:
+    asset_id = getattr(exc, "asset_id", None)
+    if isinstance(asset_id, str) and re.fullmatch(r"asset_[A-Za-z0-9-]{1,64}", asset_id):
+        return f"Query export {asset_id} was admitted. Inspect it with nodus assets before repeating the import."
+    return None
+
+
 def _cmd_asset(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
         asset = client.assets.import_query(args.connection, args.sql, format=args.format,
@@ -1173,9 +1180,13 @@ def main(argv: list[str] | None = None) -> int:
                 message = "This run cannot start within your current spending limit. Review your account limit and available credits in the console."
         if args.cmd in ("secret", "connection") and isinstance(exc, NodusError) and (exc.status_code is not None or not isinstance(exc, ValidationError)):
             message = ("Secret" if args.cmd == "secret" else "Connection") + " operation failed. Check your credentials, reference, and connection."
+        if args.cmd == "asset" and (recovery := _query_recovery(exc)):
+            message = recovery
         print(f"Error: {message}", file=sys.stderr)
         return 2
-    except KeyboardInterrupt:
+    except KeyboardInterrupt as exc:
+        if args.cmd == "asset" and (recovery := _query_recovery(exc)):
+            print(recovery, file=sys.stderr)
         return 130
 
 

@@ -12,7 +12,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from ._connections import _ref as _connection_ref
-from .errors import APIConnectionError, APIError, APITimeoutError, ValidationError
+from .errors import APIConnectionError, APIError, APITimeoutError, NodusError, ValidationError
 
 _TIMEOUT = 660.0
 _QUERY_WAIT_SECONDS = 720.0
@@ -216,16 +216,21 @@ class Assets:
         deadline = time.monotonic() + _QUERY_WAIT_SECONDS
         asset = Asset.from_dict(self._request("POST", "/v1/assets/import", timeout=_QUERY_HTTP_SECONDS,
             json=_query(connection, sql, format, branch, reuse)))
-        while asset.state == "importing":
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise APITimeoutError(f"Query export {asset.id} is still pending. Check this asset before repeating the import")
-            time.sleep(min(_QUERY_POLL_SECONDS, remaining))
-            try:
-                asset = Asset.from_dict(self._request("GET", f"/v1/assets/{_id(asset.id)}", timeout=min(_QUERY_HTTP_SECONDS, max(0.001, deadline-time.monotonic()))))
-            except (APIConnectionError, APITimeoutError) as exc:
-                raise type(exc)(f"Could not observe query export {asset.id}. Inspect this asset before repeating the import") from None
-        return _query_result(asset)
+        asset_id = _id(asset.id)
+        try:
+            while asset.state == "importing":
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise APITimeoutError(f"Query export {asset_id} is still pending. Check this asset before repeating the import")
+                time.sleep(min(_QUERY_POLL_SECONDS, remaining))
+                try:
+                    asset = Asset.from_dict(self._request("GET", f"/v1/assets/{asset_id}", timeout=min(_QUERY_HTTP_SECONDS, max(0.001, deadline-time.monotonic()))))
+                except (APIConnectionError, APITimeoutError) as exc:
+                    raise type(exc)(f"Could not observe query export {asset_id}. Inspect this asset before repeating the import") from None
+            return _query_result(asset)
+        except (NodusError, KeyboardInterrupt, asyncio.CancelledError) as exc:
+            exc.asset_id = asset_id
+            raise
 
     def get(self, asset_id: str) -> Asset:
         """Get an asset and its optional query export metadata."""
@@ -282,16 +287,21 @@ class AsyncAssets:
         deadline = time.monotonic() + _QUERY_WAIT_SECONDS
         asset = Asset.from_dict(await self._request("POST", "/v1/assets/import", timeout=_QUERY_HTTP_SECONDS,
             json=_query(connection, sql, format, branch, reuse)))
-        while asset.state == "importing":
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise APITimeoutError(f"Query export {asset.id} is still pending. Check this asset before repeating the import")
-            await asyncio.sleep(min(_QUERY_POLL_SECONDS, remaining))
-            try:
-                asset = Asset.from_dict(await self._request("GET", f"/v1/assets/{_id(asset.id)}", timeout=min(_QUERY_HTTP_SECONDS, max(0.001, deadline-time.monotonic()))))
-            except (APIConnectionError, APITimeoutError) as exc:
-                raise type(exc)(f"Could not observe query export {asset.id}. Inspect this asset before repeating the import") from None
-        return _query_result(asset)
+        asset_id = _id(asset.id)
+        try:
+            while asset.state == "importing":
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise APITimeoutError(f"Query export {asset_id} is still pending. Check this asset before repeating the import")
+                await asyncio.sleep(min(_QUERY_POLL_SECONDS, remaining))
+                try:
+                    asset = Asset.from_dict(await self._request("GET", f"/v1/assets/{asset_id}", timeout=min(_QUERY_HTTP_SECONDS, max(0.001, deadline-time.monotonic()))))
+                except (APIConnectionError, APITimeoutError) as exc:
+                    raise type(exc)(f"Could not observe query export {asset_id}. Inspect this asset before repeating the import") from None
+            return _query_result(asset)
+        except (NodusError, KeyboardInterrupt, asyncio.CancelledError) as exc:
+            exc.asset_id = asset_id
+            raise
 
     async def get(self, asset_id: str) -> Asset:
         """Get an asset and its optional query export metadata."""

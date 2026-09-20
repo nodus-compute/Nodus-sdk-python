@@ -246,3 +246,56 @@ def test_query_poll_transport_failure_keeps_admitted_asset_identity(asynchronous
         exercise(handler, asynchronous, lambda assets: assets.import_query("db", "SELECT 1"))
     assert "private" not in str(failure.value)
     assert calls == ["POST", "GET"]
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("failure", ["connection", 503])
+def test_query_observation_failure_has_structured_asset_identity(asynchronous, failure, monkeypatch):
+    import nodus._assets as module
+    monkeypatch.setattr(module, "_QUERY_POLL_SECONDS", 0.001)
+    def handler(req):
+        if req.method == "POST":
+            return httpx.Response(202, json={**ROW, "state": "importing"})
+        if failure == "connection":
+            raise httpx.ConnectError("private-network-detail", request=req)
+        return httpx.Response(failure, json={"error": "unavailable", "message": "private-remote-detail"})
+    with pytest.raises(nodus.NodusError) as raised:
+        exercise(handler, asynchronous, lambda assets: assets.import_query("db", "SELECT 1"))
+    assert raised.value.asset_id == "asset_123"
+
+@pytest.mark.parametrize("failure", ["connection", 503, "interrupt"])
+@pytest.mark.parametrize("debug", [False, True])
+def test_query_cli_retains_safe_admitted_identity(failure, debug, monkeypatch, capsys):
+    import nodus._assets as module
+    from nodus import cli
+    from test_sandbox_cli import client_factory
+    monkeypatch.setattr(module, "_QUERY_POLL_SECONDS", 0.001)
+    calls = []
+    def handler(req):
+        calls.append(req.method)
+        if req.method == "POST":
+            return httpx.Response(202, json={**ROW, "state": "importing"})
+        if failure == "connection":
+            raise httpx.ConnectError("private-network-detail", request=req)
+        if failure == "interrupt":
+            raise KeyboardInterrupt
+        return httpx.Response(failure, json={"error": "unavailable", "message": "private-remote-detail"})
+    monkeypatch.setattr(cli, "Client", client_factory(handler))
+    result = cli.main((["--debug"] if debug else []) + ["asset", "import-query", "db", "SELECT 1"])
+    output = capsys.readouterr()
+    assert result == (130 if failure == "interrupt" else 2)
+    assert "asset_123" in output.err and "before repeating" in output.err
+    assert "private-" not in output.err
+    assert calls == ["POST", "GET"]
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_query_observation_cancellation_preserves_identity(asynchronous, monkeypatch):
+    import nodus._assets as module
+    monkeypatch.setattr(module, "_QUERY_POLL_SECONDS", 0.001)
+    interruption = asyncio.CancelledError if asynchronous else KeyboardInterrupt
+    def handler(req):
+        if req.method == "POST":
+            return httpx.Response(202, json={**ROW, "state": "importing"})
+        raise interruption
+    with pytest.raises(interruption) as raised:
+        exercise(handler, asynchronous, lambda assets: assets.import_query("db", "SELECT 1"))
+    assert raised.value.asset_id == "asset_123"

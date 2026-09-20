@@ -56,6 +56,7 @@ class NodusError(Exception):
         self.status_code = status_code
         self.body = body
         self.request_id = request_id
+        self.asset_id: str | None = None
 
     @property
     def code(self) -> str | None:
