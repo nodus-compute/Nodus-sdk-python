@@ -51,6 +51,11 @@ def docs_api(monkeypatch):
         "final_output_sequence": None, "cancel_requested_at": None, "cancel_reason": "",
     }
 
+    connection = {"id": "conn_docs", "name": "lab-db", "kind": "neon", "secret_id": "sec_docs",
+                  "secret_version": 1, "scope": "read", "region": "us-east-1", "egress_hosts": [],
+                  "live_mode": False, "verified_at": "2026-09-19T00:00:00Z",
+                  "created_at": "2026-09-19T00:00:00Z", "created_by": "key_docs"}
+
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_):
             pass
@@ -85,6 +90,10 @@ def docs_api(monkeypatch):
                 return self.reply({"pool_id": "pool_docs", "predict_enabled": False,
                     "refresh_status": "disabled", "recommendations": [],
                     "next_cursor": "docs_next" if cursor is None else None})
+            if path == "/v1/connections":
+                return self.reply({"connections": [connection]})
+            if path == "/v1/connections/conn_docs":
+                return self.reply(connection)
             if path == "/v1/assets":
                 return self.reply({"assets": [], "max_import_bytes": 1048576})
             if path == "/v1/workloads":
@@ -122,6 +131,15 @@ def docs_api(monkeypatch):
             if suffix in responses:
                 return self.reply(responses[suffix])
             return self.reply({"error": "not_found", "message": path}, 404)
+
+        def do_DELETE(self):
+            path = urlsplit(self.path).path
+            calls.append(("DELETE", path))
+            if self.headers.get("Authorization") != "Bearer nk_docs":
+                return self.reply({"error": "unauthorized"}, 401)
+            if path == "/v1/connections/conn_docs":
+                return self.reply(b"", 204)
+            return self.reply({"error": "not_found"}, 404)
 
         def do_PATCH(self):
             path = urlsplit(self.path).path
@@ -165,6 +183,11 @@ def docs_api(monkeypatch):
                 return self.reply({"api_key": "nk_docs", "base_url": address, "tenant": "docs-test"})
             if self.headers.get("Authorization") != "Bearer nk_docs":
                 return self.reply({"error": "unauthorized"}, 401)
+            if path == "/v1/connections":
+                assert payload == {"name": "lab-db", "kind": "neon", "secret": "LAB_DB", "scope": "read", "region": "us-east-1", "live_mode": False}
+                return self.reply(connection, 201)
+            if path == "/v1/connections/conn_docs/verify":
+                return self.reply(connection)
             if path == "/v1/pools/pool_docs/enrollment-tokens":
                 if payload != {"mode": "execute", "host_id": "host_docs"}:
                     return self.reply({"error": "invalid_enrollment"}, 400)

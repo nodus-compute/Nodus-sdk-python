@@ -5835,6 +5835,146 @@
         },
         "x-go-source": "internal/models/assets.go",
         "x-go-type": "BucketInput"
+      },
+      "ConnectionCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "kind",
+          "secret"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "postgres",
+              "neon",
+              "supabase",
+              "wandb"
+            ]
+          },
+          "secret": {
+            "type": "string",
+            "description": "Existing tenant secret name or ID. Credential values are accepted only by POST /v1/secrets."
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "read",
+              "write",
+              "readwrite"
+            ],
+            "description": "Defaults to read for database kinds and write for wandb."
+          },
+          "region": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "entity": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "live_mode": {
+            "type": "boolean",
+            "default": false,
+            "description": "Requires a current team administrator and wandb write or readwrite scope."
+          }
+        },
+        "x-go-source": "internal/connections/connections.go",
+        "x-go-type": "CreateRequest"
+      },
+      "Connection": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "secret_id",
+          "secret_version",
+          "scope",
+          "egress_hosts",
+          "live_mode",
+          "verified_at",
+          "created_at",
+          "created_by"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "postgres",
+              "neon",
+              "supabase",
+              "wandb"
+            ]
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "read",
+              "write",
+              "readwrite"
+            ],
+            "description": "Defaults to read for database kinds and write for wandb."
+          },
+          "region": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "entity": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "live_mode": {
+            "type": "boolean",
+            "default": false,
+            "description": "Requires a current team administrator and wandb write or readwrite scope."
+          },
+          "id": {
+            "type": "string"
+          },
+          "secret_id": {
+            "type": "string"
+          },
+          "secret_version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "egress_hosts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "verified_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_by": {
+            "type": "string"
+          }
+        },
+        "x-go-source": "internal/connections/connections.go",
+        "x-go-type": "Connection"
       }
     },
     "securitySchemes": {
@@ -7933,7 +8073,7 @@
             }
           }
         },
-        "description": "Creates a new encrypted version. Running sandboxes retain their existing bindings until refresh or wake. Retired versions are destroyed after seven days once no live generation remains bound to them.",
+        "description": "Creates a new encrypted version. Admitted sandboxes retain their pinned versions. Retired ciphertext is destroyed after seven days only when no nonterminal sandbox or connection retains it.",
         "requestBody": {
           "required": true,
           "content": {
@@ -10386,6 +10526,205 @@
             }
           }
         }
+      }
+    },
+    "/v1/connections": {
+      "post": {
+        "operationId": "createConnection",
+        "summary": "Verify and create an external connection",
+        "tags": [
+          "Connections"
+        ],
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Connection"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Connection operation rejected. Errors never include credential values.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Verifies within five seconds before saving an immutable credential version. Only public TLS endpoints are accepted. Database verification uses SELECT 1 in a read-only transaction. Secret rotation or revocation prevents new uses of the old connection. Create a new connection to adopt a new secret version.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectionCreate"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "listConnections",
+        "summary": "List external connection metadata",
+        "tags": [
+          "Connections"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "connections"
+                  ],
+                  "properties": {
+                    "connections": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Connection"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Connection operation rejected. Errors never include credential values.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/connections/{id}": {
+      "get": {
+        "operationId": "getConnection",
+        "summary": "Get an external connection",
+        "tags": [
+          "Connections"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Connection"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Connection operation rejected. Errors never include credential values.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Connection name or ID.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "deleteConnection",
+        "summary": "Delete an external connection",
+        "tags": [
+          "Connections"
+        ],
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "Connection operation rejected. Errors never include credential values.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Connection name or ID.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/connections/{id}/verify": {
+      "post": {
+        "operationId": "verifyConnection",
+        "summary": "Reverify a connection using its active pinned credential",
+        "tags": [
+          "Connections"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Connection"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Connection operation rejected. Errors never include credential values.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Connection name or ID.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
       }
     }
   },
