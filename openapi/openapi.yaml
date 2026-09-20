@@ -2217,7 +2217,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Nodus secret references made available to the sandbox without placing secret values in this request."
+            "description": "Secret names or sec_ IDs pinned at admission and delivered as NODUS_SECRET_<NAME>. Rotation, revocation and recovery preserve the admitted version."
           }
         },
         "additionalProperties": false
@@ -2471,6 +2471,7 @@
       "SecretMetadata": {
         "type": "object",
         "required": [
+          "id",
           "name",
           "version",
           "created_at"
@@ -2486,6 +2487,10 @@
           "created_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "description": "Stable tenant secret ID shared by its versions."
           }
         },
         "x-go-source": "internal/store/sandbox_secrets.go",
