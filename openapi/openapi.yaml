@@ -1062,303 +1062,6 @@
         "x-go-source": "internal/models/models.go",
         "x-go-type": "Policy"
       },
-      "RLMetadata": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "schema_version",
-          "environment_id",
-          "mode",
-          "model",
-          "planned_tasks"
-        ],
-        "properties": {
-          "schema_version": {
-            "type": "integer",
-            "const": 1,
-            "description": "Required contract version. The server does not default an omitted version."
-          },
-          "environment_id": {
-            "type": "string",
-            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
-            "maxLength": 64,
-            "enum": [
-              "custom",
-              "reasoning-gym",
-              "swe-smith",
-              "textarena",
-              "miniwob",
-              "officeqa",
-              "appworld"
-            ],
-            "description": "Use custom for researcher-supplied training or evaluation without a catalog association, or choose an accepted catalog environment. This label does not establish runtime readiness or asset access."
-          },
-          "mode": {
-            "type": "string",
-            "enum": [
-              "train",
-              "evaluate"
-            ],
-            "description": "Custom workloads support train or evaluate. Catalog environments must support the selected mode. OfficeQA supports evaluate only."
-          },
-          "model": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 256,
-            "description": "Customer-supplied model identifier. UTF-8 text, at most 256 bytes. Leading or trailing whitespace and control characters are rejected."
-          },
-          "planned_tasks": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 10000,
-            "description": "Planned logical task count. The customer command must apply this selection and limit. Recorded attempts may include retries."
-          },
-          "recipe": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/RLRecipeProvenance"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "readOnly": true,
-            "description": "Server-owned managed recipe identity. Custom workload submissions cannot set this field."
-          }
-        },
-        "allOf": [
-          {
-            "if": {
-              "properties": {
-                "environment_id": {
-                  "const": "officeqa"
-                }
-              }
-            },
-            "then": {
-              "properties": {
-                "mode": {
-                  "const": "evaluate"
-                }
-              }
-            }
-          }
-        ],
-        "description": "RL task association. Managed launches create the recipe provenance through /v1/rl-runs. For custom workloads, omit recipe and provide your own executable code, model setup, task limit and typed task events. Unknown and duplicate fields are rejected.",
-        "x-go-source": "internal/models/rl.go",
-        "x-go-type": "RLMetadata"
-      },
-      "RLEvent": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "event_id",
-          "phase",
-          "task_id",
-          "attempt",
-          "kind"
-        ],
-        "properties": {
-          "event_id": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 128,
-            "description": "Stable application event identity. UTF-8 text, at most 128 bytes. Leading or trailing whitespace and control characters are rejected."
-          },
-          "phase": {
-            "type": "string",
-            "enum": [
-              "baseline",
-              "training",
-              "evaluation"
-            ],
-            "description": "Application-reported phase. A workload whose RL mode is evaluate cannot record training-phase events."
-          },
-          "task_id": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 128,
-            "description": "Logical task identity within a stage and phase. UTF-8 text, at most 128 bytes. Leading or trailing whitespace and control characters are rejected."
-          },
-          "attempt": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 1000000,
-            "description": "Application attempt number. Increment it for a genuinely repeated attempt. Infrastructure generation is separate and does not create a new logical attempt."
-          },
-          "kind": {
-            "type": "string",
-            "enum": [
-              "task_started",
-              "task_completed"
-            ]
-          },
-          "outcome": {
-            "type": "string",
-            "enum": [
-              "passed",
-              "failed",
-              "error"
-            ],
-            "description": "Required for task_completed and absent for task_started. Passed and failed describe a scored check. Error describes execution failure. Outcome is explicit and is never inferred from reward."
-          },
-          "reward": {
-            "type": "number",
-            "description": "Optional finite reward on a completed attempt. Absence means no reward was reported. Zero is a reported reward and must not be treated as missing. Negative and nonbinary finite rewards are allowed."
-          },
-          "duration_ms": {
-            "type": "number",
-            "minimum": 0,
-            "description": "Optional finite nonnegative attempt duration in milliseconds on a completed attempt. Absence means not reported. Zero is valid."
-          },
-          "message": {
-            "type": "string",
-            "maxLength": 1024,
-            "description": "Short task activity message. At most 1024 UTF-8 bytes. Newline, carriage return and tab are allowed. Other control characters are rejected. Present only when explicitly emitted by the runner."
-          },
-          "input": {
-            "type": "string",
-            "maxLength": 4096,
-            "description": "Task input evidence. At most 4096 UTF-8 bytes. Newline, carriage return and tab are allowed. Other control characters are rejected. Present only when explicitly emitted by the runner."
-          },
-          "output": {
-            "type": "string",
-            "maxLength": 4096,
-            "description": "Agent output evidence. At most 4096 UTF-8 bytes. Newline, carriage return and tab are allowed. Other control characters are rejected. Present only when explicitly emitted by the runner."
-          },
-          "verifier": {
-            "type": "string",
-            "maxLength": 4096,
-            "description": "Verifier evidence. At most 4096 UTF-8 bytes. Newline, carriage return and tab are allowed. Other control characters are rejected. Present only when explicitly emitted by the runner."
-          }
-        },
-        "oneOf": [
-          {
-            "properties": {
-              "kind": {
-                "const": "task_started"
-              }
-            },
-            "not": {
-              "anyOf": [
-                {
-                  "required": [
-                    "outcome"
-                  ]
-                },
-                {
-                  "required": [
-                    "reward"
-                  ]
-                },
-                {
-                  "required": [
-                    "duration_ms"
-                  ]
-                }
-              ]
-            }
-          },
-          {
-            "properties": {
-              "kind": {
-                "const": "task_completed"
-              }
-            },
-            "required": [
-              "outcome"
-            ]
-          }
-        ],
-        "description": "A persisted application-reported task event. The encoded event is limited to 16 KiB. Stable event IDs are deduplicated within a workload and stage across infrastructure generations. Reusing an identity with changed content is rejected. A stage, phase, task, attempt and kind may have only one immutable observation. Task completion is not workload completion, and these events do not change checkpoints or recovery progress. No task_started event is required before a task_completed event.",
-        "x-go-source": "internal/models/rl.go",
-        "x-go-type": "RLEvent"
-      },
-      "RLEventRow": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "id",
-          "stage_id",
-          "generation",
-          "received_at",
-          "event"
-        ],
-        "properties": {
-          "id": {
-            "type": "string",
-            "pattern": "^[0-9]+$",
-            "description": "Server replay identity encoded as a decimal string to preserve integer precision. Treat it as an identifier. It is not the opaque after cursor or the application event_id."
-          },
-          "stage_id": {
-            "type": "string",
-            "description": "Server-authorized workload stage that received the event."
-          },
-          "generation": {
-            "type": "integer",
-            "description": "Infrastructure generation that first persisted the event. Replayed application events retain their original row and generation."
-          },
-          "received_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Server time when the event was first persisted."
-          },
-          "event": {
-            "$ref": "#/components/schemas/RLEvent"
-          }
-        },
-        "description": "An immutable replay row. Events are returned in ascending server replay order.",
-        "x-go-source": "internal/store/rl_events.go",
-        "x-go-type": "RLEventRow"
-      },
-      "RLEventPage": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "schema_version",
-          "events",
-          "next_cursor",
-          "has_more",
-          "dropped_events",
-          "truncated"
-        ],
-        "properties": {
-          "schema_version": {
-            "type": "integer",
-            "const": 1
-          },
-          "events": {
-            "type": "array",
-            "maxItems": 200,
-            "items": {
-              "$ref": "#/components/schemas/RLEventRow"
-            },
-            "description": "Available rows after the requested cursor, in ascending replay order. An empty array means no newer rows in this read."
-          },
-          "next_cursor": {
-            "type": "string",
-            "maxLength": 64,
-            "description": "Opaque exclusive cursor for the next request. Pass this value unchanged as after. It remains at the supplied position when no newer rows are returned. Do not derive a cursor from a row ID."
-          },
-          "has_more": {
-            "type": "boolean",
-            "description": "More rows were available beyond this page in the current database snapshot. False does not mean the workload or task stream has ended."
-          },
-          "dropped_events": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0,
-            "description": "Sum of the highest reported loss counter for each stage and infrastructure generation. It is not an exact count of every event that may be absent. The counter can exceed a single generation limit."
-          },
-          "truncated": {
-            "type": "boolean",
-            "description": "True when any delivery reported loss or hit a storage limit. Stored evidence is bounded to 100,000 events and 64 MiB of encoded event bodies per workload. Treat results as partial when true or dropped_events is nonzero. False does not prove lossless delivery after host loss."
-          }
-        },
-        "description": "Tenant-scoped persisted RL evidence with a consistent database snapshot for each page. While a run is active, keep polling the returned cursor even when has_more is false. After observing terminal workload status, perform a fresh drain before considering replay complete. A terminal workload status does not establish a task score.",
-        "x-go-source": "internal/store/rl_events.go",
-        "x-go-type": "RLEventPage"
-      },
       "Requirements": {
         "type": "object",
         "properties": {
@@ -2514,7 +2217,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Nodus secret references made available to the sandbox without placing secret values in this request."
+            "description": "Secret names or sec_ IDs pinned at admission and delivered as NODUS_SECRET_<NAME>. Rotation, revocation and recovery preserve the admitted version."
           }
         },
         "additionalProperties": false
@@ -2768,6 +2471,7 @@
       "SecretMetadata": {
         "type": "object",
         "required": [
+          "id",
           "name",
           "version",
           "created_at"
@@ -2783,6 +2487,10 @@
           "created_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "description": "Stable tenant secret ID shared by its versions."
           }
         },
         "x-go-source": "internal/store/sandbox_secrets.go",
@@ -6139,6 +5847,303 @@
         "x-go-source": "internal/models/assets.go",
         "x-go-type": "BucketInput"
       },
+      "RLMetadata": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "environment_id",
+          "mode",
+          "model",
+          "planned_tasks"
+        ],
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 1,
+            "description": "Required contract version. The server does not default an omitted version."
+          },
+          "environment_id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+            "maxLength": 64,
+            "enum": [
+              "custom",
+              "reasoning-gym",
+              "swe-smith",
+              "textarena",
+              "miniwob",
+              "officeqa",
+              "appworld"
+            ],
+            "description": "Use custom for researcher-supplied training or evaluation without a catalog association, or choose an accepted catalog environment. This label does not establish runtime readiness or asset access."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "train",
+              "evaluate"
+            ],
+            "description": "Custom workloads support train or evaluate. Catalog environments must support the selected mode. OfficeQA supports evaluate only."
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Customer-supplied model identifier. UTF-8 text, at most 256 bytes. Leading or trailing whitespace and control characters are rejected."
+          },
+          "planned_tasks": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000,
+            "description": "Planned logical task count. The customer command must apply this selection and limit. Recorded attempts may include retries."
+          },
+          "recipe": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RLRecipeProvenance"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "readOnly": true,
+            "description": "Server-owned managed recipe identity. Custom workload submissions cannot set this field."
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "environment_id": {
+                  "const": "officeqa"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "mode": {
+                  "const": "evaluate"
+                }
+              }
+            }
+          }
+        ],
+        "description": "RL task association. Managed launches create the recipe provenance through /v1/rl-runs. For custom workloads, omit recipe and provide your own executable code, model setup, task limit and typed task events. Unknown and duplicate fields are rejected.",
+        "x-go-source": "internal/models/rl.go",
+        "x-go-type": "RLMetadata"
+      },
+      "RLEvent": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "event_id",
+          "phase",
+          "task_id",
+          "attempt",
+          "kind"
+        ],
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Stable application event identity. UTF-8 text, at most 128 bytes. Leading or trailing whitespace and control characters are rejected."
+          },
+          "phase": {
+            "type": "string",
+            "enum": [
+              "baseline",
+              "training",
+              "evaluation"
+            ],
+            "description": "Application-reported phase. A workload whose RL mode is evaluate cannot record training-phase events."
+          },
+          "task_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Logical task identity within a stage and phase. UTF-8 text, at most 128 bytes. Leading or trailing whitespace and control characters are rejected."
+          },
+          "attempt": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000000,
+            "description": "Application attempt number. Increment it for a genuinely repeated attempt. Infrastructure generation is separate and does not create a new logical attempt."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "task_started",
+              "task_completed"
+            ]
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "passed",
+              "failed",
+              "error"
+            ],
+            "description": "Required for task_completed and absent for task_started. Passed and failed describe a scored check. Error describes execution failure. Outcome is explicit and is never inferred from reward."
+          },
+          "reward": {
+            "type": "number",
+            "description": "Optional finite reward on a completed attempt. Absence means no reward was reported. Zero is a reported reward and must not be treated as missing. Negative and nonbinary finite rewards are allowed."
+          },
+          "duration_ms": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Optional finite nonnegative attempt duration in milliseconds on a completed attempt. Absence means not reported. Zero is valid."
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 1024,
+            "description": "Short task activity message. At most 1024 UTF-8 bytes. Newline, carriage return and tab are allowed. Other control characters are rejected. Present only when explicitly emitted by the runner."
+          },
+          "input": {
+            "type": "string",
+            "maxLength": 4096,
+            "description": "Task input evidence. At most 4096 UTF-8 bytes. Newline, carriage return and tab are allowed. Other control characters are rejected. Present only when explicitly emitted by the runner."
+          },
+          "output": {
+            "type": "string",
+            "maxLength": 4096,
+            "description": "Agent output evidence. At most 4096 UTF-8 bytes. Newline, carriage return and tab are allowed. Other control characters are rejected. Present only when explicitly emitted by the runner."
+          },
+          "verifier": {
+            "type": "string",
+            "maxLength": 4096,
+            "description": "Verifier evidence. At most 4096 UTF-8 bytes. Newline, carriage return and tab are allowed. Other control characters are rejected. Present only when explicitly emitted by the runner."
+          }
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "kind": {
+                "const": "task_started"
+              }
+            },
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "outcome"
+                  ]
+                },
+                {
+                  "required": [
+                    "reward"
+                  ]
+                },
+                {
+                  "required": [
+                    "duration_ms"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "properties": {
+              "kind": {
+                "const": "task_completed"
+              }
+            },
+            "required": [
+              "outcome"
+            ]
+          }
+        ],
+        "description": "A persisted application-reported task event. The encoded event is limited to 16 KiB. Stable event IDs are deduplicated within a workload and stage across infrastructure generations. Reusing an identity with changed content is rejected. A stage, phase, task, attempt and kind may have only one immutable observation. Task completion is not workload completion, and these events do not change checkpoints or recovery progress. No task_started event is required before a task_completed event.",
+        "x-go-source": "internal/models/rl.go",
+        "x-go-type": "RLEvent"
+      },
+      "RLEventRow": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "stage_id",
+          "generation",
+          "received_at",
+          "event"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9]+$",
+            "description": "Server replay identity encoded as a decimal string to preserve integer precision. Treat it as an identifier. It is not the opaque after cursor or the application event_id."
+          },
+          "stage_id": {
+            "type": "string",
+            "description": "Server-authorized workload stage that received the event."
+          },
+          "generation": {
+            "type": "integer",
+            "description": "Infrastructure generation that first persisted the event. Replayed application events retain their original row and generation."
+          },
+          "received_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Server time when the event was first persisted."
+          },
+          "event": {
+            "$ref": "#/components/schemas/RLEvent"
+          }
+        },
+        "description": "An immutable replay row. Events are returned in ascending server replay order.",
+        "x-go-source": "internal/store/rl_events.go",
+        "x-go-type": "RLEventRow"
+      },
+      "RLEventPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "events",
+          "next_cursor",
+          "has_more",
+          "dropped_events",
+          "truncated"
+        ],
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 1
+          },
+          "events": {
+            "type": "array",
+            "maxItems": 200,
+            "items": {
+              "$ref": "#/components/schemas/RLEventRow"
+            },
+            "description": "Available rows after the requested cursor, in ascending replay order. An empty array means no newer rows in this read."
+          },
+          "next_cursor": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "Opaque exclusive cursor for the next request. Pass this value unchanged as after. It remains at the supplied position when no newer rows are returned. Do not derive a cursor from a row ID."
+          },
+          "has_more": {
+            "type": "boolean",
+            "description": "More rows were available beyond this page in the current database snapshot. False does not mean the workload or task stream has ended."
+          },
+          "dropped_events": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Sum of the highest reported loss counter for each stage and infrastructure generation. It is not an exact count of every event that may be absent. The counter can exceed a single generation limit."
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "True when any delivery reported loss or hit a storage limit. Stored evidence is bounded to 100,000 events and 64 MiB of encoded event bodies per workload. Treat results as partial when true or dropped_events is nonzero. False does not prove lossless delivery after host loss."
+          }
+        },
+        "description": "Tenant-scoped persisted RL evidence with a consistent database snapshot for each page. While a run is active, keep polling the returned cursor even when has_more is false. After observing terminal workload status, perform a fresh drain before considering replay complete. A terminal workload status does not establish a task score.",
+        "x-go-source": "internal/store/rl_events.go",
+        "x-go-type": "RLEventPage"
+      },
       "RLRecipeProvenance": {
         "type": "object",
         "additionalProperties": false,
@@ -6679,6 +6684,146 @@
         ],
         "x-go-source": "internal/api/rl_runs.go",
         "x-go-type": "rlRunPreview"
+      },
+      "ConnectionCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "kind",
+          "secret"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "postgres",
+              "neon",
+              "supabase",
+              "wandb"
+            ]
+          },
+          "secret": {
+            "type": "string",
+            "description": "Existing tenant secret name or ID. Credential values are accepted only by POST /v1/secrets."
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "read",
+              "write",
+              "readwrite"
+            ],
+            "description": "Defaults to read for database kinds and write for wandb."
+          },
+          "region": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "entity": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "live_mode": {
+            "type": "boolean",
+            "default": false,
+            "description": "Requires a current team administrator and wandb write or readwrite scope."
+          }
+        },
+        "x-go-source": "internal/connections/connections.go",
+        "x-go-type": "CreateRequest"
+      },
+      "Connection": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "secret_id",
+          "secret_version",
+          "scope",
+          "egress_hosts",
+          "live_mode",
+          "verified_at",
+          "created_at",
+          "created_by"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "postgres",
+              "neon",
+              "supabase",
+              "wandb"
+            ]
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "read",
+              "write",
+              "readwrite"
+            ],
+            "description": "Defaults to read for database kinds and write for wandb."
+          },
+          "region": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "entity": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "live_mode": {
+            "type": "boolean",
+            "default": false,
+            "description": "Requires a current team administrator and wandb write or readwrite scope."
+          },
+          "id": {
+            "type": "string"
+          },
+          "secret_id": {
+            "type": "string"
+          },
+          "secret_version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "egress_hosts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "verified_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_by": {
+            "type": "string"
+          }
+        },
+        "x-go-source": "internal/connections/connections.go",
+        "x-go-type": "Connection"
       }
     },
     "securitySchemes": {
@@ -8777,7 +8922,7 @@
             }
           }
         },
-        "description": "Creates a new encrypted version. Running sandboxes retain their existing bindings until refresh or wake. Retired versions are destroyed after seven days once no live generation remains bound to them.",
+        "description": "Creates a new encrypted version. Admitted sandboxes retain their pinned versions. Retired ciphertext is destroyed after seven days only when no nonterminal sandbox or connection retains it.",
         "requestBody": {
           "required": true,
           "content": {
@@ -9110,7 +9255,7 @@
             "schema": {
               "type": "integer"
             },
-            "description": "Page size. 1\u2013100. Omitted, nonpositive, or over 100 defaults to 50."
+            "description": "Page size. 1–100. Omitted, nonpositive, or over 100 defaults to 50."
           },
           {
             "name": "offset",
@@ -9288,100 +9433,6 @@
           }
         ],
         "description": "Returns cancel_requested. Cancellation stops the workload and schedules resource cleanup. A cancelled status does not confirm that instance termination has finished. Calling after completion is safe and does not change the terminal result."
-      }
-    },
-    "/v1/workloads/{id}/rl-events": {
-      "get": {
-        "operationId": "listWorkloadRLEvents",
-        "summary": "Read recorded RL task evidence",
-        "tags": [
-          "Workloads"
-        ],
-        "description": "Read typed task events for a workload in the authenticated tenant. Inherits the customer bearer authentication used by other workload operations. Events are reported by the customer runner and persisted by Nodus, not independently measured by this endpoint. The workload must carry RL metadata and its command must emit task events to produce evidence. A workload without recorded events returns an empty page. Follow has_more to drain available pages, then continue polling next_cursor while the workload is active. Read workload status separately and perform a fresh final drain after it becomes terminal. This endpoint does not install or launch a catalog environment and does not provide built-in training.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Workload identity in the authenticated tenant."
-          },
-          {
-            "name": "after",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "maxLength": 64
-            },
-            "description": "Opaque exclusive replay cursor from a previous next_cursor. Omit it to begin at the first recorded event. Pass it unchanged and do not use a numeric row ID."
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 200,
-              "default": 100
-            },
-            "description": "Maximum number of event rows in this page."
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Persisted RL event page",
-            "headers": {
-              "Cache-Control": {
-                "description": "Task evidence must not be cached.",
-                "schema": {
-                  "type": "string",
-                  "const": "no-store"
-                }
-              }
-            },
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RLEventPage"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid cursor or page size. Error codes are invalid_cursor or invalid_limit.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "The workload does not exist in the authenticated tenant.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "Authentication, rate limits and transient failures apply. The JSON error and message fields describe the failure.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
       }
     },
     "/v1/workloads/{id}/events": {
@@ -11326,6 +11377,100 @@
         }
       }
     },
+    "/v1/workloads/{id}/rl-events": {
+      "get": {
+        "operationId": "listWorkloadRLEvents",
+        "summary": "Read recorded RL task evidence",
+        "tags": [
+          "Workloads"
+        ],
+        "description": "Read typed task events for a workload in the authenticated tenant. Inherits the customer bearer authentication used by other workload operations. Events are reported by the customer runner and persisted by Nodus, not independently measured by this endpoint. The workload must carry RL metadata and its command must emit task events to produce evidence. A workload without recorded events returns an empty page. Follow has_more to drain available pages, then continue polling next_cursor while the workload is active. Read workload status separately and perform a fresh final drain after it becomes terminal. This endpoint does not install or launch a catalog environment and does not provide built-in training.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Workload identity in the authenticated tenant."
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "description": "Opaque exclusive replay cursor from a previous next_cursor. Omit it to begin at the first recorded event. Pass it unchanged and do not use a numeric row ID."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 100
+            },
+            "description": "Maximum number of event rows in this page."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Persisted RL event page",
+            "headers": {
+              "Cache-Control": {
+                "description": "Task evidence must not be cached.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RLEventPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid cursor or page size. Error codes are invalid_cursor or invalid_limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The workload does not exist in the authenticated tenant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, rate limits and transient failures apply. The JSON error and message fields describe the failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/rl-recipes": {
       "get": {
         "operationId": "listRLRecipes",
@@ -11472,6 +11617,205 @@
           }
         ],
         "description": "Uses ordinary workload admission, billing and tenant ownership. 202 confirms acceptance. Reuse the exact body and Idempotency-Key after an uncertain response. A changed configuration or runtime returns 409 review_changed. After an earlier uncertain submission, keep the original key and check existing runs before starting another attempt. 503 rl_unavailable means new managed launches are paused or the runtime is unqualified. A completed run does not by itself establish improved model quality."
+      }
+    },
+    "/v1/connections": {
+      "post": {
+        "operationId": "createConnection",
+        "summary": "Verify and create an external connection",
+        "tags": [
+          "Connections"
+        ],
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Connection"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Connection operation rejected. Errors never include credential values.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Verifies within five seconds before saving an immutable credential version. Only public TLS endpoints are accepted. Database verification uses SELECT 1 in a read-only transaction. Secret rotation or revocation prevents new uses of the old connection. Create a new connection to adopt a new secret version.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectionCreate"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "listConnections",
+        "summary": "List external connection metadata",
+        "tags": [
+          "Connections"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "connections"
+                  ],
+                  "properties": {
+                    "connections": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Connection"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Connection operation rejected. Errors never include credential values.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/connections/{id}": {
+      "get": {
+        "operationId": "getConnection",
+        "summary": "Get an external connection",
+        "tags": [
+          "Connections"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Connection"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Connection operation rejected. Errors never include credential values.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Connection name or ID.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "deleteConnection",
+        "summary": "Delete an external connection",
+        "tags": [
+          "Connections"
+        ],
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "Connection operation rejected. Errors never include credential values.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Connection name or ID.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/connections/{id}/verify": {
+      "post": {
+        "operationId": "verifyConnection",
+        "summary": "Reverify a connection using its active pinned credential",
+        "tags": [
+          "Connections"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Connection"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Connection operation rejected. Errors never include credential values.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Connection name or ID.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
       }
     }
   },

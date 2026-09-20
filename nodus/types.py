@@ -265,6 +265,9 @@ class Output:
     sha256: str = ""
     bytes: int = 0
     download: str = ""
+    sink_state: str = ""
+    sink_rows: int | None = None
+    sink_error: str = ""
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
     @classmethod
@@ -272,7 +275,9 @@ class Output:
         d = _obj(d)
         return cls(name=_text(d.get("name")), stage_id=_text(d.get("stage_id")),
                    sha256=_text(d.get("sha256")), bytes=_int(d.get("bytes")),
-                   download=_text(d.get("download")), raw=d)
+                   download=_text(d.get("download")), sink_state=_text(d.get("sink_state")),
+                   sink_rows=_int(d["sink_rows"]) if d.get("sink_rows") is not None else None,
+                   sink_error=_text(d.get("sink_error")), raw=d)
 
 
 #: An object holding a tar of a checkpoint subtree rather than a single file.
@@ -557,3 +562,21 @@ class UnitMetrics:
             return item if type(item) is int and item >= 0 else None
         return cls(count("units_completed"), number("p50_ms"), number("p95_ms"),
                    number("cost_per_unit_usd"), count("dropped_observations"))
+
+
+@dataclass(frozen=True)
+class WorkloadLink:
+    """A validated live run link captured from workload output."""
+
+    kind: str
+    url: str
+
+    @classmethod
+    def from_dict(cls, value: Any) -> "WorkloadLink | None":
+        import re
+        value = _obj(value)
+        url = value.get("url")
+        token = r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}"
+        if value.get("kind") != "wandb" or not isinstance(url, str) or not re.fullmatch(r"https://wandb\.ai/" + token + "/" + token + "/runs/" + token, url):
+            return None
+        return cls(kind="wandb", url=url)

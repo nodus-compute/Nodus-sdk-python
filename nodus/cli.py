@@ -23,7 +23,7 @@ from typing import Any
 from . import Client, SandboxExec, __version__, _is_header_safe, _redact, _resolve_base_url, _current_hosted_url, config, login
 from ._terminal import clean, compute_label, format_cost, show_table, show_workload, status_label
 from ._brief import STATUS_FILTERS
-from .errors import ValidationError, NodusError, NotFoundError, AuthenticationError, APIConnectionError, APITimeoutError
+from .errors import ValidationError, NodusError, NotFoundError, AuthenticationError, APIConnectionError, APITimeoutError, asset_id_from_error
 from .types import _num
 from ._workload_file import load_workload_file, write_workload_file
 
@@ -198,9 +198,15 @@ def _cmd_run(args: argparse.Namespace) -> int:
         print(_safe_line(wl.id), flush=True)
         if args.cmd == "submit":
             return 0
+        seen_links: set[str] = set()
+        def show_live_links(current):
+            for link in current.links:
+                if link.url not in seen_links:
+                    print(f"wandb: {link.url}", flush=True)
+                    seen_links.add(link.url)
         with _cancel_on_interrupt(client, wl.id):
             wl.wait(poll_seconds=args.poll, timeout_seconds=args.timeout,
-                    progress=False if args.plain else None)
+                    progress=False if args.plain else None, on_update=show_live_links)
         show_workload(wl, plain=args.plain)
         return 0 if wl.succeeded else 1
 
@@ -212,6 +218,76 @@ def _cmd_upload(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
         asset = client.assets.upload(path)
     print(_safe_line(asset.id))
+    return 0
+
+
+def _cmd_secret(args: argparse.Namespace) -> int:
+    with Client(base_url=args.base_url) as client:
+        if args.secret_cmd == "set":
+            if args.from_file:
+                with Path(args.from_file).open("r", encoding="utf-8", newline="") as source:
+                    value = source.read(4097)
+            else:
+                if sys.stdin.isatty():
+                    raise ValidationError("Pipe the secret on stdin or use --from-file")
+                value = sys.stdin.read(4097)
+            metadata = client.secrets.put(args.name, value)
+            print(f"Stored {_safe_line(metadata['name'])} version {_safe_line(metadata['version'])}")
+        elif args.secret_cmd == "ls":
+            show_table(["Name", "Version", "Created"],
+                       [[_safe_line(item.get("name", "")), _safe_line(item.get("version", "")),
+                         _safe_line(item.get("created_at", ""))] for item in client.secrets.list()],
+                       empty="No secrets.", plain=args.plain)
+        else:
+            client.secrets.delete(args.name)
+            print(f"Revoked {_safe_line(args.name)}")
+    return 0
+
+
+def _cmd_connection(args: argparse.Namespace) -> int:
+    with Client(base_url=args.base_url) as client:
+        if args.connection_cmd == "add":
+            result = client.connections.create(args.name, args.kind, secret=args.secret,
+                scope=args.scope, region=args.region, live=args.live, branch=args.branch,
+                entity=args.entity, project=args.project)
+            print(f"Created {_safe_line(result['name'])} ({_safe_line(result['id'])})")
+        elif args.connection_cmd == "ls":
+            show_table(["ID", "Name", "Kind", "Region", "Live", "Verified"],
+                [[_safe_line(c.get(k, "")) for k in ("id", "name", "kind", "region", "live_mode", "verified_at")]
+                 for c in client.connections.list()], empty="No connections.", plain=args.plain)
+        elif args.connection_cmd == "verify":
+            result = client.connections.verify(args.connection)
+            print(f"Verified {_safe_line(result['name'])} at {_safe_line(result['verified_at'])}")
+        else:
+            client.connections.delete(args.connection)
+            print(f"Deleted {_safe_line(args.connection)}")
+    return 0
+
+
+def _query_recovery(exc: BaseException) -> str | None:
+    asset_id = asset_id_from_error(exc)
+    if asset_id is not None:
+        return f"Query export {asset_id} was admitted. Inspect it with nodus asset get {asset_id} before repeating the import."
+    return None
+
+
+def _cmd_asset(args: argparse.Namespace) -> int:
+    with Client(base_url=args.base_url) as client:
+        if args.asset_cmd == "get":
+            asset = client.assets.get(args.asset_id)
+            for label, value in (("Asset", asset.id), ("Status", asset.state),
+                                 ("Name", asset.name), ("Stored bytes", asset.stored_bytes)):
+                print(f"{label}: {_safe_line(value)}")
+            if asset.error:
+                print(f"Error: {_safe_line(asset.error)}")
+            if isinstance(asset.export, dict):
+                for label, key in (("Format", "format"), ("Rows", "row_count"), ("Export bytes", "bytes")):
+                    if key in asset.export:
+                        print(f"{label}: {_safe_line(asset.export[key])}")
+        else:
+            asset = client.assets.import_query(args.connection, args.sql, format=args.format,
+                                               branch=args.branch, reuse=args.reuse)
+            print(_safe_line(asset.id))
     return 0
 
 
@@ -467,6 +543,23 @@ def _cmd_sandbox(args: argparse.Namespace) -> int:
         sandbox.terminate()
         print(_safe_line(sandbox.id))
         return 0
+
+
+def _cmd_outputs(args: argparse.Namespace) -> int:
+    with Client(base_url=args.base_url) as client:
+        if args.reload:
+            result = client.reload_output(args.workload_id, args.reload, stage=args.stage)
+            print(_safe_line(result.get("state", "")))
+        else:
+            outputs = client.outputs(args.workload_id)
+            if args.json:
+                print(json.dumps([o.raw for o in outputs], indent=2))
+            else:
+                show_table(["Stage", "Output", "Bytes", "Sink", "Rows", "Sink error"],
+                           [[o.stage_id, o.name, str(o.bytes), o.sink_state or "-",
+                             str(o.sink_rows) if o.sink_rows is not None else "-", o.sink_error]
+                            for o in outputs], empty="No outputs available yet.", plain=args.plain)
+    return 0
 
 
 def _cmd_download(args: argparse.Namespace) -> int:
@@ -791,7 +884,7 @@ class _CommandHelpFormatter(argparse.RawDescriptionHelpFormatter):
                 ("Run", ("run", "submit", "sandbox", "devbox")),
                 ("Monitor", ("list", "status", "wait", "logs", "cancel")),
                 ("Results", ("download",)),
-                ("Advanced", ("upload", "assets", "pools", "events", "artifacts", "ledger", "explain")),
+                ("Advanced", ("upload", "assets", "asset", "pools", "events", "artifacts", "ledger", "explain")),
             )
             return "\n".join(
                 f"  {title}:\n" + "".join(
@@ -825,6 +918,8 @@ Use nodus COMMAND --help for command options.""",
     i.add_argument("--force", action="store_true", help="sign in again even when already signed in")
 
     sub.add_parser("logout", help="delete the stored API key")
+    m = sub.add_parser("mcp", help="start the local MCP server for AI clients")
+    m.add_argument("--base-url", default=argparse.SUPPRESS, help="custom API origin")
 
     i = sub.add_parser("init", help="create a starter workload file")
     i.add_argument("file", nargs="?", default="nodus.toml")
@@ -855,12 +950,62 @@ Use nodus COMMAND --help for command options.""",
             g.add_argument("--timeout", type=_positive_seconds, default=None)
             g.add_argument("--poll", type=_positive_seconds, default=2.0)
 
+    workload = sub.add_parser("workload", help="inspect a workload")
+    workload_sub = workload.add_subparsers(dest="workload_cmd", required=True)
+    workload_get = workload_sub.add_parser("get", help="show workload status, cost and live links")
+    workload_get.add_argument("workload_id")
+    workload_get.add_argument("--json", action="store_true")
+    workload_get.add_argument("--plain", action="store_true", default=argparse.SUPPRESS)
+    workload_get.add_argument("--debug", action="store_true", default=argparse.SUPPRESS)
+    workload_get.set_defaults(cmd="status")
+    outputs = workload_sub.add_parser("outputs", help="list output downloads and database load state")
+    outputs.add_argument("workload_id")
+    outputs.add_argument("--json", action="store_true")
+    outputs.add_argument("--reload", metavar="NAME", help="retry loading a named output")
+    outputs.add_argument("--stage", help="select a stage when names repeat")
+    outputs.add_argument("--plain", action="store_true", default=argparse.SUPPRESS)
+    outputs.set_defaults(cmd="outputs")
+
     d = sub.add_parser("download", help="download workload outputs")
     d.add_argument("workload_id")
 
     u = sub.add_parser("upload", help="upload a data file or archive")
     u.add_argument("file")
     sub.add_parser("assets", help="list uploaded and imported data")
+    asset = sub.add_parser("asset", help="import or inspect input assets")
+    asset_sub = asset.add_subparsers(dest="asset_cmd", required=True)
+    asset_get = asset_sub.add_parser("get", help="inspect an asset by ID, including its export error")
+    asset_get.add_argument("asset_id")
+    query = asset_sub.add_parser("import-query", help="export a read-only database query")
+    query.add_argument("connection", help="connection name or ID")
+    query.add_argument("sql", help="SELECT or WITH query")
+    query.add_argument("--format", choices=("parquet", "csv"), default="parquet")
+    query.add_argument("--branch", help="must match the connection's verified Neon branch")
+    query.add_argument("--reuse", action="store_true", help="reuse an eligible export from the last 24 hours")
+    secret = sub.add_parser("secret", help="store and manage write-only tenant secrets")
+    secret_sub = secret.add_subparsers(dest="secret_cmd", required=True)
+    secret_set = secret_sub.add_parser("set", help="store a new version from stdin or a file")
+    secret_set.add_argument("name")
+    secret_set.add_argument("--from-file", help="read the exact UTF-8 value from a file")
+    secret_sub.add_parser("ls", help="list secret names and current versions")
+    secret_rm = secret_sub.add_parser("rm", help="revoke a secret for new admissions")
+    secret_rm.add_argument("name")
+
+    connection = sub.add_parser("connection", help="manage verified external connections")
+    connection_sub = connection.add_subparsers(dest="connection_cmd", required=True)
+    connection_add = connection_sub.add_parser("add", help="verify and save a tenant secret reference")
+    connection_add.add_argument("--name", required=True)
+    connection_add.add_argument("kind", choices=("postgres", "neon", "supabase", "wandb"))
+    connection_add.add_argument("--secret", required=True, help="existing tenant secret name or ID")
+    connection_add.add_argument("--scope", choices=("read", "write", "readwrite"), default=None)
+    connection_add.add_argument("--region")
+    connection_add.add_argument("--live", action="store_true", help="admin opt-in for wandb")
+    connection_add.add_argument("--branch")
+    connection_add.add_argument("--entity")
+    connection_add.add_argument("--project")
+    connection_sub.add_parser("ls", help="list connection metadata")
+    for verb in ("rm", "verify"):
+        connection_sub.add_parser(verb).add_argument("connection")
 
     devbox = sub.add_parser("devbox", help="create and manage devbox sandboxes")
     devbox_sub = devbox.add_subparsers(dest="devbox_cmd", required=True, metavar="COMMAND")
@@ -1033,19 +1178,40 @@ Use nodus COMMAND --help for command options.""",
     return p
 
 
+def _cmd_mcp(args: argparse.Namespace) -> int:
+    try:
+        from ._mcp import create_server
+    except ModuleNotFoundError as exc:
+        if exc.name != "mcp":
+            raise
+        raise ValueError('Install MCP support with: pip install "nodus-compute[mcp]"') from None
+    create_server(base_url=args.base_url).run(transport="stdio")
+    return 0
+
+
+def mcp_main() -> int:
+    """Start the MCP server through the nodus-mcp executable."""
+    return main(["mcp", *sys.argv[1:]])
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     args = build_parser().parse_args(argv)
 
     handlers = {
         "login": lambda: _cmd_login(args),
+        "mcp": lambda: _cmd_mcp(args),
         "logout": lambda: _cmd_logout(args),
         "init": lambda: _cmd_init(args),
         "run": lambda: _cmd_run(args),
         "submit": lambda: _cmd_run(args),
         "download": lambda: _cmd_download(args),
+        "outputs": lambda: _cmd_outputs(args),
         "upload": lambda: _cmd_upload(args),
         "assets": lambda: _cmd_assets(args),
+        "asset": lambda: _cmd_asset(args),
+        "secret": lambda: _cmd_secret(args),
+        "connection": lambda: _cmd_connection(args),
         "pools": lambda: _cmd_pools(args),
         "sandbox": lambda: _cmd_sandbox(args),
         "devbox": lambda: _cmd_devbox(args),
@@ -1085,9 +1251,20 @@ def main(argv: list[str] | None = None) -> int:
                 message = "Add a payment method at https://console.nodus-compute.ai/?view=billing before running workloads, including runs using starter credits."
             else:
                 message = "This run cannot start within your current spending limit. Review your account limit and available credits in the console."
+        if args.cmd in ("secret", "connection") and isinstance(exc, (APIConnectionError, APITimeoutError)):
+            message = ("Request to Nodus timed out." if isinstance(exc, APITimeoutError) else "Could not connect to Nodus.")
+            message += " Check your connection. Your saved sign-in is unchanged."
+            if args.cmd == "connection" and args.connection_cmd == "add":
+                message += " Look up the connection by name before retrying."
+        elif args.cmd in ("secret", "connection") and isinstance(exc, NodusError) and (exc.status_code is not None or not isinstance(exc, ValidationError)):
+            message = ("Secret" if args.cmd == "secret" else "Connection") + " operation failed. Check your credentials, reference, and connection."
+        if args.cmd == "asset" and (recovery := _query_recovery(exc)):
+            message = recovery
         print(f"Error: {message}", file=sys.stderr)
         return 2
-    except KeyboardInterrupt:
+    except KeyboardInterrupt as exc:
+        if args.cmd == "asset" and (recovery := _query_recovery(exc)):
+            print(recovery, file=sys.stderr)
         return 130
 
 

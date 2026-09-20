@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from email.utils import parsedate_to_datetime
 from importlib.metadata import PackageNotFoundError, version as _distribution_version
-from typing import Any, AsyncIterator, Iterator
+from typing import Any, AsyncIterator, Iterator, Callable
 from pathlib import Path
 
 from ._freeze import WorkloadFreeze
@@ -40,6 +40,7 @@ from ._outputs import download_path, verified_file, output_destinations
 from ._assets import Asset, Assets, AsyncAssets
 from ._rl import AsyncRL, RL, RLRecipe, RLRunPreview
 from ._secrets import Secrets, AsyncSecrets
+from ._connections import Connections, AsyncConnections
 from ._workspaces import Workspaces, AsyncWorkspaces
 
 from ._pool_predict import PredictSubscription, ForecastPoint, ForecastQueue, ForecastSeries, ForecastCalibration, PoolForecastSnapshot, PoolForecast, PoolRecommendation, PoolRecommendations, RecommendationOutcome
@@ -66,7 +67,7 @@ import httpx
 
 from ._terminal import RunProgress
 from ._brief import build_payload, status_filter
-from .requests import Source, Requirements, Placement, Policy, ContinuitySpec, StageInput, StageSpec
+from .requests import OutputSink, OutputSpec, Source, Requirements, Placement, Policy, ContinuitySpec, StageInput, StageSpec
 from .config import _is_header_safe, read_credentials
 from .errors import (
     APIConnectionError,
@@ -85,6 +86,7 @@ from .errors import (
     SpendCheckUnavailableError,
     ValidationError,
     error_from_response,
+    asset_id_from_error,
 )
 from .types import (
     TERMINAL,
@@ -104,6 +106,7 @@ from .types import (
     StageRun,
     UnitMetrics,
     WorkloadStatus,
+    WorkloadLink,
 )
 
 try:
@@ -150,8 +153,11 @@ __all__ = [
     "Client",
     "AsyncClient",
     "Workload",
+    "WorkloadLink",
     "AsyncWorkload",
     "Sandboxes",
+    "Connections",
+    "AsyncConnections",
     "Secrets",
     "AsyncSecrets",
     "Sandbox",
@@ -176,6 +182,8 @@ __all__ = [
     "ContinuitySpec",
     "StageInput",
     "StageSpec",
+    "OutputSink",
+    "OutputSpec",
     "Artifact",
     "ManifestFile",
     "Event",
@@ -204,6 +212,7 @@ __all__ = [
     "AssetInUseError",
     "APIConnectionError",
     "APITimeoutError",
+    "asset_id_from_error",
     "__version__",
 ]
 
@@ -502,6 +511,8 @@ class _WorkloadState:
     meter: Meter | None = None
     revision: int = 1
     stages: list[StageRun] = field(default_factory=list)
+    links: list[WorkloadLink] = field(default_factory=list)
+    sink_error: str = ""
     unit_metrics: UnitMetrics | None = None
     #: True when the control plane answered from an idempotency record: the
     #: submission already existed, this call did not create a second run.
@@ -510,8 +521,8 @@ class _WorkloadState:
     updated_at: Any = None
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
-    def _absorb(self, d: dict[str, Any]) -> None:
-        """Update in place from a wire object, keeping every field it omits.
+    def _absorb(self, d: dict[str, Any], *, authoritative: bool = False) -> None:
+        """Update in place, preserving omitted fields in partial responses.
 
         In place rather than returning a new handle: after ``wait()`` the caller
         reads attributes off the object it already has, without another round
@@ -530,6 +541,9 @@ class _WorkloadState:
         self.id = d.get("id") or d.get("workload_id") or self.id
         if "owner_user_id" in d:
             self.owner_user_id = d["owner_user_id"]
+        # Detail responses omit sink_error once no failed load remains.
+        if authoritative or "sink_error" in d:
+            self.sink_error = str(d.get("sink_error") or "")
         if "status" in d:
             self.status = WorkloadStatus.coerce(d.get("status"))
         self.route = Route.from_dict(d.get("route")) or self.route
@@ -545,6 +559,8 @@ class _WorkloadState:
             self.unit_metrics = UnitMetrics.from_dict(d["unit_metrics"])
         if "stages" in d:
             self.stages = [StageRun.from_dict(s) for s in _rows(d.get("stages"))]
+        if "links" in d:
+            self.links = [link for row in _rows(d.get("links")) if (link := WorkloadLink.from_dict(row)) is not None]
         self.created_at = _dt(d.get("created_at")) or self.created_at
         self.updated_at = _dt(d.get("updated_at")) or self.updated_at
         self.raw = d
@@ -805,7 +821,7 @@ class Client(_Transport):
         image: str | None = None,
         source_asset_id: str | None = None,
         inputs: list[dict[str, Any]] | None = None,
-        outputs: dict[str, str] | None = None,
+        outputs: dict[str, str | OutputSpec] | None = None,
         model: str | None = None,
         peak_memory_gb: float | None = None,
         optimization: str | None = None,
@@ -817,6 +833,8 @@ class Client(_Transport):
         continuity: ContinuityMode | str | ContinuitySpec | dict[str, Any] | None = None,
         finish_by: datetime | str | None = None,
         data_regions: list[str] | None = None,
+        connections: list[str] | None = None,
+        sweep_id: str | None = None,
         stages: list[StageSpec] | list[dict[str, Any]] | None = None,
         framework: str | None = None,
         policy: Policy | dict[str, Any] | None = None,
@@ -863,6 +881,8 @@ class Client(_Transport):
             continuity=continuity,
             finish_by=finish_by,
             data_regions=data_regions,
+            connections=connections,
+            sweep_id=sweep_id,
             stages=stages,
             framework=framework,
             policy=policy,
@@ -921,6 +941,11 @@ class Client(_Transport):
         return RL(self)
 
     @property
+    def connections(self) -> Connections:
+        """Manage verified external connections."""
+        return Connections(self)
+
+    @property
     def secrets(self) -> Secrets:
         """Manage tenant secrets without reading their values."""
         return Secrets(self)
@@ -944,7 +969,7 @@ class Client(_Transport):
     def get(self, workload_id: str) -> "Workload":
         path = f"/v1/workloads/{_valid_id(workload_id)}"
         wl = Workload(self)
-        wl._absorb(self._one(self._request("GET", path), "GET", path))
+        wl._absorb(self._one(self._request("GET", path), "GET", path), authoritative=True)
         return wl
 
     def list(
@@ -1056,6 +1081,11 @@ class Client(_Transport):
         res = self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/outputs")
         return [Output.from_dict(row) for row in (res or {}).get("outputs") or []]
 
+    def reload_output(self, workload_id: str, name: str, *, stage: str | None = None) -> dict[str, Any]:
+        """Retry loading a saved output into its admitted database sink."""
+        path = download_path(_valid_id(workload_id), name) + "/reload"
+        return self._request("POST", path, params={"stage": stage} if stage is not None else None)
+
     def routing(self, workload_id: str) -> list[dict[str, Any]]:
         """Return placement history ordered by stage ID, then generation."""
         res = self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/routing")
@@ -1128,11 +1158,13 @@ class Client(_Transport):
     def wait(
         self, workload_id: str, *, poll_seconds: float = 2.0,
         timeout_seconds: float | None = None, progress: bool | None = None,
+        on_update: Callable[[Any], None] | None = None,
     ) -> "Workload":
         """Wait for completion with optional live output on stderr.
 
         Progress is automatic in a terminal. Ctrl+C requests cancellation.
         A timeout ends observation and leaves the remote workload running.
+        ``on_update`` receives each successful workload read before completion.
         """
         _valid_id(workload_id)
         policy = _WaitPolicy(poll_seconds, timeout_seconds)
@@ -1143,6 +1175,8 @@ class Client(_Transport):
                 except NodusError as exc:
                     delay = policy.failed(exc)
                 else:
+                    if on_update is not None:
+                        on_update(wl)
                     display.update(wl)
                     for kind, path, params in display.requests():
                         if kind == "saved_logs" and display.live_available and not display.live_empty:
@@ -1265,15 +1299,15 @@ class Workload(_WorkloadState):
 
     def refresh(self) -> "Workload":
         path = f"/v1/workloads/{_valid_id(self.id)}"
-        self._absorb(self._client._one(self._client._request("GET", path), "GET", path))
+        self._absorb(self._client._one(self._client._request("GET", path), "GET", path), authoritative=True)
         return self
 
     def wait(self, *, poll_seconds: float = 2.0, timeout_seconds: float | None = None,
-             progress: bool | None = None) -> "Workload":
+             progress: bool | None = None, on_update: Callable[[Any], None] | None = None) -> "Workload":
         """Wait in place. A timeout leaves the remote workload running."""
         done = self._client.wait(self.id, poll_seconds=poll_seconds,
-                                 timeout_seconds=timeout_seconds, progress=progress)
-        self._absorb(done.raw)
+                                 timeout_seconds=timeout_seconds, progress=progress, on_update=on_update)
+        self._absorb(done.raw, authoritative=True)
         return self
 
     def events(self, *, after: int = 0) -> list[Event]:
@@ -1291,6 +1325,10 @@ class Workload(_WorkloadState):
     def outputs(self) -> list[Output]:
         """List customer outputs from completed stages."""
         return self._client.outputs(self.id)
+
+    def reload_output(self, name: str, *, stage: str | None = None) -> dict[str, Any]:
+        """Retry loading one saved output into its database sink."""
+        return self._client.reload_output(self.id, name, stage=stage)
 
     def routing(self) -> list[dict[str, Any]]:
         """Read this workload's placement history."""
@@ -1354,6 +1392,11 @@ class AsyncClient(_Transport):
     def api_key(self) -> str:
         """The configured key, redacted. What was sent is in the transport."""
         return self._api_key_shown
+
+    @property
+    def connections(self) -> AsyncConnections:
+        """Manage verified external connections."""
+        return AsyncConnections(self)
 
     @property
     def secrets(self) -> AsyncSecrets:
@@ -1484,7 +1527,7 @@ class AsyncClient(_Transport):
         image: str | None = None,
         source_asset_id: str | None = None,
         inputs: list[dict[str, Any]] | None = None,
-        outputs: dict[str, str] | None = None,
+        outputs: dict[str, str | OutputSpec] | None = None,
         model: str | None = None,
         peak_memory_gb: float | None = None,
         optimization: str | None = None,
@@ -1496,6 +1539,8 @@ class AsyncClient(_Transport):
         continuity: ContinuityMode | str | ContinuitySpec | dict[str, Any] | None = None,
         finish_by: datetime | str | None = None,
         data_regions: list[str] | None = None,
+        connections: list[str] | None = None,
+        sweep_id: str | None = None,
         stages: list[StageSpec] | list[dict[str, Any]] | None = None,
         framework: str | None = None,
         policy: Policy | dict[str, Any] | None = None,
@@ -1523,6 +1568,8 @@ class AsyncClient(_Transport):
             continuity=continuity,
             finish_by=finish_by,
             data_regions=data_regions,
+            connections=connections,
+            sweep_id=sweep_id,
             stages=stages,
             framework=framework,
             policy=policy,
@@ -1585,7 +1632,7 @@ class AsyncClient(_Transport):
     async def get(self, workload_id: str) -> "AsyncWorkload":
         path = f"/v1/workloads/{_valid_id(workload_id)}"
         wl = AsyncWorkload(self)
-        wl._absorb(self._one(await self._request("GET", path), "GET", path))
+        wl._absorb(self._one(await self._request("GET", path), "GET", path), authoritative=True)
         return wl
 
     async def list(
@@ -1699,6 +1746,11 @@ class AsyncClient(_Transport):
         res = await self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/outputs")
         return [Output.from_dict(row) for row in (res or {}).get("outputs") or []]
 
+    async def reload_output(self, workload_id: str, name: str, *, stage: str | None = None) -> dict[str, Any]:
+        """Retry loading a saved output into its admitted database sink."""
+        path = download_path(_valid_id(workload_id), name) + "/reload"
+        return await self._request("POST", path, params={"stage": stage} if stage is not None else None)
+
     async def routing(self, workload_id: str) -> list[dict[str, Any]]:
         """Return placement history ordered by stage ID, then generation."""
         res = await self._request("GET", f"/v1/workloads/{_valid_id(workload_id)}/routing")
@@ -1759,6 +1811,7 @@ class AsyncClient(_Transport):
     async def wait(
         self, workload_id: str, *, poll_seconds: float = 2.0,
         timeout_seconds: float | None = None, progress: bool | None = None,
+        on_update: Callable[[Any], None] | None = None,
     ) -> "AsyncWorkload":
         """Wait with live output. Task cancellation requests remote cancellation."""
         _valid_id(workload_id)
@@ -1771,6 +1824,8 @@ class AsyncClient(_Transport):
                     except NodusError as exc:
                         delay = policy.failed(exc)
                     else:
+                        if on_update is not None:
+                            on_update(wl)
                         display.update(wl)
                         for kind, path, params in display.requests():
                             if kind == "saved_logs" and display.live_available and not display.live_empty:
@@ -1864,15 +1919,15 @@ class AsyncWorkload(_WorkloadState):
 
     async def refresh(self) -> "AsyncWorkload":
         path = f"/v1/workloads/{_valid_id(self.id)}"
-        self._absorb(self._client._one(await self._client._request("GET", path), "GET", path))
+        self._absorb(self._client._one(await self._client._request("GET", path), "GET", path), authoritative=True)
         return self
 
     async def wait(self, *, poll_seconds: float = 2.0, timeout_seconds: float | None = None,
-                   progress: bool | None = None) -> "AsyncWorkload":
+                   progress: bool | None = None, on_update: Callable[[Any], None] | None = None) -> "AsyncWorkload":
         """Wait in place with the same behavior as AsyncClient.wait."""
         done = await self._client.wait(self.id, poll_seconds=poll_seconds,
-                                       timeout_seconds=timeout_seconds, progress=progress)
-        self._absorb(done.raw)
+                                       timeout_seconds=timeout_seconds, progress=progress, on_update=on_update)
+        self._absorb(done.raw, authoritative=True)
         return self
 
     async def events(self, *, after: int = 0) -> list[Event]:
@@ -1890,6 +1945,10 @@ class AsyncWorkload(_WorkloadState):
     async def outputs(self) -> list[Output]:
         """List customer outputs from completed stages."""
         return await self._client.outputs(self.id)
+
+    async def reload_output(self, name: str, *, stage: str | None = None) -> dict[str, Any]:
+        """Retry loading one saved output into its database sink."""
+        return await self._client.reload_output(self.id, name, stage=stage)
 
     async def routing(self) -> list[dict[str, Any]]:
         """Read this workload's placement history."""

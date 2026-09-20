@@ -1,6 +1,25 @@
 # Changelog
 
-## Unreleased
+## 0.5.0
+
+- Manage write-only tenant secrets and verified Postgres, Neon, Supabase and wandb connections with sync and async clients and CLI commands. Connections pin an immutable credential version, scope and optional region. Secret values are limited to 4096 UTF-8 bytes.
+- Import read-only database queries as ordinary Parquet or CSV input assets without sending database credentials to the workload. Exports are limited to ten minutes, 5 GB and 50 million rows, with existing storage quota also enforced. Optional reuse selects a matching ready export from the last 24 hours.
+- Observe admitted query exports with bounded polling for up to twelve minutes. Recover an admitted asset ID after observation errors or cancellation with `nodus.asset_id_from_error`, and inspect its state and safe failure message with `nodus asset get`.
+- Declare database output sinks alongside legacy output paths in Python and top-level or staged TOML workload files. CSV, JSONL and Parquet loads require write scope and expose load state, row counts and safe errors. Retry a saved output with `reload_output` or `nodus workload outputs --reload`.
+- Limit each sink file to 5 GB, 50 million rows and 256 columns. CSV records, JSONL lines, Parquet pages and footers have an 8 MiB limit, and decoded Parquet row groups have a 128 MiB limit. A failed sink load leaves the output downloadable and does not change workload completion.
+- Attach one administrator-enabled live wandb connection to a workload or sandbox with pinned credentials. Group workloads with an optional `sweep_id` and observe captured run links through sync and async handles, `nodus run` and `nodus workload get`.
+- Restrict live connection traffic to HTTPS on declared hosts and additional `policy.egress_allow` hosts. Private destinations and explicit private pool placement are unsupported. Reserved credential environment names cannot be overridden.
+
+## 0.4.2
+
+- Reuse HTTP connections across MCP tool calls and close the pool on server shutdown.
+- Refresh saved credentials and API origins on each call without retaining response cookies.
+
+## 0.4.1
+
+- Install the local MCP server from the public `nodus-compute[mcp]` package.
+- Connect AI clients with `nodus-mcp` or `nodus mcp` and reuse the saved `nodus login` session.
+- Provide seven workload tools with retry-safe submission, cancellation, logs, events and outputs.
 
 - Submit benchmark matrices with an explicit total budget and idempotency key, then inspect the server report through the SDK or CLI.
 - Add registered sandbox services, bounded HTTP requests and a scheduled micro-batch example.

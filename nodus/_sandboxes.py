@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from ._connections import _live_refs
+
 import asyncio
 import base64
 import binascii
@@ -136,6 +138,7 @@ def _create_payload(
     continuity: dict[str, Any] | None = None,
     from_snapshot: str | None = None,
     secrets: list[str] | None = None,
+    connections: list[str] | None = None,
     service: dict[str, Any] | None = None,
     bootstrap: dict[str, str] | None = None,
     stuck_after_s: int | None = None,
@@ -168,6 +171,7 @@ def _create_payload(
         ("continuity", continuity),
         ("from_snapshot", from_snapshot),
         ("secrets", _names(secrets)),
+        ("connections", _live_refs(connections)),
         ("service", service),
         ("bootstrap", bootstrap),
         ("stuck_after_s", stuck_after_s),
@@ -432,6 +436,7 @@ class Sandboxes:
         continuity: dict[str, Any] | None = None,
         from_snapshot: str | None = None,
         secrets: list[str] | None = None,
+        connections: list[str] | None = None,
         service: dict[str, Any] | None = None,
         bootstrap: dict[str, str] | None = None,
         stuck_after_s: int | None = None,
@@ -442,7 +447,7 @@ class Sandboxes:
             image=image, cache_image=cache_image, name=name, profile=profile, budget=budget, wake=wake, requirements=requirements,
             outcome=outcome, policy=policy, lifecycle=lifecycle,
             reservation=reservation, continuity=continuity,
-            from_snapshot=from_snapshot, secrets=secrets, service=service, bootstrap=bootstrap, stuck_after_s=stuck_after_s, workspace=workspace,
+            from_snapshot=from_snapshot, secrets=secrets, connections=connections, service=service, bootstrap=bootstrap, stuck_after_s=stuck_after_s, workspace=workspace,
         )
         headers: dict[str, str] = {}
         response = self._client._request(
@@ -528,6 +533,7 @@ class Sandbox(_SandboxState):
         continuity: dict[str, Any] | None = None,
         from_snapshot: str | None = None,
         secrets: list[str] | None = None,
+        connections: list[str] | None = None,
         service: dict[str, Any] | None = None,
         bootstrap: dict[str, str] | None = None,
         stuck_after_s: int | None = None,
@@ -557,7 +563,7 @@ class Sandbox(_SandboxState):
                     lifecycle=lifecycle,
                     reservation=reservation,
                     continuity=continuity,
-                    from_snapshot=from_snapshot, secrets=secrets, service=service, bootstrap=bootstrap, stuck_after_s=stuck_after_s, workspace=workspace,
+                    from_snapshot=from_snapshot, secrets=secrets, connections=connections, service=service, bootstrap=bootstrap, stuck_after_s=stuck_after_s, workspace=workspace,
                     idempotency_key=idempotency_key,
                 )
             except BaseException:
@@ -763,6 +769,7 @@ class AsyncSandboxes:
         continuity: dict[str, Any] | None = None,
         from_snapshot: str | None = None,
         secrets: list[str] | None = None,
+        connections: list[str] | None = None,
         service: dict[str, Any] | None = None,
         bootstrap: dict[str, str] | None = None,
         stuck_after_s: int | None = None,
@@ -773,7 +780,7 @@ class AsyncSandboxes:
             image=image, cache_image=cache_image, name=name, profile=profile, budget=budget, wake=wake, requirements=requirements,
             outcome=outcome, policy=policy, lifecycle=lifecycle,
             reservation=reservation, continuity=continuity,
-            from_snapshot=from_snapshot, secrets=secrets, service=service, bootstrap=bootstrap, stuck_after_s=stuck_after_s, workspace=workspace,
+            from_snapshot=from_snapshot, secrets=secrets, connections=connections, service=service, bootstrap=bootstrap, stuck_after_s=stuck_after_s, workspace=workspace,
         )
         headers: dict[str, str] = {}
         response = await self._client._request(

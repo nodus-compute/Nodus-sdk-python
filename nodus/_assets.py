@@ -5,14 +5,19 @@ import asyncio
 from dataclasses import dataclass, field
 from pathlib import Path
 import re
+import time
 from typing import Any
 from urllib.parse import urlsplit
 
 import httpx
 
-from .errors import APIConnectionError, APIError, APITimeoutError, ValidationError
+from ._connections import _ref as _connection_ref
+from .errors import APIConnectionError, APIError, APITimeoutError, NodusError, ValidationError
 
 _TIMEOUT = 660.0
+_QUERY_WAIT_SECONDS = 720.0
+_QUERY_HTTP_SECONDS = 15.0
+_QUERY_POLL_SECONDS = 1.0
 _ASSET_ID = re.compile(r"asset_[A-Za-z0-9-]{1,64}\Z")
 
 
@@ -27,6 +32,8 @@ class Asset:
     stored_bytes: int | None = None
     imported_bytes: int | None = None
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
+    export: dict[str, Any] | None = None
+    error: str = ""
 
     @classmethod
     def from_dict(cls, row: Any) -> Asset:
@@ -34,7 +41,13 @@ class Asset:
             raise APIError("The API returned an invalid asset")
         return cls(row["id"], row.get("state", ""), row.get("kind", ""),
                    row.get("name", ""), row.get("stored_bytes"),
-                   row.get("imported_bytes"), dict(row))
+                   row.get("imported_bytes"), dict(row), row.get("export"), row.get("error", ""))
+
+
+def _query_result(asset: Asset) -> Asset:
+    if asset.state != "ready":
+        raise APIError(f"Query export {asset.id} failed. Inspect the asset for its safe error and retry when corrected")
+    return asset
 
 
 def _id(value: str) -> str:
@@ -83,6 +96,26 @@ def _import(kind: str, value: str, ref: str | None = None,
             raise ValidationError("Import token must be a nonempty credential without whitespace")
         payload["token"] = token
     return payload
+
+
+def _query(connection: str, sql: str, format: str, branch: str | None, reuse: bool) -> dict[str, Any]:
+    connection = _connection_ref(connection)
+    keyword = re.match(r"[A-Za-z_][A-Za-z0-9_$]*", sql.lstrip()) if isinstance(sql, str) else None
+    if keyword is None or keyword[0].upper() not in ("SELECT", "WITH"):
+        raise ValidationError("Query must start with SELECT or WITH")
+    if len(sql.encode("utf-8")) > 60000 or "\x00" in sql:
+        raise ValidationError("Invalid connection query")
+    if format not in ("parquet", "csv"):
+        raise ValidationError("format must be parquet or csv")
+    if not isinstance(reuse, bool):
+        raise ValidationError("reuse must be a boolean")
+    body: dict[str, Any] = {"kind": "connection_query", "connection_id": connection,
+                            "sql": sql, "format": format, "reuse": reuse}
+    if branch is not None:
+        if not isinstance(branch, str) or not branch or len(branch) > 255 or re.search(r"[\x00-\x1f\x7f]", branch):
+            raise ValidationError("Invalid query branch")
+        body["branch"] = branch
+    return body
 
 
 def _response(client: Any, method: str, path: str, response: httpx.Response) -> Any:
@@ -145,7 +178,7 @@ class Assets:
 
     def _request(self, method: str, path: str, **kwargs: Any) -> Any:
         try:
-            response = self._client._http.request(method, path, timeout=_TIMEOUT,
+            response = self._client._http.request(method, path, timeout=kwargs.pop("timeout", _TIMEOUT),
                                                   follow_redirects=False, **kwargs)
         except httpx.TimeoutException:
             raise APITimeoutError("Asset request timed out. Check assets before repeating an import or upload") from None
@@ -177,6 +210,32 @@ class Assets:
         """Import selected files from a Hugging Face dataset repository."""
         return Asset.from_dict(self._request("POST", "/v1/assets/import", json=_import("huggingface", repo, ref, files, token)))
 
+    def import_query(self, connection: str, sql: str, *, format: str = "parquet",
+                     branch: str | None = None, reuse: bool = False) -> Asset:
+        """Export a read-only database query as a normal input asset."""
+        deadline = time.monotonic() + _QUERY_WAIT_SECONDS
+        asset = Asset.from_dict(self._request("POST", "/v1/assets/import", timeout=_QUERY_HTTP_SECONDS,
+            json=_query(connection, sql, format, branch, reuse)))
+        asset_id = _id(asset.id)
+        try:
+            while asset.state == "importing":
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise APITimeoutError(f"Query export {asset_id} is still pending. Check this asset before repeating the import")
+                time.sleep(min(_QUERY_POLL_SECONDS, remaining))
+                try:
+                    asset = Asset.from_dict(self._request("GET", f"/v1/assets/{asset_id}", timeout=min(_QUERY_HTTP_SECONDS, max(0.001, deadline-time.monotonic()))))
+                except (APIConnectionError, APITimeoutError) as exc:
+                    raise type(exc)(f"Could not observe query export {asset_id}. Inspect this asset before repeating the import") from None
+            return _query_result(asset)
+        except (NodusError, KeyboardInterrupt, asyncio.CancelledError) as exc:
+            exc.asset_id = asset_id
+            raise
+
+    def get(self, asset_id: str) -> Asset:
+        """Get an asset and its optional query export metadata."""
+        return Asset.from_dict(self._request("GET", f"/v1/assets/{_id(asset_id)}"))
+
     def delete(self, asset_id: str) -> None:
         """Delete an asset that no active workload uses."""
         self._request("DELETE", f"/v1/assets/{_id(asset_id)}")
@@ -190,7 +249,7 @@ class AsyncAssets:
 
     async def _request(self, method: str, path: str, **kwargs: Any) -> Any:
         try:
-            response = await self._client._http.request(method, path, timeout=_TIMEOUT,
+            response = await self._client._http.request(method, path, timeout=kwargs.pop("timeout", _TIMEOUT),
                                                         follow_redirects=False, **kwargs)
         except httpx.TimeoutException:
             raise APITimeoutError("Asset request timed out. Check assets before repeating an import or upload") from None
@@ -221,6 +280,32 @@ class AsyncAssets:
                                  files: list[str] | None = None, token: str | None = None) -> Asset:
         """Import selected files from a Hugging Face dataset repository."""
         return Asset.from_dict(await self._request("POST", "/v1/assets/import", json=_import("huggingface", repo, ref, files, token)))
+
+    async def import_query(self, connection: str, sql: str, *, format: str = "parquet",
+                           branch: str | None = None, reuse: bool = False) -> Asset:
+        """Export a read-only database query as a normal input asset."""
+        deadline = time.monotonic() + _QUERY_WAIT_SECONDS
+        asset = Asset.from_dict(await self._request("POST", "/v1/assets/import", timeout=_QUERY_HTTP_SECONDS,
+            json=_query(connection, sql, format, branch, reuse)))
+        asset_id = _id(asset.id)
+        try:
+            while asset.state == "importing":
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise APITimeoutError(f"Query export {asset_id} is still pending. Check this asset before repeating the import")
+                await asyncio.sleep(min(_QUERY_POLL_SECONDS, remaining))
+                try:
+                    asset = Asset.from_dict(await self._request("GET", f"/v1/assets/{asset_id}", timeout=min(_QUERY_HTTP_SECONDS, max(0.001, deadline-time.monotonic()))))
+                except (APIConnectionError, APITimeoutError) as exc:
+                    raise type(exc)(f"Could not observe query export {asset_id}. Inspect this asset before repeating the import") from None
+            return _query_result(asset)
+        except (NodusError, KeyboardInterrupt, asyncio.CancelledError) as exc:
+            exc.asset_id = asset_id
+            raise
+
+    async def get(self, asset_id: str) -> Asset:
+        """Get an asset and its optional query export metadata."""
+        return Asset.from_dict(await self._request("GET", f"/v1/assets/{_id(asset_id)}"))
 
     async def delete(self, asset_id: str) -> None:
         """Delete an asset that no active workload uses."""

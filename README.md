@@ -261,6 +261,28 @@ Observed Act monetary outcomes identify their `measurement_basis`. The basis
 
 ## MCP clients
 
-Use the separate `nodus-mcp` executable to submit and monitor workloads from an
-MCP client. See [MCP setup and the seven tools](https://nodus-compute.ai/docs/guides/mcp/) for executable
-access, API key configuration, tool arguments, pagination, logs and cancellation.
+For Codex, Claude Code and Cursor, install the
+[Nodus plugin](https://github.com/nodus-compute/Nodus-sdk-python/blob/main/docs/guides/plugins.md)
+to add the MCP tools and setup guidance together.
+
+Sign in once, then connect Claude, Cursor, Codex or another MCP client:
+
+```sh
+uvx --from 'nodus-compute[mcp]==0.4.2' nodus login
+```
+
+```json
+{
+  "mcpServers": {
+    "nodus": {
+      "command": "uvx",
+      "args": ["--from", "nodus-compute[mcp]==0.4.2", "nodus-mcp"]
+    }
+  }
+}
+```
+
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) if needed.
+The public package starts the server and reuses your saved login. See
+[MCP setup and the seven tools](https://nodus-compute.ai/docs/guides/mcp/)
+for Codex setup, pip installation and examples.
