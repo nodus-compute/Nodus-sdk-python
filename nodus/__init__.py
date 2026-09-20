@@ -514,8 +514,8 @@ class _WorkloadState:
     updated_at: Any = None
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
-    def _absorb(self, d: dict[str, Any]) -> None:
-        """Update in place from a wire object, keeping every field it omits.
+    def _absorb(self, d: dict[str, Any], *, authoritative: bool = False) -> None:
+        """Update in place, preserving omitted fields in partial responses.
 
         In place rather than returning a new handle: after ``wait()`` the caller
         reads attributes off the object it already has, without another round
@@ -534,7 +534,8 @@ class _WorkloadState:
         self.id = d.get("id") or d.get("workload_id") or self.id
         if "owner_user_id" in d:
             self.owner_user_id = d["owner_user_id"]
-        if "sink_error" in d:
+        # Detail responses omit sink_error once no failed load remains.
+        if authoritative or "sink_error" in d:
             self.sink_error = str(d.get("sink_error") or "")
         if "status" in d:
             self.status = WorkloadStatus.coerce(d.get("status"))
@@ -956,7 +957,7 @@ class Client(_Transport):
     def get(self, workload_id: str) -> "Workload":
         path = f"/v1/workloads/{_valid_id(workload_id)}"
         wl = Workload(self)
-        wl._absorb(self._one(self._request("GET", path), "GET", path))
+        wl._absorb(self._one(self._request("GET", path), "GET", path), authoritative=True)
         return wl
 
     def list(
@@ -1286,7 +1287,7 @@ class Workload(_WorkloadState):
 
     def refresh(self) -> "Workload":
         path = f"/v1/workloads/{_valid_id(self.id)}"
-        self._absorb(self._client._one(self._client._request("GET", path), "GET", path))
+        self._absorb(self._client._one(self._client._request("GET", path), "GET", path), authoritative=True)
         return self
 
     def wait(self, *, poll_seconds: float = 2.0, timeout_seconds: float | None = None,
@@ -1294,7 +1295,7 @@ class Workload(_WorkloadState):
         """Wait in place. A timeout leaves the remote workload running."""
         done = self._client.wait(self.id, poll_seconds=poll_seconds,
                                  timeout_seconds=timeout_seconds, progress=progress, on_update=on_update)
-        self._absorb(done.raw)
+        self._absorb(done.raw, authoritative=True)
         return self
 
     def events(self, *, after: int = 0) -> list[Event]:
@@ -1614,7 +1615,7 @@ class AsyncClient(_Transport):
     async def get(self, workload_id: str) -> "AsyncWorkload":
         path = f"/v1/workloads/{_valid_id(workload_id)}"
         wl = AsyncWorkload(self)
-        wl._absorb(self._one(await self._request("GET", path), "GET", path))
+        wl._absorb(self._one(await self._request("GET", path), "GET", path), authoritative=True)
         return wl
 
     async def list(
@@ -1901,7 +1902,7 @@ class AsyncWorkload(_WorkloadState):
 
     async def refresh(self) -> "AsyncWorkload":
         path = f"/v1/workloads/{_valid_id(self.id)}"
-        self._absorb(self._client._one(await self._client._request("GET", path), "GET", path))
+        self._absorb(self._client._one(await self._client._request("GET", path), "GET", path), authoritative=True)
         return self
 
     async def wait(self, *, poll_seconds: float = 2.0, timeout_seconds: float | None = None,
@@ -1909,7 +1910,7 @@ class AsyncWorkload(_WorkloadState):
         """Wait in place with the same behavior as AsyncClient.wait."""
         done = await self._client.wait(self.id, poll_seconds=poll_seconds,
                                        timeout_seconds=timeout_seconds, progress=progress, on_update=on_update)
-        self._absorb(done.raw)
+        self._absorb(done.raw, authoritative=True)
         return self
 
     async def events(self, *, after: int = 0) -> list[Event]:

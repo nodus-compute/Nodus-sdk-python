@@ -254,3 +254,30 @@ def test_cli_sink_outputs_and_reload(monkeypatch, capsys):
     assert 'loaded' in output and '8' in output
     assert cli.main(['workload', 'outputs', 'wl_test', '--reload', 'model', '--stage', 'train']) == 0
     assert 'pending' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize('asynchronous', [False, True])
+@pytest.mark.parametrize('finish', ['refresh', 'wait'])
+def test_sink_error_clears_only_on_authoritative_recovery(asynchronous, finish):
+    responses = iter([
+        {'id': 'wl_test', 'status': 'completed', 'sink_error': 'sink load failed'},
+        {'state': 'pending'},
+        {'id': 'wl_test', 'status': 'completed'},
+    ])
+    def handler(req):
+        return httpx.Response(202 if req.method == 'POST' else 200, json=next(responses))
+    async def async_action(client):
+        workload = await client.get('wl_test')
+        await workload.reload_output('result')
+        workload._absorb({'status': 'completed'})
+        assert workload.sink_error == 'sink load failed'
+        await getattr(workload, finish)()
+        assert workload.sink_error == ''
+    def sync_action(client):
+        workload = client.get('wl_test')
+        workload.reload_output('result')
+        workload._absorb({'status': 'completed'})
+        assert workload.sink_error == 'sink load failed'
+        getattr(workload, finish)()
+        assert workload.sink_error == ''
+    exercise(handler, asynchronous, async_action if asynchronous else sync_action)

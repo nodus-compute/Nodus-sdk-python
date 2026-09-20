@@ -276,7 +276,8 @@ NULL. JSONL requires one object per line. Strings, booleans and numbers become
 `text`, `boolean` and `numeric`. Nested objects and arrays become `jsonb`.
 Missing keys and JSON null become SQL NULL. A column must keep one non-null
 type across the file. Parquet supports flat nullable boolean, integer, float,
-text, binary, date, timestamp, decimal and JSON columns.
+text, binary, date, timestamp, decimal and JSON columns. Unsigned integers up to
+32 bits load as `bigint`, and unsigned 64-bit integers load as exact `numeric`.
 
 Files are limited to 5 GB, 50 million rows and 256 columns. CSV records, JSONL
 lines, Parquet pages and Parquet footers are limited to 8 MiB. Parquet row groups
@@ -289,8 +290,9 @@ contains all file columns with compatible types. Every row also carries
 `nodus_workload_id`, `nodus_generation`, `nodus_stage` and `nodus_loaded_at`.
 Those four columns must have types `text`, `integer`, `text` and `timestamptz`.
 One transaction replaces earlier rows for the same workload and stage. A failed
-replacement preserves the prior successful rows. Newer generations fence older
-loads even when the newer output has zero rows. Reloading does not duplicate rows.
+replacement preserves the prior successful rows. Successful newer generations
+fence older loads for the same target table, even when the newer output has zero
+rows. Metadata updates do not advance this fence. Reloading does not duplicate rows.
 
 The `public.nodus_runs` table holds workload, stage and generation metadata,
 including status, GPU, GPU count, region, customer charge, start and end times,
