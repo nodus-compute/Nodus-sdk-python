@@ -1,25 +1,32 @@
 ---
 name: setup
-description: Connect the Nodus plugin, sign in, or troubleshoot missing Nodus MCP tools and authentication failures in Codex, Claude Code or Cursor.
+description: Connect Nodus, sign in, or troubleshoot missing Nodus MCP tools and authentication failures in coding agents.
 ---
 
 # Connect Nodus
 
-The plugin bundles a local MCP server launched from the public Python package.
-It uses the same saved browser sign-in as the Nodus CLI.
+Nodus provides a local MCP server using the saved browser sign-in from the CLI.
+The guided installer supplies an absolute executable path. The plugin uses uvx.
 
-1. Check that `uvx` is available. If missing, direct the user to the
-   [uv installer](https://docs.astral.sh/uv/getting-started/installation/).
-2. Have the user complete browser sign-in in their own terminal:
+1. If Nodus tools are already available, call `list_workloads` with `limit: 1`.
+   An empty list is valid. Report the actual response and stop if it succeeds.
+2. For a new connection, use the
+   [one-command setup guide](https://nodus-compute.ai/docs/guides/connect/#quick-connection).
+   The user selects agents and completes browser sign-in in their own terminal.
+   Keep an existing plugin installation instead of adding duplicate MCP tools.
+3. For a plugin or manual connection using uvx, have the user sign in with:
 
    ```sh
    uvx --from 'nodus-compute[mcp]==0.4.2' nodus login
    ```
 
-3. Reload the client's plugin connection or start a new session. Discover the
+   This command requires [uv](https://docs.astral.sh/uv/getting-started/installation/).
+   For an installer connection, rerun the guided installer to refresh sign-in.
+   Do not install uv merely to repair that connection.
+4. Reload the client's connection or start a new session. Discover the
    Nodus tools using the client's tool discovery mechanism. Tool names may
    include a client namespace.
-4. Call `list_workloads` with `limit: 1` to verify the connection. This does
+5. Call `list_workloads` with `limit: 1` to verify the connection. This does
    not start paid compute. Report the actual result or error.
 
 Do not ask for an API key in chat or print the contents of `~/.nodus/config.toml`.

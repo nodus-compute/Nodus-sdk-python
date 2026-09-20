@@ -31,7 +31,7 @@ def main() -> int:
     source.add_argument('--version', help='published PyPI version to verify')
     parser.add_argument('--report', type=Path, help='save the verification result as JSON')
     args = parser.parse_args()
-    target = str(args.wheel.resolve()) + "[mcp]" if args.wheel else f'nodus-compute[mcp]=={args.version.removeprefix("v")}'
+    target = str(args.wheel.resolve()) + "[mcp,dev]" if args.wheel else f'nodus-compute[mcp,dev]=={args.version.removeprefix("v")}'
     report = {'artifact': target, 'status': 'failed', 'stage': 'setup'}
     result = 1
     try:
@@ -46,8 +46,7 @@ def main() -> int:
             report['stage'] = 'install'
             for attempt in range(6 if args.version else 1):
                 installed = subprocess.run([str(python), '-m', 'pip', 'install', '--no-cache-dir',
-                                            '--index-url', 'https://pypi.org/simple', target,
-                                            'pytest', 'pytest-asyncio'], env=env)
+                                            '--index-url', 'https://pypi.org/simple', target], env=env)
                 if installed.returncode == 0:
                     break
                 if not args.version or attempt == 5:
@@ -56,7 +55,7 @@ def main() -> int:
                 time.sleep(10)
             suite = work / 'suite'
             suite.mkdir()
-            for name in ('tests', 'docs', 'examples', 'openapi', 'scripts', 'README.md', 'llms.txt',
+            for name in ('tests', 'docs', 'examples', 'openapi', 'scripts', 'install', 'plugins', 'README.md', 'llms.txt',
                          'LICENSE', 'RELEASING.md', 'CHANGELOG.md', 'pyproject.toml'):
                 source_path = ROOT / name
                 if source_path.is_dir():
