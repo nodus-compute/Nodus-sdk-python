@@ -11,7 +11,7 @@ from typing import Literal, TypedDict
 
 from .types import ComputeClass, ContinuityMode
 
-__all__ = ["Source", "Requirements", "Placement", "Policy", "ContinuitySpec", "StageInput", "StageSpec"]
+__all__ = ["Source", "Requirements", "Placement", "Policy", "ContinuitySpec", "StageInput", "StageSpec", "OutputSink", "OutputSpec"]
 
 
 class Source(TypedDict, total=False):
@@ -61,6 +61,7 @@ class Policy(TypedDict, total=False):
 
     data_regions: list[str]
     secret_refs: list[str]
+    egress_allow: list[str]
 
 
 class ContinuitySpec(TypedDict, total=False):
@@ -91,6 +92,20 @@ class StageInput(TypedDict):
     from_output: str
 
 
+class OutputSink(TypedDict):
+    """Database connection reference and destination table."""
+
+    connection: str
+    table: str
+
+
+class OutputSpec(TypedDict):
+    """A result file to load into a connected database."""
+
+    path: str
+    sink: OutputSink
+
+
 class _StageRequired(TypedDict):
     id: str
 
@@ -109,4 +124,4 @@ class StageSpec(_StageRequired, total=False):
     requirements: Requirements
     depends_on: list[str]
     total_units: int
-    outputs: dict[str, str]
+    outputs: dict[str, str | OutputSpec]

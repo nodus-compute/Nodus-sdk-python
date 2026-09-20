@@ -16,6 +16,7 @@ except ModuleNotFoundError:  # Python 3.10
     import tomli as tomllib
 
 from ._brief import _validate_assets, _validate_bucket_regions, _validate_outputs, validate_requirements, UNSUPPORTED
+from ._connections import _live_refs, _group
 from .requests import ContinuitySpec, Policy, Requirements, Source, StageInput, StageSpec
 
 _TEMPLATE = '''# Edit the image and command for your workload.
@@ -28,7 +29,7 @@ _FIELDS = {
     'command', 'image', 'model', 'peak_memory_gb', 'optimization', 'gpu', 'gpu_count', 'gpu_interconnect',
     'budget', 'compute_class', 'continuity', 'finish_by', 'data_regions',
     'stages', 'framework', 'policy', 'requirements', 'idempotency_key',
-    'source_asset_id', 'inputs', 'outputs',
+    'source_asset_id', 'inputs', 'outputs', 'connections', 'sweep_id',
 }
 
 
@@ -166,7 +167,7 @@ def _stages(stages: Any) -> None:
                 _fail(name + '.outputs', 'expected a table of names and paths')
             for key, item in stage['outputs'].items():
                 _text(key, name + '.outputs')
-                _text(item, name + '.outputs.' + key)
+                _text(item['path'] if isinstance(item, dict) else item, name + '.outputs.' + key)
         if 'inputs' in stage:
             if not isinstance(stage['inputs'], list):
                 _fail(name + '.inputs', 'expected a list of inputs')
@@ -214,8 +215,13 @@ def load_workload_file(path: str | Path = 'nodus.toml') -> dict[str, Any]:
             _continuity(value, key)
         elif key == 'policy':
             _table(value, key, set(Policy.__annotations__))
-            if 'data_regions' in value:
-                _strings(value['data_regions'], 'policy.data_regions')
+            for name in ('data_regions', 'egress_allow', 'secret_refs'):
+                if name in value:
+                    _strings(value[name], 'policy.' + name)
+        elif key == 'connections':
+            _live_refs(value)
+        elif key == 'sweep_id':
+            _group(value)
         elif key == 'data_regions':
             _strings(value, key)
         elif key == 'inputs':
@@ -231,7 +237,7 @@ def load_workload_file(path: str | Path = 'nodus.toml') -> dict[str, Any]:
                 _fail(key, 'expected a table of output names and paths')
             for name, output_path in value.items():
                 _text(name, key)
-                _text(output_path, f'outputs.{name}')
+                _text(output_path['path'] if isinstance(output_path, dict) else output_path, f'outputs.{name}')
         elif key == 'stages':
             _stages(value)
         elif key == 'finish_by':

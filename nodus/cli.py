@@ -23,7 +23,7 @@ from typing import Any
 from . import Client, SandboxExec, __version__, _is_header_safe, _redact, _resolve_base_url, _current_hosted_url, config, login
 from ._terminal import clean, compute_label, format_cost, show_table, show_workload, status_label
 from ._brief import STATUS_FILTERS
-from .errors import ValidationError, NodusError, NotFoundError, AuthenticationError, APIConnectionError, APITimeoutError
+from .errors import ValidationError, NodusError, NotFoundError, AuthenticationError, APIConnectionError, APITimeoutError, asset_id_from_error
 from .types import _num
 from ._workload_file import load_workload_file, write_workload_file
 
@@ -198,9 +198,15 @@ def _cmd_run(args: argparse.Namespace) -> int:
         print(_safe_line(wl.id), flush=True)
         if args.cmd == "submit":
             return 0
+        seen_links: set[str] = set()
+        def show_live_links(current):
+            for link in current.links:
+                if link.url not in seen_links:
+                    print(f"wandb: {link.url}", flush=True)
+                    seen_links.add(link.url)
         with _cancel_on_interrupt(client, wl.id):
             wl.wait(poll_seconds=args.poll, timeout_seconds=args.timeout,
-                    progress=False if args.plain else None)
+                    progress=False if args.plain else None, on_update=show_live_links)
         show_workload(wl, plain=args.plain)
         return 0 if wl.succeeded else 1
 
@@ -255,6 +261,33 @@ def _cmd_connection(args: argparse.Namespace) -> int:
         else:
             client.connections.delete(args.connection)
             print(f"Deleted {_safe_line(args.connection)}")
+    return 0
+
+
+def _query_recovery(exc: BaseException) -> str | None:
+    asset_id = asset_id_from_error(exc)
+    if asset_id is not None:
+        return f"Query export {asset_id} was admitted. Inspect it with nodus asset get {asset_id} before repeating the import."
+    return None
+
+
+def _cmd_asset(args: argparse.Namespace) -> int:
+    with Client(base_url=args.base_url) as client:
+        if args.asset_cmd == "get":
+            asset = client.assets.get(args.asset_id)
+            for label, value in (("Asset", asset.id), ("Status", asset.state),
+                                 ("Name", asset.name), ("Stored bytes", asset.stored_bytes)):
+                print(f"{label}: {_safe_line(value)}")
+            if asset.error:
+                print(f"Error: {_safe_line(asset.error)}")
+            if isinstance(asset.export, dict):
+                for label, key in (("Format", "format"), ("Rows", "row_count"), ("Export bytes", "bytes")):
+                    if key in asset.export:
+                        print(f"{label}: {_safe_line(asset.export[key])}")
+        else:
+            asset = client.assets.import_query(args.connection, args.sql, format=args.format,
+                                               branch=args.branch, reuse=args.reuse)
+            print(_safe_line(asset.id))
     return 0
 
 
@@ -510,6 +543,23 @@ def _cmd_sandbox(args: argparse.Namespace) -> int:
         sandbox.terminate()
         print(_safe_line(sandbox.id))
         return 0
+
+
+def _cmd_outputs(args: argparse.Namespace) -> int:
+    with Client(base_url=args.base_url) as client:
+        if args.reload:
+            result = client.reload_output(args.workload_id, args.reload, stage=args.stage)
+            print(_safe_line(result.get("state", "")))
+        else:
+            outputs = client.outputs(args.workload_id)
+            if args.json:
+                print(json.dumps([o.raw for o in outputs], indent=2))
+            else:
+                show_table(["Stage", "Output", "Bytes", "Sink", "Rows", "Sink error"],
+                           [[o.stage_id, o.name, str(o.bytes), o.sink_state or "-",
+                             str(o.sink_rows) if o.sink_rows is not None else "-", o.sink_error]
+                            for o in outputs], empty="No outputs available yet.", plain=args.plain)
+    return 0
 
 
 def _cmd_download(args: argparse.Namespace) -> int:
@@ -834,7 +884,7 @@ class _CommandHelpFormatter(argparse.RawDescriptionHelpFormatter):
                 ("Run", ("run", "submit", "sandbox", "devbox")),
                 ("Monitor", ("list", "status", "wait", "logs", "cancel")),
                 ("Results", ("download",)),
-                ("Advanced", ("upload", "assets", "pools", "events", "artifacts", "ledger", "explain")),
+                ("Advanced", ("upload", "assets", "asset", "pools", "events", "artifacts", "ledger", "explain")),
             )
             return "\n".join(
                 f"  {title}:\n" + "".join(
@@ -900,12 +950,38 @@ Use nodus COMMAND --help for command options.""",
             g.add_argument("--timeout", type=_positive_seconds, default=None)
             g.add_argument("--poll", type=_positive_seconds, default=2.0)
 
+    workload = sub.add_parser("workload", help="inspect a workload")
+    workload_sub = workload.add_subparsers(dest="workload_cmd", required=True)
+    workload_get = workload_sub.add_parser("get", help="show workload status, cost and live links")
+    workload_get.add_argument("workload_id")
+    workload_get.add_argument("--json", action="store_true")
+    workload_get.add_argument("--plain", action="store_true", default=argparse.SUPPRESS)
+    workload_get.add_argument("--debug", action="store_true", default=argparse.SUPPRESS)
+    workload_get.set_defaults(cmd="status")
+    outputs = workload_sub.add_parser("outputs", help="list output downloads and database load state")
+    outputs.add_argument("workload_id")
+    outputs.add_argument("--json", action="store_true")
+    outputs.add_argument("--reload", metavar="NAME", help="retry loading a named output")
+    outputs.add_argument("--stage", help="select a stage when names repeat")
+    outputs.add_argument("--plain", action="store_true", default=argparse.SUPPRESS)
+    outputs.set_defaults(cmd="outputs")
+
     d = sub.add_parser("download", help="download workload outputs")
     d.add_argument("workload_id")
 
     u = sub.add_parser("upload", help="upload a data file or archive")
     u.add_argument("file")
     sub.add_parser("assets", help="list uploaded and imported data")
+    asset = sub.add_parser("asset", help="import or inspect input assets")
+    asset_sub = asset.add_subparsers(dest="asset_cmd", required=True)
+    asset_get = asset_sub.add_parser("get", help="inspect an asset by ID, including its export error")
+    asset_get.add_argument("asset_id")
+    query = asset_sub.add_parser("import-query", help="export a read-only database query")
+    query.add_argument("connection", help="connection name or ID")
+    query.add_argument("sql", help="SELECT or WITH query")
+    query.add_argument("--format", choices=("parquet", "csv"), default="parquet")
+    query.add_argument("--branch", help="must match the connection's verified Neon branch")
+    query.add_argument("--reuse", action="store_true", help="reuse an eligible export from the last 24 hours")
     secret = sub.add_parser("secret", help="store and manage write-only tenant secrets")
     secret_sub = secret.add_subparsers(dest="secret_cmd", required=True)
     secret_set = secret_sub.add_parser("set", help="store a new version from stdin or a file")
@@ -1130,8 +1206,10 @@ def main(argv: list[str] | None = None) -> int:
         "run": lambda: _cmd_run(args),
         "submit": lambda: _cmd_run(args),
         "download": lambda: _cmd_download(args),
+        "outputs": lambda: _cmd_outputs(args),
         "upload": lambda: _cmd_upload(args),
         "assets": lambda: _cmd_assets(args),
+        "asset": lambda: _cmd_asset(args),
         "secret": lambda: _cmd_secret(args),
         "connection": lambda: _cmd_connection(args),
         "pools": lambda: _cmd_pools(args),
@@ -1180,9 +1258,13 @@ def main(argv: list[str] | None = None) -> int:
                 message += " Look up the connection by name before retrying."
         elif args.cmd in ("secret", "connection") and isinstance(exc, NodusError) and (exc.status_code is not None or not isinstance(exc, ValidationError)):
             message = ("Secret" if args.cmd == "secret" else "Connection") + " operation failed. Check your credentials, reference, and connection."
+        if args.cmd == "asset" and (recovery := _query_recovery(exc)):
+            message = recovery
         print(f"Error: {message}", file=sys.stderr)
         return 2
-    except KeyboardInterrupt:
+    except KeyboardInterrupt as exc:
+        if args.cmd == "asset" and (recovery := _query_recovery(exc)):
+            print(recovery, file=sys.stderr)
         return 130
 
 

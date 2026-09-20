@@ -66,6 +66,8 @@ other settings unchanged to avoid submitting duplicate work.
 |---|---|
 | `nodus upload FILE` | Upload a file or archive and print its asset ID |
 | `nodus assets` | List stored assets |
+| `nodus asset get ID` | Inspect one asset and its safe export error |
+| `nodus asset import-query CONNECTION SQL` | Export a database query and wait for its asset |
 
 See [code and datasets](../guides/assets.md) for imports and attaching assets to work.
 
@@ -128,3 +130,10 @@ filters `pending`, `approved`, `rejected`, `expired`, `no_op`, `applying`, or
 `nodus pools reject POOL_ID PROPOSAL_ID` rejects pending intent. These commands
 require a current account admin. Approval does not itself rent capacity and does
 not change the original expiry. Inspect the amount with `proposals` first.
+
+### Database output load state
+
+`nodus workload outputs WORKLOAD_ID` lists output names, sizes and database sink
+load state. Add `--json` for the API fields. Retry a saved sink output with
+`--reload NAME` and add `--stage STAGE` when output names repeat across stages.
+Loading happens independently of workload completion.

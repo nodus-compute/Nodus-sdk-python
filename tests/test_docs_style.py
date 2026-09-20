@@ -61,6 +61,14 @@ class DocumentationStyleTests(unittest.TestCase):
             path.write_text('Clear documentation.', encoding='utf-8')
             self.assertIn(path, style.document_paths(root))
 
+    def test_checks_customer_plugin_instructions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / 'plugins/nodus/skills/workloads/SKILL.md'
+            path.parent.mkdir(parents=True)
+            path.write_text('First' + chr(59) + ' second', encoding='utf-8')
+            self.assertEqual(style.main(root), 1)
+
 
 if __name__ == '__main__':
     unittest.main()

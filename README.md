@@ -261,6 +261,10 @@ Observed Act monetary outcomes identify their `measurement_basis`. The basis
 
 ## MCP clients
 
+For Codex, Claude Code and Cursor, install the
+[Nodus plugin](https://github.com/nodus-compute/Nodus-sdk-python/blob/main/docs/guides/plugins.md)
+to add the MCP tools and setup guidance together.
+
 Sign in once, then connect Claude, Cursor, Codex or another MCP client:
 
 ```sh

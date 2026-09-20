@@ -156,3 +156,11 @@ completion. Recovery requests a fresh credential and starts the stream from the
 beginning. Your program remains responsible for loading its own saved progress
 and skipping data already processed. Data received before EOF is not yet fully
 verified against the declared digest.
+
+## Database result sinks
+
+An output value can be a path string or a dictionary containing `path` and
+`sink`, where `sink` contains `connection` and `table`. String paths retain their
+existing behavior. Database sinks support CSV, JSONL and flat Parquet files.
+See [database result loading](../../guides/connections.md#load-results-into-a-database)
+for types, limits, generation replacement and reload.

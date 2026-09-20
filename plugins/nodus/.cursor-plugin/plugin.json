@@ -1,0 +1,20 @@
+{
+  "name": "nodus",
+  "version": "0.1.0",
+  "description": "Run GPU workloads with Nodus, monitor progress, read logs and inspect results.",
+  "author": {
+    "name": "Nodus, Inc."
+  },
+  "homepage": "https://nodus-compute.ai/docs/guides/mcp/",
+  "repository": "https://github.com/nodus-compute/Nodus-sdk-python",
+  "license": "Apache-2.0",
+  "keywords": [
+    "nodus",
+    "gpu",
+    "workloads",
+    "mcp"
+  ],
+  "mcpServers": "./.mcp.json",
+  "displayName": "Nodus",
+  "skills": "./skills/"
+}

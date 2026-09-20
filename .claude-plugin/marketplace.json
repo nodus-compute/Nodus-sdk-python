@@ -1,0 +1,16 @@
+{
+  "name": "nodus",
+  "owner": {
+    "name": "Nodus, Inc."
+  },
+  "metadata": {
+    "description": "Nodus tools for coding agents"
+  },
+  "plugins": [
+    {
+      "name": "nodus",
+      "source": "./plugins/nodus",
+      "description": "Run GPU workloads with Nodus, monitor progress, read logs and inspect results."
+    }
+  ]
+}

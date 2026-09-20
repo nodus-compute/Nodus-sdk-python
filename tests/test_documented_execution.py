@@ -94,6 +94,10 @@ def docs_api(monkeypatch):
                 return self.reply({"connections": [connection]})
             if path == "/v1/connections/conn_docs":
                 return self.reply(connection)
+            if path == "/v1/assets/asset_docs":
+                return self.reply({"id": "asset_docs", "state": "ready", "name": "data.parquet", "kind": "connection_query",
+                                   "export": {"id": "export_docs", "connection_id": "conn_docs", "asset_id": "asset_docs", "query_hash": "a" * 64,
+                                              "format": "parquet", "row_count": 10, "bytes": 256, "created_at": "2026-09-19T00:00:00Z"}})
             if path == "/v1/assets":
                 return self.reply({"assets": [], "max_import_bytes": 1048576})
             if path == "/v1/workloads":
@@ -171,7 +175,14 @@ def docs_api(monkeypatch):
             if path in ("/v1/assets/upload", "/v1/assets/import"):
                 if self.headers.get("Authorization") != "Bearer nk_docs":
                     return self.reply({"error": "unauthorized"}, 401)
-                return self.reply({"id": "asset_docs", "state": "ready", "name": "fixture", "kind": "file"}, 201)
+                if path == "/v1/assets/import" and json.loads(raw).get("kind") == "connection_query":
+                    payload = json.loads(raw)
+                    assert payload["connection_id"] == "lab-db"
+                    assert payload["sql"].startswith("SELECT")
+                    return self.reply({"id": "asset_docs", "state": "ready", "name": "data.parquet", "kind": "connection_query",
+                                       "export": {"id": "export_docs", "connection_id": "conn_docs", "asset_id": "asset_docs", "query_hash": "a" * 64,
+                                                  "format": "parquet", "row_count": 10, "bytes": 256, "created_at": "2026-09-19T00:00:00Z"}}, 201)
+                return self.reply({"id": "asset_docs", "state": "ready", "name": "fixture", "kind": "upload"}, 201)
             payload = json.loads(raw or b"{}")
             calls.append(("POST", path))
             if path == "/v1/sandboxes/sb_docs/agent-runs":
@@ -186,6 +197,8 @@ def docs_api(monkeypatch):
             if path == "/v1/connections":
                 assert payload == {"name": "lab-db", "kind": "neon", "secret": "LAB_DB", "scope": "read", "region": "us-east-1", "live_mode": False}
                 return self.reply(connection, 201)
+            if path == "/v1/workloads/wl_docs/outputs/results/reload":
+                return self.reply({"id": "load_docs", "workload_id": "wl_docs", "stage": "main", "generation": 1, "name": "results", "table": "eval_results", "rows": 0, "state": "pending"}, 202)
             if path == "/v1/connections/conn_docs/verify":
                 return self.reply(connection)
             if path == "/v1/pools/pool_docs/enrollment-tokens":
@@ -296,7 +309,7 @@ def test_complete_example_programs(script, args, docs_api, tmp_path):
     ["status", "wl_docs"], ["wait", "wl_docs"],
     ["events", "wl_docs"], ["logs", "wl_docs"],
     ["artifacts", "wl_docs"], ["explain", "wl_docs"], ["ledger", "wl_docs"],
-    ["download", "wl_docs"], ["cancel", "wl_docs"], ["assets"], ["upload", "hello.py"],
+    ["download", "wl_docs"], ["workload", "outputs", "wl_docs"], ["workload", "outputs", "wl_docs", "--reload", "results", "--stage", "main"], ["cancel", "wl_docs"], ["assets"], ["upload", "hello.py"],
 ])
 def test_installed_terminal_commands(args, docs_api, tmp_path):
     from nodus._workload_file import write_workload_file
