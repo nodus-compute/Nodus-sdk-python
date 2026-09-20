@@ -1,56 +1,69 @@
 # MCP tools
 
-Connect an MCP client to Nodus to submit GPU workloads, inspect progress,
-read logs and find output files. The `nodus-mcp` server runs locally over
-standard input and output using MCP protocol version `2025-06-18`.
+Connect Claude, Cursor, Codex or another MCP client to Nodus. Ask your agent to
+submit GPU workloads, check progress, read logs and retrieve output metadata.
 
-## Set up the server
+## Connect in two steps
 
-You need a `nodus-mcp` executable for your machine and a Nodus API key.
-The executable is separate from the Python SDK. Installing `nodus-compute`
-with pip does not install the MCP server.
+You need [uv](https://docs.astral.sh/uv/getting-started/installation/) installed.
+`uvx` downloads the public Nodus package and starts the server for your client.
+It manages the Python runtime and package dependencies for you.
 
-If you have access to the Nodus source repository, build it from that checkout:
+**1. Sign in once.** Run this in your terminal and complete browser sign-in:
 
 ```sh
-go build -o nodus-mcp ./cmd/nodus-mcp
+uvx --from 'nodus-compute[mcp]==0.4.1' nodus login
 ```
 
-This requires the Go toolchain specified by the repository. If you do not have
-source access or an executable from your team, request access from Nodus.
-There is no hosted MCP URL to enter in your client. Configure a local command.
-
-Set these environment variables for the process your MCP client starts:
-
-| Variable | Value |
-| --- | --- |
-| `NODUS_API_KEY` | Required Nodus API key, supplied through your client's secret or environment settings |
-| `NODUS_API_URL` | Optional API origin, defaults to `https://api.nodus.run`. Do not append `/v1` |
-
-The MCP server reads `NODUS_API_KEY` directly. It does not read the Python SDK's
-saved `nodus login` session or `NODUS_BASE_URL` setting. See
-[authentication](../getting-started/authentication.md) for API key guidance.
-Keep the key out of prompts, tool arguments and committed configuration files.
-
-In your MCP client, set the server command to the absolute executable path.
-For clients that accept an `mcpServers` JSON configuration, the shape is:
+**2. Add Nodus to your MCP client.** In Claude Desktop or Cursor, add this to
+your MCP server configuration and reload the connection:
 
 ```json
 {
   "mcpServers": {
     "nodus": {
-      "command": "/absolute/path/to/nodus-mcp",
-      "env": {
-        "NODUS_API_KEY": "your-nodus-api-key"
-      }
+      "command": "uvx",
+      "args": ["--from", "nodus-compute[mcp]==0.4.1", "nodus-mcp"]
     }
   }
 }
 ```
 
-Replace the path and key placeholder in your local configuration. Reload the
-client's MCP connection, then check that it discovers the seven tools below.
-Call `list_workloads` with `{}` to check access without submitting compute.
+For Codex, run this instead of editing JSON:
+
+```sh
+codex mcp add nodus -- uvx --from 'nodus-compute[mcp]==0.4.1' nodus-mcp
+```
+
+The server uses your saved sign-in. There is no API key to paste into the
+configuration, private repository to clone or executable to compile.
+
+Ask your agent: **"List my Nodus workloads."** This checks the connection
+without starting paid compute. Your client should discover seven tools.
+
+## Already using pip?
+
+Install the MCP extra and reuse your existing Nodus sign-in:
+
+```sh
+pip install --upgrade 'nodus-compute[mcp]==0.4.1'
+nodus login
+```
+
+Set your client's command to `nodus` and its arguments to `["mcp"]`.
+The `nodus-mcp` executable is also installed by the package. Both commands
+start the same local server over standard input and output.
+
+## Authentication and custom deployments
+
+The server reads the same saved credentials as the Python SDK. For automation,
+set `NODUS_API_KEY` in the server process environment. For a custom deployment,
+set `NODUS_BASE_URL` to its API origin without `/v1`, or sign in with
+`nodus login --base-url https://your-api.example`.
+
+Environment settings take priority over saved settings. Keep keys out of
+prompts, tool arguments and committed files. See
+[authentication](../getting-started/authentication.md) for more details.
 
 ## Tool reference
 
@@ -66,7 +79,9 @@ Arguments below are the JSON object passed to the named tool.
 | `get_workload_logs` | `workload_id` | None | Retained workload log text |
 | `list_workload_outputs` | `workload_id` | None | Output metadata and download paths |
 
-IDs and the idempotency key are nonempty strings. `workload` is the HTTP
+Workload IDs contain only letters, digits, underscores and hyphens. The
+idempotency key is a nonempty printable ASCII string without spaces or line
+breaks. `workload` is the HTTP
 workload request object, not the keyword arguments to Python `client.run()`.
 For example, the HTTP budget field is `outcome.max_cost_usd`, not `budget`.
 Use the [OpenAPI contract](../../openapi/openapi.yaml) for the full request
@@ -168,10 +183,17 @@ requested again for the same workload. Continue checking `get_workload`
 until the workload reaches a terminal state. A cancellation acknowledgement
 does not mean resource cleanup has finished.
 
-If the server exits with `NODUS_API_KEY is required`, set the key in the
-launched process environment and reconnect. For authorization errors, verify
-that the key belongs to the account that owns the workload. For `scope: mine`,
-use a credential associated with a team member.
+If your client cannot find `uvx`, restart the client after installing uv or
+set `command` to the full path printed by `command -v uvx` on macOS and Linux,
+or `where.exe uvx` on Windows.
+
+If a tool asks you to sign in, run the sign-in command above from the same
+computer and user account as the MCP client. For expired or rejected sign-in,
+run it with `--force`. For `scope: mine`, use a credential associated with a
+team member.
+
+If `nodus mcp` asks for MCP support, install the `[mcp]` extra using the pip
+command above. The plain Python SDK install keeps MCP dependencies optional.
 
 Custom API origins must use HTTPS, except for local loopback development.
 HTTP redirects are refused. Set the final API origin directly. API requests
