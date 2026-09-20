@@ -258,3 +258,9 @@ This does not restore arbitrary process memory or add guessed resume flags.
 Observed Act monetary outcomes identify their `measurement_basis`. The basis
 `observed_platform_fee_reduction_30m_v1` compares Route platform fees over equal
 30-minute windows. It is not total infrastructure saving or a causal estimate.
+
+## MCP clients
+
+Use the separate `nodus-mcp` executable to submit and monitor workloads from an
+MCP client. See [MCP setup and the seven tools](docs/guides/mcp.md) for executable
+access, API key configuration, tool arguments, pagination, logs and cancellation.
