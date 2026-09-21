@@ -706,6 +706,11 @@
           },
           "sequence": {
             "type": "integer"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Original commit time of the latest useful recovery checkpoint. Independent of event pagination and unchanged by commit retries or artifact-only uploads."
           }
         },
         "x-go-source": "internal/models/models.go",
@@ -738,6 +743,16 @@
               "maxLength": 512
             },
             "description": "Literal normalized paths relative to the code folder, with at most 512 UTF-8 bytes per path. Select files or folders containing recovery state. Empty or omitted at workload level defaults new submissions to [\"state\"]. The runner exposes this folder as NODUS_CHECKPOINT_DIR. Only explicitly selected paths are saved, not installed dependencies elsewhere in the code folder. Empty or omitted at stage level inherits workload paths, a nonempty list overrides them, and [\".\"] explicitly selects the whole folder. Absolute paths, traversal, backslashes, colons, control characters and the .nodus subtree are rejected. Missing paths are skipped without widening the selection. Dependencies outside selected paths must be recreated by the image or command. Final result files are independent. Framework shortcuts apply workload-level paths to their generated stages. Stage-specific paths alongside a framework shortcut are not supported, use explicit stages instead."
+          },
+          "integration": {
+            "type": "string",
+            "enum": [
+              "",
+              "none",
+              "auto",
+              "hf-trainer-v1"
+            ],
+            "description": "Application save and resume integration. New submissions leave application checkpoint preparation disabled unless auto or hf-trainer-v1 is explicitly selected. Omission and none preserve the original source and application-managed checkpoint behavior. A stage inherits an explicit workload selection when omitted. Imported source alone does not enable preparation. auto attempts the supported framework adapter and otherwise runs the original command with application-managed checkpoints. hf-trainer-v1 requires supported Hugging Face Trainer preparation and runtime validation. Explicit managed selections require execution-v2, enabled preparation and source.asset_id. Previously accepted submissions keep their original selection. Prepared source does not itself prove that application state has been saved or recovered."
           }
         },
         "x-go-source": "internal/models/models.go",
@@ -2922,6 +2937,13 @@
           "sink_error": {
             "type": "string",
             "description": "Value-free database sink failure. Workload completion is independent of sink loading."
+          },
+          "checkpoint_preparation": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CheckpointPreparationSummary"
+            },
+            "description": "Detail-only source preparation status for stages requesting managed checkpoint integration. Does not assert runtime framework compatibility or successful application recovery."
           }
         },
         "x-go-source": "internal/models/models.go",
@@ -6250,6 +6272,40 @@
         },
         "x-go-source": "internal/store/connection_loads.go",
         "x-go-type": "ConnectionLoad"
+      },
+      "CheckpointPreparationSummary": {
+        "type": "object",
+        "properties": {
+          "stage_id": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "ready",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "proposed_integration": {
+            "type": "string",
+            "enum": [
+              "none",
+              "hf-trainer-v1"
+            ],
+            "description": "Present after source preparation. hf-trainer-v1 is a proposed adapter that still requires validation when training starts. none retains application-managed checkpoints."
+          },
+          "ready_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "x-go-source": "internal/models/checkpoint_integration.go",
+        "x-go-type": "CheckpointPreparationSummary"
       },
       "InferenceMessage": {
         "type": "object",
