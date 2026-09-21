@@ -56,6 +56,10 @@ def docs_api(monkeypatch):
                   "live_mode": False, "verified_at": "2026-09-19T00:00:00Z",
                   "created_at": "2026-09-19T00:00:00Z", "created_by": "key_docs"}
 
+    workspace = {"id": "ws_1234-abcd", "state": "stopped", "configuration_revision": "a" * 64,
+                 "configuration": {"name": "kernel-lab", "environment": "pytorch-cuda", "editor": "vscode",
+                     "gpu": "H100", "gpu_count": 1, "gpu_memory_gb": 80, "budget_usd": 5, "max_hours": 2, "size_gb": 10}}
+
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_):
             pass
@@ -75,6 +79,8 @@ def docs_api(monkeypatch):
             calls.append(("GET", path))
             if self.headers.get("Authorization") != "Bearer nk_docs":
                 return self.reply({"error": "unauthorized"}, 401)
+            if path == "/v1/research-workspaces/ws_1234-abcd":
+                return self.reply(workspace)
             if path == "/v1/research-workspaces/capabilities":
                 return self.reply({"available": True, "storage_limit_bytes": 10000000000, "storage_policy_version": "r2-standard-10gb-account-v1",
                     "workload_source_limit_bytes": 268435456,
@@ -157,6 +163,10 @@ def docs_api(monkeypatch):
             calls.append(("PATCH", path))
             if self.headers.get("Authorization") != "Bearer nk_docs":
                 return self.reply({"error": "unauthorized"}, 401)
+            if path == "/v1/research-workspaces/ws_1234-abcd":
+                assert payload == {"configuration_revision": "a" * 64,
+                    "configuration": {**workspace["configuration"], "editor": "jupyter", "budget_usd": 8}}
+                return self.reply({**workspace, **payload, "configuration_revision": "b" * 64})
             if path != "/v1/pools/pool_docs":
                 return self.reply({"error": "not_found"}, 404)
             if payload.get("route_enabled") is True and (payload.get("accepted_route_rate_version") != "route-platform-v1" or payload.get("accepted_route_rate_micros") != 20000):

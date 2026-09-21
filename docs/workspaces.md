@@ -220,3 +220,28 @@ binary SSH traffic to the specified compute session. Credentials are absent
 from the configuration and command line. Confirm the workspace host key on
 first connection. If compute is replaced, request fresh connection instructions.
 Disconnecting SSH leaves compute running. Use Stop to release it.
+
+## Change settings for the next session
+
+Once compute and file transfers have stopped and compute release is confirmed,
+you can change the editor, SSH public key, GPU configuration, session budget or
+maximum duration without replacing saved files. Keep the project name,
+environment, capacity and repository settings unchanged.
+
+```python
+workspace_id = "ws_1234-abcd"
+workspace = client.workspaces.get(workspace_id)
+settings = {**workspace["configuration"], "editor": "jupyter", "budget_usd": 8}
+workspace = client.workspaces.update(
+    workspace_id,
+    configuration_revision=workspace["configuration_revision"],
+    configuration=settings,
+)
+```
+
+The asynchronous client exposes the same method with `await`. A stale edit
+returns `workspace_configuration_changed`. Reload and review the current
+settings before submitting a new edit. `workspace_configuration_busy` means
+compute, saving, transfer or cleanup still needs to finish. Retrying identical
+settings after a lost successful response is safe. Start the next session with
+a new start key and check its current price first.

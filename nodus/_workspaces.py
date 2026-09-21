@@ -90,6 +90,14 @@ def _connection(tool: str) -> dict[str, str]:
     return {"tool": tool}
 
 
+def _configuration_update(revision: str, configuration: dict[str, Any]) -> dict[str, Any]:
+    if type(revision) is not str or re.fullmatch(r"[0-9a-f]{64}", revision) is None:
+        raise ValidationError("Use configuration_revision from the current workspace")
+    if not isinstance(configuration, dict) or not configuration:
+        raise ValidationError("Send the complete configuration from the current workspace with your changes")
+    return {"configuration_revision": revision, "configuration": dict(configuration)}
+
+
 def _submitted(client: Any, result: Any, headers: dict[str, str], asynchronous: bool) -> Workload | AsyncWorkload:
     from . import AsyncWorkload, Workload, _valid_id, _was_replayed
     if not isinstance(result, dict) or not isinstance(result.get("id"), str) or not result["id"]:
@@ -180,6 +188,12 @@ class Workspaces:
     def get(self, workspace_id: str) -> dict[str, Any]:
         """Read an interactive workspace's state, costs and connection readiness."""
         return self._client._request("GET", _path(workspace_id))
+
+    def update(self, workspace_id: str, *, configuration_revision: str,
+               configuration: dict[str, Any]) -> dict[str, Any]:
+        """Save next-session settings while compute and transfers are stopped."""
+        return self._client._request("PATCH", _path(workspace_id),
+                                     json=_configuration_update(configuration_revision, configuration), max_retries=0)
 
     def start(self, workspace_id: str, *, idempotency_key: str) -> dict[str, Any]:
         """Start compute once using a caller-retained retry key."""
@@ -283,6 +297,12 @@ class AsyncWorkspaces:
     async def get(self, workspace_id: str) -> dict[str, Any]:
         """Read an interactive workspace's state, costs and connection readiness."""
         return await self._client._request("GET", _path(workspace_id))
+
+    async def update(self, workspace_id: str, *, configuration_revision: str,
+                     configuration: dict[str, Any]) -> dict[str, Any]:
+        """Save next-session settings while compute and transfers are stopped."""
+        return await self._client._request("PATCH", _path(workspace_id),
+                                           json=_configuration_update(configuration_revision, configuration), max_retries=0)
 
     async def start(self, workspace_id: str, *, idempotency_key: str) -> dict[str, Any]:
         """Start compute once using a caller-retained retry key."""

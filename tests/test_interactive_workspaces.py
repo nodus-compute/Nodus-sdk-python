@@ -154,3 +154,30 @@ def test_rejected_workspace_source_is_not_an_idempotency_conflict(asynchronous):
         invoke(handler, asynchronous, "submit", "ws_lab", command="python train.py", budget_usd=2, idempotency_key="source-rejected")
     assert not isinstance(error.value, nodus.IdempotencyConflictError)
     assert error.value.code == "workspace_source_rejected"
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_update_configuration_preserves_observed_revision_and_sends_once(asynchronous):
+    calls = []
+    changed = {**CONFIG, "editor": "vscode", "gpu_count": 2}
+    def handler(request):
+        calls.append(request)
+        assert request.method == "PATCH"
+        assert request.url.path == BASE + "/ws_lab"
+        assert json.loads(request.content) == {"configuration_revision": "a" * 64, "configuration": changed}
+        return httpx.Response(200, json={**RECORD, "configuration": changed, "configuration_revision": "b" * 64})
+    result = invoke(handler, asynchronous, "update", "ws_lab", configuration_revision="a" * 64, configuration=changed)
+    assert result["configuration"] == changed
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_update_configuration_preserves_conflict_for_customer_review(asynchronous):
+    calls = []
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(409, json={"error": "workspace_configuration_changed", "message": "Reload workspace settings."})
+    with pytest.raises(nodus.NodusError) as error:
+        invoke(handler, asynchronous, "update", "ws_lab", configuration_revision="a" * 64, configuration=CONFIG)
+    assert error.value.code == "workspace_configuration_changed"
+    assert len(calls) == 1
