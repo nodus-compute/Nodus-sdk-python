@@ -8,8 +8,9 @@ native install buttons and copyable client commands.
 ## Quick connection
 
 Choose your agent on the [connection page](https://nodus-compute.ai/connect/),
-then approve access in your browser. Cursor and VS Code have native install
-buttons. Hosted connections need no local Nodus package or copied API key.
+then approve access in your browser. Claude Code and Codex use the commands
+below. Cursor has a native install button. Hosted connections need no local
+Nodus package or copied API key.
 
 Claude Code:
 
