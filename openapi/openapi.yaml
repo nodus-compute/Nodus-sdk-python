@@ -2330,7 +2330,7 @@
               "vm",
               "accelerator"
             ],
-            "description": "Required infrastructure class. VM devboxes require a preview deployment with compatible capacity. Existing GPU sandbox clients explicitly request accelerator."
+            "description": "Infrastructure class. Omission selects vm (CPU) for a new sandbox and preserves the stored class when reconnecting by name. CPU sandboxes and devboxes require a preview deployment with compatible capacity. Existing GPU sandbox clients explicitly request accelerator."
           },
           "gpu": {
             "type": "string",
