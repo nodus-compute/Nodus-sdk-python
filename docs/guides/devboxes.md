@@ -56,7 +56,8 @@ nodus.Devbox(...)` inherits Sandbox's termination-on-exit behavior.
 ## Server defaults
 
 The SDK sends `profile: devbox` to the existing sandbox endpoint. It does not
-calculate a budget. Omitting `budget` uses the server's 10 USD devbox limit.
+calculate a budget or request a GPU by default. The server defaults to CPU
+resources. Omitting `budget` uses the server's 10 USD devbox limit.
 The preset supplies 2 vCPUs, 4 GB memory, 20 GB disk, a maximum lifetime of
 7 days from creation, idle suspension after 30 minutes, and snapshot continuity
 at 5 minute intervals. Explicit resource, budget, lifecycle, continuity, and

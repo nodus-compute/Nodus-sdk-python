@@ -17,10 +17,11 @@ long your program will run. Provide memory only when you know the requirement.
 
 ## Optimization
 
-Optimization tiers are not supported. New workloads
-use one automatic policy that selects the cheapest compatible on-demand capacity
-by full hourly price. Lower hourly prices do not guarantee lower total completion
-cost or shorter runtime.
+Optimization tiers are not supported. New workloads use qualified estimates of
+runtime cost when every eligible configuration has comparable measurements.
+Otherwise Nodus orders compatible on-demand configurations by hourly price.
+Spending limits and independent price limits apply in both cases. This does not
+guarantee the lowest total cost or shortest runtime.
 
 Omit `optimization` in new code. The SDK accepts `automatic`, `lowest_cost`,
 `lower_cost`, `balanced`, `faster`, and `fastest` for backward compatibility.
