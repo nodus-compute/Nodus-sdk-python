@@ -3,6 +3,7 @@
 ## 0.1.2
 
 Use the branded Nodus MCP endpoint for new connections.
+Clarify that hosted browser authorization needs no local package.
 
 ## 0.1.1
 
