@@ -81,9 +81,15 @@ def docs_api(monkeypatch):
                 return self.reply({"error": "unauthorized"}, 401)
             if path == "/v1/research-workspaces/ws_1234-abcd":
                 return self.reply(workspace)
+            if path == "/v1/research-workspaces/ws_1234-abcd/workloads":
+                return self.reply({"workloads": [], "pending_submissions": [{
+                    "id": "wsub_original-submission-id", "workspace_id": "ws_1234-abcd",
+                    "idempotency_key": "kernel-lab-training-1", "state": "ready",
+                    "request": {"command": "python train.py", "budget_usd": 6},
+                    "created_at": "2026-09-21T00:00:00Z"}]})
             if path == "/v1/research-workspaces/capabilities":
                 return self.reply({"available": True, "storage_limit_bytes": 10000000000, "storage_policy_version": "r2-standard-10gb-account-v1",
-                    "workload_source_limit_bytes": 268435456,
+                    "workload_source_limit_bytes": 10000000000,
                     "environments": [{"id": "pytorch-cuda", "name": "PyTorch and CUDA", "description": "Development image"}],
                     "gpu_counts": [1, 2, 4, 8], "editors": ["vscode", "jupyter", "ssh"],
                     "browser_available": True, "workload_submission": True})
@@ -111,7 +117,12 @@ def docs_api(monkeypatch):
                                    "export": {"id": "export_docs", "connection_id": "conn_docs", "asset_id": "asset_docs", "query_hash": "a" * 64,
                                               "format": "parquet", "row_count": 10, "bytes": 256, "created_at": "2026-09-19T00:00:00Z"}})
             if path == "/v1/assets":
-                return self.reply({"assets": [], "max_import_bytes": 1048576})
+                return self.reply({"assets": [{"id": "asset_unused-source-reference", "name": "Project source", "kind": "workspace_source", "state": "ready", "stored_bytes": 1024,
+                    "workspace_source": {"source_id": "source_docs", "workspace_id": "ws_1234-abcd", "source_revision": "a" * 64,
+                        "exporter_version": "workspace-source-v1", "state": "ready", "removable": True, "shared_alias_count": 1}}],
+                    "max_import_bytes": 268435456, "storage_quota_bytes": 2147483648,
+                    "workspace_source_storage": {"included_bytes": 21073741824, "retained_bytes": 1024,
+                        "reserved_bytes": 0, "available_bytes": 21073740800, "billing_enabled": False}})
             if path == "/v1/workloads":
                 return self.reply({"workloads": [row]})
             if path == "/v1/workloads/wl_docs":
@@ -153,7 +164,7 @@ def docs_api(monkeypatch):
             calls.append(("DELETE", path))
             if self.headers.get("Authorization") != "Bearer nk_docs":
                 return self.reply({"error": "unauthorized"}, 401)
-            if path == "/v1/connections/conn_docs":
+            if path in ("/v1/connections/conn_docs", "/v1/assets/asset_unused-source-reference"):
                 return self.reply(b"", 204)
             return self.reply({"error": "not_found"}, 404)
 

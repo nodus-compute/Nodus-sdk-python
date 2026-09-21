@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import re
+import asyncio
+import time
 import os
 from pathlib import Path
 import math
 from typing import Any, TYPE_CHECKING
 
-from .errors import NodusError, ValidationError
+from .errors import APIError, APITimeoutError, NodusError, ValidationError
 
 if TYPE_CHECKING:
     from . import AsyncWorkload, Workload
@@ -107,6 +109,40 @@ def _submitted(client: Any, result: Any, headers: dict[str, str], asynchronous: 
     run._absorb(result)
     run.replayed = _was_replayed(headers)
     return run
+
+
+_sleep = asyncio.sleep
+_PENDING_SOURCE = {"workspace_save_pending", "workspace_source_pending"}
+
+
+def _submission_deadline(timeout_seconds: float, poll_seconds: float) -> float:
+    _positive(timeout_seconds, "timeout_seconds")
+    _positive(poll_seconds, "poll_seconds")
+    return time.monotonic() + timeout_seconds
+
+
+def _submission_remaining(deadline: float, workspace_id: str, key: str) -> float:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise APITimeoutError("Waiting ended before workload admission was confirmed. Resume this submission with its original key", body={"workspace_id": workspace_id, "idempotency_key": key})
+    return remaining
+
+
+def _recover_submission(rows: Any, workspace_id: str, submission_id: str) -> tuple[dict[str, Any], str]:
+    _path(submission_id)
+    if not isinstance(rows, list):
+        raise APIError("The API returned an invalid pending submission list")
+    for row in rows:
+        if not isinstance(row, dict) or row.get("id") != submission_id or row.get("workspace_id") != workspace_id:
+            continue
+        if row.get("state") not in {"saving", "exporting", "ready"}:
+            raise APIError("This submission cannot be resumed. Inspect its failure before creating another", body={"error": row.get("error", "workspace_capture_failed")})
+        body = row.get("request")
+        if not isinstance(body, dict) or not {"command", "budget_usd"} <= body.keys() or body.keys() - {"command", "budget_usd", "gpu", "gpu_count", "gpu_memory_gb"}:
+            raise APIError("The API returned an invalid submission request")
+        _submission(body["command"], body["budget_usd"], body.get("gpu"), body.get("gpu_count"), body.get("gpu_memory_gb"))
+        return dict(body), _key(row.get("idempotency_key"))
+    raise APIError("This pending submission is unavailable. Check admitted workloads before creating another")
 
 
 def _retry_connection_path(workspace_id: str, tool: str) -> str:
@@ -226,6 +262,49 @@ class Workspaces:
         return self._client._request("GET", _path(workspace_id) + "/workloads")["workloads"]
 
 
+    def submissions(self, workspace_id: str) -> list[dict[str, Any]]:
+        """Read recoverable submission requests from the authenticated server."""
+        return self._client._request("GET", _path(workspace_id) + "/workloads").get("pending_submissions", [])
+
+    def submit_and_wait(self, workspace_id: str, *, command: str, budget_usd: float,
+                        idempotency_key: str, gpu: str | None = None, gpu_count: int | None = None,
+                        gpu_memory_gb: float | None = None, timeout_seconds: float = 5700,
+                        poll_seconds: float = 3) -> Workload:
+        """Wait for workload admission, retrying only explicit source preparation."""
+        _path(workspace_id)
+        body = _submission(command, budget_usd, gpu, gpu_count, gpu_memory_gb)
+        key = _key(idempotency_key)
+        deadline = _submission_deadline(timeout_seconds, poll_seconds)
+        return self._wait_submission(workspace_id, body, key, deadline, poll_seconds)
+
+    def resume_submission(self, workspace_id: str, submission_id: str, *,
+                          timeout_seconds: float = 5700, poll_seconds: float = 3) -> Workload:
+        """Explicitly resume the original saved request without local command storage."""
+        _path(workspace_id)
+        _path(submission_id)
+        deadline = _submission_deadline(timeout_seconds, poll_seconds)
+        response = self._client._request("GET", _path(workspace_id) + "/workloads", max_retries=0,
+                                         timeout=min(15, _submission_remaining(deadline, workspace_id, "")))
+        body, key = _recover_submission(response.get("pending_submissions", []), workspace_id, submission_id)
+        return self._wait_submission(workspace_id, body, key, deadline, poll_seconds)
+
+    def _wait_submission(self, workspace_id: str, body: dict[str, Any], key: str,
+                         deadline: float, poll_seconds: float) -> Workload:
+        while True:
+            remaining = _submission_remaining(deadline, workspace_id, key)
+            headers: dict[str, str] = {}
+            try:
+                result = self._client._request("POST", _path(workspace_id) + "/workloads", json=body,
+                                              idempotency_key=key, headers_out=headers, max_retries=0,
+                                              timeout=min(15, remaining))
+            except NodusError as error:
+                if error.status_code != 409 or error.code not in _PENDING_SOURCE:
+                    raise
+                time.sleep(min(poll_seconds, _submission_remaining(deadline, workspace_id, key)))
+            else:
+                return _submitted(self._client, result, headers, False)
+
+
 class AsyncWorkspaces:
     def __init__(self, client: Any):
         self._client = client
@@ -333,3 +412,46 @@ class AsyncWorkspaces:
     async def workloads(self, workspace_id: str) -> list[dict[str, Any]]:
         """List up to 100 submitted workloads and their saved source revisions."""
         return (await self._client._request("GET", _path(workspace_id) + "/workloads"))["workloads"]
+
+
+    async def submissions(self, workspace_id: str) -> list[dict[str, Any]]:
+        """Read recoverable submission requests from the authenticated server."""
+        return (await self._client._request("GET", _path(workspace_id) + "/workloads")).get("pending_submissions", [])
+
+    async def submit_and_wait(self, workspace_id: str, *, command: str, budget_usd: float,
+                        idempotency_key: str, gpu: str | None = None, gpu_count: int | None = None,
+                        gpu_memory_gb: float | None = None, timeout_seconds: float = 5700,
+                        poll_seconds: float = 3) -> AsyncWorkload:
+        """Wait for workload admission, retrying only explicit source preparation."""
+        _path(workspace_id)
+        body = _submission(command, budget_usd, gpu, gpu_count, gpu_memory_gb)
+        key = _key(idempotency_key)
+        deadline = _submission_deadline(timeout_seconds, poll_seconds)
+        return await self._wait_submission(workspace_id, body, key, deadline, poll_seconds)
+
+    async def resume_submission(self, workspace_id: str, submission_id: str, *,
+                          timeout_seconds: float = 5700, poll_seconds: float = 3) -> AsyncWorkload:
+        """Explicitly resume the original saved request without local command storage."""
+        _path(workspace_id)
+        _path(submission_id)
+        deadline = _submission_deadline(timeout_seconds, poll_seconds)
+        response = await self._client._request("GET", _path(workspace_id) + "/workloads", max_retries=0,
+                                         timeout=min(15, _submission_remaining(deadline, workspace_id, "")))
+        body, key = _recover_submission(response.get("pending_submissions", []), workspace_id, submission_id)
+        return await self._wait_submission(workspace_id, body, key, deadline, poll_seconds)
+
+    async def _wait_submission(self, workspace_id: str, body: dict[str, Any], key: str,
+                         deadline: float, poll_seconds: float) -> AsyncWorkload:
+        while True:
+            remaining = _submission_remaining(deadline, workspace_id, key)
+            headers: dict[str, str] = {}
+            try:
+                result = await self._client._request("POST", _path(workspace_id) + "/workloads", json=body,
+                                              idempotency_key=key, headers_out=headers, max_retries=0,
+                                              timeout=min(15, remaining))
+            except NodusError as error:
+                if error.status_code != 409 or error.code not in _PENDING_SOURCE:
+                    raise
+                await _sleep(min(poll_seconds, _submission_remaining(deadline, workspace_id, key)))
+            else:
+                return _submitted(self._client, result, headers, True)

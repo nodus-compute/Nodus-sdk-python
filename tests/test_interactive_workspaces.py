@@ -87,22 +87,23 @@ def test_submit_inherits_project_resources_and_returns_an_observable_workload(as
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])
-@pytest.mark.parametrize("response", ["pending", "unavailable", "timeout"])
+@pytest.mark.parametrize("response", ["pending", "source_pending", "unavailable", "timeout"])
 def test_paid_submission_sends_once_and_preserves_refusal_and_retry_identity(asynchronous, response):
     calls = []
     def handler(request):
         calls.append(request)
         if response == "timeout":
             raise httpx.ReadTimeout("synthetic lost reply", request=request)
-        if response == "pending":
-            return httpx.Response(409, json={"error": "workspace_save_pending", "message": "Saving project files."}, headers={"Retry-After": "3"})
+        if response in {"pending", "source_pending"}:
+            code = "workspace_save_pending" if response == "pending" else "workspace_source_pending"
+            return httpx.Response(409, json={"error": code, "message": "Preparing project files."}, headers={"Retry-After": "3"})
         return httpx.Response(503, json={"error": "workspace_submission_unavailable", "message": "Unavailable."})
     with pytest.raises(nodus.NodusError) as error:
         invoke(handler, asynchronous, "submit", "ws_lab", command="python train.py", budget_usd=12, idempotency_key="same-operation")
     assert len(calls) == 1
     assert calls[0].headers["Idempotency-Key"] == "same-operation"
-    if response == "pending":
-        assert error.value.code == "workspace_save_pending"
+    if response in {"pending", "source_pending"}:
+        assert error.value.code == ("workspace_save_pending" if response == "pending" else "workspace_source_pending")
         assert not isinstance(error.value, nodus.IdempotencyConflictError)
     if response == "timeout":
         assert error.value.body["idempotency_key"] == "same-operation"
@@ -181,3 +182,88 @@ def test_update_configuration_preserves_conflict_for_customer_review(asynchronou
         invoke(handler, asynchronous, "update", "ws_lab", configuration_revision="a" * 64, configuration=CONFIG)
     assert error.value.code == "workspace_configuration_changed"
     assert len(calls) == 1
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_submit_and_wait_preserves_intent_across_long_capture_and_export(asynchronous, monkeypatch):
+    from types import SimpleNamespace
+    from nodus import _workspaces
+    elapsed = [0.0]
+    def advance(delay):
+        elapsed[0] += delay
+    async def async_advance(delay):
+        advance(delay)
+    monkeypatch.setattr(_workspaces, "time", SimpleNamespace(monotonic=lambda: elapsed[0], sleep=advance))
+    monkeypatch.setattr(_workspaces, "_sleep", async_advance)
+    calls = []
+    def handler(request):
+        calls.append(request)
+        assert request.headers['Idempotency-Key'] == 'long-capture'
+        assert json.loads(request.content) == {'command': 'python train.py', 'budget_usd': 12}
+        if len(calls) <= 1000:
+            return httpx.Response(409, json={'error': 'workspace_save_pending' if len(calls) <= 500 else 'workspace_source_pending'})
+        return httpx.Response(202, json=RUN)
+    run = invoke(handler, asynchronous, 'submit_and_wait', 'ws_lab', command='python train.py', budget_usd=12, idempotency_key='long-capture')
+    assert run.id == 'wl_lab'
+    assert elapsed[0] == 3000
+    assert len(calls) == 1001
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_resume_submission_fetches_owned_exact_request_and_never_infers_gpu_overrides(asynchronous):
+    calls = []
+    body = {'command': '  python train.py  ', 'budget_usd': 12, 'gpu_count': 4}
+    pending = {'id': 'wsub_original', 'workspace_id': 'ws_lab', 'idempotency_key': 'saved-key', 'request': body, 'state': 'ready', 'created_at': '2026-09-21T03:00:00Z'}
+    def handler(request):
+        calls.append(request)
+        if request.method == 'GET':
+            return httpx.Response(200, json={'workloads': [], 'pending_submissions': [pending]})
+        assert request.headers['Idempotency-Key'] == 'saved-key'
+        assert json.loads(request.content) == body
+        return httpx.Response(202, json=RUN)
+    assert invoke(handler, asynchronous, 'resume_submission', 'ws_lab', 'wsub_original').id == 'wl_lab'
+    assert [r.method for r in calls] == ['GET', 'POST']
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize('code', ['workspace_source_quota', 'workspace_source_rejected', 'workspace_source_failed', 'workspace_source_removed'])
+def test_wait_surfaces_terminal_source_failure_without_retry(asynchronous, code):
+    calls = []
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(409, json={'error': code})
+    with pytest.raises(nodus.APIError) as error:
+        invoke(handler, asynchronous, 'submit_and_wait', 'ws_lab', command='python train.py', budget_usd=12, idempotency_key='terminal')
+    assert error.value.code == code
+    assert not isinstance(error.value, nodus.IdempotencyConflictError)
+    assert len(calls) == 1
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_submission_wait_timeout_stops_observation_without_new_intent(asynchronous, monkeypatch):
+    from types import SimpleNamespace
+    from nodus import _workspaces
+    clock = [0.0]
+    def advance(delay):
+        clock[0] += delay
+    async def async_advance(delay):
+        advance(delay)
+    monkeypatch.setattr(_workspaces, 'time', SimpleNamespace(monotonic=lambda: clock[0], sleep=advance))
+    monkeypatch.setattr(_workspaces, '_sleep', async_advance)
+    calls = []
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(409, json={'error': 'workspace_source_pending'})
+    with pytest.raises(nodus.APITimeoutError) as error:
+        invoke(handler, asynchronous, 'submit_and_wait', 'ws_lab', command='python train.py --secret example', budget_usd=12, idempotency_key='bounded-wait', timeout_seconds=5)
+    assert clock[0] == 5
+    assert len(calls) == 2
+    assert error.value.body == {'workspace_id': 'ws_lab', 'idempotency_key': 'bounded-wait'}
+    assert 'example' not in str(error.value)
+    assert all(request.headers['Idempotency-Key'] == 'bounded-wait' for request in calls)
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_pending_listing_remains_compatible_with_older_server(asynchronous):
+    def handler(request):
+        return httpx.Response(200, json={'workloads': [{'id': 'wl_old'}]})
+    assert invoke(handler, asynchronous, 'submissions', 'ws_lab') == []
+    assert invoke(handler, asynchronous, 'workloads', 'ws_lab') == [{'id': 'wl_old'}]

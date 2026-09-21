@@ -160,35 +160,89 @@ Save changes in your editor before submitting. A running workspace captures
 its current files in `/workspace`. A stopped workspace uses its last successful
 saved revision. The original curated environment image and GPU configuration
 carry over. Packages installed outside the saved folder are not captured.
-Project source must fit `capabilities["workload_source_limit_bytes"]`, which can
-be smaller than the workspace's saved-file capacity.
+Source preparation supports the workspace's full 10 GB file capacity. It excludes
+`.nodus` control files and `.git` directories. Regular files, empty directories
+and safe relative symbolic links within the project are preserved. Unsafe links
+and unsupported file types are rejected before a workload starts. Ordinary code and dataset imports keep their separate
+256 MiB default import limit and 2 GiB account quota.
 
-Replace `ws_1234-abcd` with your workspace ID. Retain the command, budget and
-retry key together until admission is confirmed:
+Replace `ws_1234-abcd` with your workspace ID:
 
 ```python
 with nodus.Client() as client:
-    try:
-        workload = client.workspaces.submit(
-            "ws_1234-abcd",
-            command="python train.py",
-            budget_usd=6,
-            idempotency_key="kernel-lab-training-1",
-        )
-    except nodus.APIError as error:
-        if error.code != "workspace_save_pending":
-            raise
-        print("Project saving is pending. Retry the same command, budget and key.")
-    else:
-        print(workload.id)
+    workload = client.workspaces.submit_and_wait(
+        "ws_1234-abcd",
+        command="python train.py",
+        budget_usd=6,
+        idempotency_key="kernel-lab-training-1",
+    )
+    print(workload.id)
 ```
 
-The SDK sends every interactive create, start, stop, connection and workload
-submission once. It does not automatically retry a failed or pending request.
-For `workspace_save_pending`, wait for the server's `Retry-After` interval and
-repeat the same submission. After an uncertain reply, also retain the same key
-and body. A definite `workspace_capture_failed` or `workspace_source_rejected` requires
-correcting the project problem and a new submission key. A different intended run gets a new key.
+`submit_and_wait` keeps the exact command, budget and retry key while the server
+saves files and prepares a source copy. Each phase can take up to 45 minutes.
+The default observation timeout is 95 minutes. Set `timeout_seconds` and
+`poll_seconds` to change how long and how often the helper waits. It returns only
+after workload admission succeeds, not when source preparation starts.
+
+The helper retries only explicit `workspace_save_pending` and
+`workspace_source_pending` responses. Other failures are surfaced. A client timeout
+ends observation without cancelling the server operation. Retain the same key after
+an uncertain reply. The existing `submit` method still sends once and exposes
+pending responses for callers that manage their own polling.
+
+Recover an unfinished submission from the authenticated server after reconnecting.
+No local copy of the command is required:
+
+```python
+with nodus.Client() as client:
+    pending = client.workspaces.submissions("ws_1234-abcd")
+    for submission in pending:
+        print(submission["id"], submission["state"])
+
+    # Choose the original submission that you intend to continue.
+    workload = client.workspaces.resume_submission(
+        "ws_1234-abcd",
+        "wsub_original-submission-id",
+    )
+```
+
+The console also offers an explicit **Resume submission** action after refreshing.
+Listing unfinished submissions never starts a workload. Older server submissions
+without a stored request descriptor may require the original command and retry key.
+A definite `workspace_capture_failed`, `workspace_source_failed` or
+`workspace_source_rejected` requires correcting the reported problem and using a
+new submission key. `workspace_source_removed` means its reference was deleted
+and a new submission must prepare a new copy. A definite
+`workspace_source_quota` requires removing unused source references before a new
+submission. A different intended run gets a new key.
+
+Generated source copies have a separate included account retention pool of
+21,073,741,824 bytes. This fits two maximum-size workspace archives including
+metadata. Identical captured revisions reuse one physical copy across submissions.
+These copies add no saved-workspace storage charge and do not consume the ordinary
+asset quota. Different retained revisions consume their actual reserved or stored
+bytes in this pool.
+
+Manage retained source references through Assets:
+
+```python
+with nodus.Client() as client:
+    usage = client.assets.storage().get("workspace_source_storage")
+    print(usage)
+    for asset in client.assets.list():
+        if asset.workspace_source:
+            print(asset.id, asset.workspace_source["removable"])
+
+    # Remove only an inactive reference that you no longer need.
+    client.assets.delete("asset_unused-source-reference")
+```
+
+Active workloads protect their source. Deleting one reference leaves any shared
+copy needed by other references intact. Available quota increases only after the
+last reference is removed and cleanup is confirmed. The console shows source usage
+and removal controls in **Saved files & storage**. Saving or replacing workspace
+files does not remove a source already prepared for an independent workload.
 
 An admitted workload is independent. Further edits do not change its captured
 source, and stopping workspace compute does not cancel it. Both can incur
@@ -198,9 +252,9 @@ override only the submitted workload.
 
 Use the returned workload's ordinary `wait`, `logs` and `outputs` methods.
 Reconnect later with `client.get(workload_id)`.
-`client.workspaces.workloads(workspace_id)` lists admitted runs and their
-`source_revision`. The asynchronous client mirrors all these helpers with
-`await` and returns `AsyncWorkload` on submission.
+`client.workspaces.workloads(workspace_id)` continues to list admitted runs and their
+`source_revision`. The asynchronous client mirrors these helpers with `await`
+and returns `AsyncWorkload` on submission.
 
 To stop workspace compute, retain the workspace record's `session["id"]` and a stable
 retry key, then call `client.workspaces.stop(workspace_id,

@@ -378,7 +378,8 @@
             "type": "string"
           },
           "kind": {
-            "type": "string"
+            "type": "string",
+            "description": "Includes workspace_source for a generated workspace project revision. These copies use their separate included source pool."
           },
           "name": {
             "type": "string"
@@ -423,6 +424,9 @@
           "error": {
             "type": "string",
             "description": "Value-free terminal query export error. Failed assets remain observable after cleanup, with zero stored bytes once their reservation is released."
+          },
+          "workspace_source": {
+            "$ref": "#/components/schemas/WorkspaceSourceAlias"
           }
         },
         "x-go-source": "internal/store/assets.go",
@@ -525,11 +529,15 @@
             "type": "integer"
           },
           "stored_bytes": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Ordinary asset bytes, excluding generated workspace source copies."
           },
           "billing_enabled": {
             "type": "boolean",
             "const": false
+          },
+          "workspace_source_storage": {
+            "$ref": "#/components/schemas/WorkspaceSourceStorage"
           }
         },
         "required": [
@@ -3291,7 +3299,16 @@
       },
       "ResearchWorkspaceCapabilities": {
         "type": "object",
-        "required": ["available", "storage_limit_bytes", "environments", "gpu_counts", "editors", "browser_available", "workload_submission", "workload_source_limit_bytes"],
+        "required": [
+          "available",
+          "storage_limit_bytes",
+          "environments",
+          "gpu_counts",
+          "editors",
+          "browser_available",
+          "workload_submission",
+          "workload_source_limit_bytes"
+        ],
         "properties": {
           "available": {
             "type": "boolean",
@@ -3311,22 +3328,50 @@
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["id", "name", "description"],
+              "required": [
+                "id",
+                "name",
+                "description"
+              ],
               "properties": {
-                "id": {"type": "string", "enum": ["pytorch-cuda"]},
-                "name": {"type": "string"},
-                "description": {"type": "string"}
+                "id": {
+                  "type": "string",
+                  "enum": [
+                    "pytorch-cuda"
+                  ]
+                },
+                "name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                }
               }
             }
           },
           "gpu_counts": {
             "type": "array",
-            "items": {"type": "integer", "enum": [1, 2, 4, 8]},
+            "items": {
+              "type": "integer",
+              "enum": [
+                1,
+                2,
+                4,
+                8
+              ]
+            },
             "description": "Accepted single-machine request counts. This is not a per-model qualification or availability inventory."
           },
           "editors": {
             "type": "array",
-            "items": {"type": "string", "enum": ["vscode", "jupyter", "ssh"]},
+            "items": {
+              "type": "string",
+              "enum": [
+                "vscode",
+                "jupyter",
+                "ssh"
+              ]
+            },
             "description": "Supported development tool choices for a new workspace."
           },
           "browser_available": {
@@ -3340,7 +3385,7 @@
           "workload_source_limit_bytes": {
             "type": "integer",
             "format": "int64",
-            "description": "Maximum captured project source size for an independent workload. This can be smaller than the saved workspace capacity."
+            "description": "Maximum saved-project payload bytes supported by workspace source preparation. The full-capacity path supports 10,000,000,000 bytes with separate bounded archive metadata. Ordinary asset import limits are unchanged."
           }
         }
       },
@@ -3451,10 +3496,151 @@
         "x-go-source": "internal/store/workspace_workloads.go",
         "x-go-type": "WorkspaceWorkload"
       },
+      "WorkspaceSourceStorage": {
+        "type": "object",
+        "required": [
+          "included_bytes",
+          "retained_bytes",
+          "reserved_bytes",
+          "available_bytes",
+          "billing_enabled"
+        ],
+        "properties": {
+          "included_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Included source retention limit. Currently 21,073,741,824 bytes, sufficient for two maximum workspace archives including bounded metadata."
+          },
+          "retained_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "reserved_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "available_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "billing_enabled": {
+            "type": "boolean",
+            "const": false
+          }
+        },
+        "description": "Included account storage for generated workload source copies. This pool is separate from billed saved-workspace storage and ordinary asset import limits. Identical captured revisions reuse a physical copy. Reserved bytes can remain until pending writes or deletion are settled."
+      },
+      "WorkspaceSourceAlias": {
+        "type": "object",
+        "required": [
+          "source_id",
+          "workspace_id",
+          "source_revision",
+          "exporter_version",
+          "state",
+          "removable",
+          "shared_alias_count"
+        ],
+        "properties": {
+          "source_id": {
+            "type": "string"
+          },
+          "workspace_id": {
+            "type": "string"
+          },
+          "source_revision": {
+            "type": "string"
+          },
+          "exporter_version": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "removable": {
+            "type": "boolean",
+            "description": "Whether this alias can currently be removed. Active workloads protect their source."
+          },
+          "shared_alias_count": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "References sharing this physical source copy. Deleting one alias need not release bytes."
+          }
+        }
+      },
+      "WorkspacePendingSubmission": {
+        "type": "object",
+        "required": [
+          "id",
+          "workspace_id",
+          "idempotency_key",
+          "request",
+          "state",
+          "created_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "workspace_id": {
+            "type": "string"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "request": {
+            "$ref": "#/components/schemas/WorkspaceWorkloadRequest"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "saving",
+              "exporting",
+              "ready",
+              "failed"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "deadline_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "description": "An authenticated recoverable submission. Resume only after an explicit customer action by sending this exact request and idempotency key to the same workspace. Reading this record does not admit a workload. Commands can contain sensitive values and must not be persisted in browser storage or analytics."
+      },
       "WorkspaceWorkloadList": {
         "type": "object",
-        "required": ["workloads"],
-        "properties": {"workloads": {"type": "array", "maxItems": 100, "items": {"$ref": "#/components/schemas/WorkspaceWorkload"}}}
+        "required": [
+          "workloads"
+        ],
+        "properties": {
+          "workloads": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceWorkload"
+            }
+          },
+          "pending_submissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkspacePendingSubmission"
+            }
+          },
+          "source_storage": {
+            "$ref": "#/components/schemas/WorkspaceSourceStorage"
+          }
+        }
       },
       "ResearchWorkspaceMeter": {
         "type": "object",
@@ -6961,7 +7147,7 @@
         "tags": [
           "Assets"
         ],
-        "description": "Returns the latest 500 nondeleted assets, newest first. Imports and uploads complete synchronously. Limits describe this deployment and may change.",
+        "description": "Returns the latest 500 nondeleted assets, newest first. Generated workspace_source aliases expose current removability and shared-source references. workspace_source_storage reports their separate included account pool. Ordinary import limits and quota do not include these generated copies. Deleting an alias releases source storage only after the final reference is removed and exact cleanup is confirmed. Limits describe this deployment and may change.",
         "responses": {
           "200": {
             "description": "Asset list and storage limits",
@@ -10705,7 +10891,7 @@
         "operationId": "submitWorkspaceWorkload",
         "summary": "Submit an independent workload from this project",
         "tags": ["Research workspaces"],
-        "description": "Captures current project files from ready compute, or pins the last successful saved revision while stopped. The command uses that immutable project revision and the workspace environment image. Optional GPU overrides apply only to the submitted workload. Running workspace capture returns 409 workspace_save_pending until saving finishes. Reuse the exact body and Idempotency-Key to check progress or retry an uncertain reply. A 202 response means ordinary workload admission succeeded. It does not establish execution or completion. Later edits and stopping workspace compute do not stop an admitted workload. Both incur charges while running.",
+        "description": "Captures current project files from ready compute, or pins the last successful saved revision while stopped. The command uses that immutable project revision and the workspace environment image. Optional GPU overrides apply only to the submitted workload. Running workspace capture returns 409 workspace_save_pending until saving finishes. Source preparation returns 409 workspace_source_pending until its verified copy is ready. Each phase can take up to 45 minutes. Reuse the exact body and Idempotency-Key to check progress or retry an uncertain reply. Identical captured revisions reuse a source copy within the included account source pool. Exports exclude .nodus and .git. Regular files, empty directories and safe relative symbolic links within the project are preserved. Unsafe links and unsupported file types are rejected before admission. A 202 response means ordinary workload admission succeeded. It does not establish execution or completion. Later edits and stopping workspace compute do not stop an admitted workload. Both incur charges while running.",
         "parameters": [
           {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}, "description": "Workspace identifier owned by this account."},
           {"name": "Idempotency-Key", "in": "header", "required": true, "schema": {"type": "string", "minLength": 1}, "description": "Stable key for this logical submission and its captured source revision. Reuse the same body and key after saving is pending or the reply is uncertain."}
@@ -10718,8 +10904,8 @@
             "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SubmitResult"}}}
           },
           "409": {
-            "description": "workspace_save_pending requests the same key and body again after Retry-After. workspace_capture_failed requires correcting the save failure and beginning a new submission. workspace_source_rejected requires reducing or correcting the project source and using a new submission key. workspace_no_saved_files requires adding project files. workspace_source_unavailable reports a source preparation failure. idempotency_conflict indicates a changed body for an existing key. Other state conflicts can also occur.",
-            "headers": {"Retry-After": {"description": "Seconds until the next capture progress check when workspace_save_pending is returned.", "schema": {"type": "string"}}},
+            "description": "workspace_save_pending and workspace_source_pending request the same key and body again after Retry-After. workspace_source_quota requires freeing included source space through Assets and using a new submission key. workspace_capture_failed requires correcting the save failure and beginning a new submission. workspace_source_rejected requires correcting the project source and using a new submission key. workspace_source_failed requires resolving the reported preparation failure and using a new submission key after cleanup. workspace_source_removed means its reference was deleted and a new submission must prepare a new copy. workspace_no_saved_files requires adding project files. workspace_source_unavailable reports a source preparation failure. idempotency_conflict indicates a changed body for an existing key. Other state conflicts can also occur.",
+            "headers": {"Retry-After": {"description": "Seconds until the next progress check when workspace_save_pending or workspace_source_pending is returned.", "schema": {"type": "string"}}},
             "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
           },
           "default": {
@@ -10732,7 +10918,7 @@
         "operationId": "listWorkspaceWorkloads",
         "summary": "List workloads submitted from this workspace",
         "tags": ["Research workspaces"],
-        "description": "Returns up to 100 admitted workloads, newest first, with the captured source revision. Pending saves without an admitted workload are not listed. Use the ordinary workload endpoints for logs, results, costs and cancellation.",
+        "description": "Returns up to 100 admitted workloads, newest first, with the captured source revision. Recoverable pending_submissions preserve their exact original request and retry key for explicit resume after reconnecting. Old submissions without a stored request descriptor may be absent from pending_submissions. source_storage reports the separate included source pool. Use the ordinary workload endpoints for logs, results, costs and cancellation.",
         "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}, "description": "Workspace identifier owned by this account."}],
         "responses": {
           "200": {"description": "Admitted workspace workloads", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/WorkspaceWorkloadList"}}}},
