@@ -10,8 +10,10 @@ import sys
 import tempfile
 import threading
 
+from verification_package import package_source
 
-def render_installer(destination: Path) -> Path:
+
+def render_installer(destination: Path, wheel: Path | None = None) -> Path:
     root = Path(__file__).resolve().parents[1]
     plugin = root / "plugins/nodus"
     manifest = json.loads((plugin / ".mcp.json").read_text())
@@ -23,6 +25,7 @@ def render_installer(destination: Path) -> Path:
     filename = "install.ps1" if os.name == "nt" else "install.sh"
     content = (root / "install" / filename).read_text(encoding="utf-8")
     content = content.replace("@@SDK_VERSION@@", version).replace("@@CONNECT_SOURCE@@", source)
+    content = content.replace(f"nodus-compute[mcp]=={version}", package_source(version, wheel))
     assert "@@" not in content
     target = destination / filename
     target.write_text(content, encoding="utf-8")
@@ -132,6 +135,9 @@ def verify(installer: Path) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--installer", type=Path, help="use a generated installer instead of rendering the native source")
+    parser.add_argument("--wheel", type=Path, help="test a matching unpublished wheel")
     args = parser.parse_args()
+    if args.installer and args.wheel:
+        parser.error("--wheel requires rendering the native source")
     with tempfile.TemporaryDirectory(prefix="nodus-installer-source-") as directory:
-        verify(args.installer or render_installer(Path(directory)))
+        verify(args.installer or render_installer(Path(directory), args.wheel))

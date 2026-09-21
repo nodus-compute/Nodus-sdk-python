@@ -1,0 +1,55 @@
+name: Run on Nodus
+description: Submit a GPU workload, wait for completion and download verified results.
+inputs:
+  api-url:
+    description: Nodus API origin. Use your deployment's origin for a custom deployment.
+    default: https://d1a0b732w6344o.cloudfront.net
+  api-key:
+    description: Nodus API key supplied from a GitHub Actions secret.
+    required: true
+  workload:
+    description: Path to a reviewed workload TOML file with an explicit budget.
+    default: nodus.toml
+  output-directory:
+    description: Directory for downloaded results. Existing files are preserved.
+    default: nodus-results
+  idempotency-key:
+    description: Optional saved key. Retries otherwise reuse repository, run, job and workload path identity.
+    default: ''
+  wait-timeout:
+    description: Observation timeout in seconds. Timeout does not cancel the workload.
+    default: '3600'
+outputs:
+  workload-id:
+    description: The accepted workload ID.
+    value: ${{ steps.run.outputs.workload-id }}
+  status:
+    description: Observed terminal workload status.
+    value: ${{ steps.run.outputs.status }}
+  output-directory:
+    description: Absolute path of the result directory.
+    value: ${{ steps.run.outputs.output-directory }}
+  output-count:
+    description: Number of verified result files downloaded.
+    value: ${{ steps.run.outputs.output-count }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+      with:
+        python-version: '3.12'
+    - name: Install Nodus
+      shell: bash
+      run: python -m pip --isolated install --disable-pip-version-check 'nodus-compute==0.5.2'
+    - name: Run workload and collect results
+      id: run
+      shell: bash
+      env:
+        NODUS_BASE_URL: ${{ inputs.api-url }}
+        NODUS_API_KEY: ${{ inputs.api-key }}
+        NODUS_WORKLOAD_FILE: ${{ inputs.workload }}
+        NODUS_OUTPUT_DIRECTORY: ${{ inputs.output-directory }}
+        NODUS_IDEMPOTENCY_KEY: ${{ inputs.idempotency-key }}
+        NODUS_WAIT_TIMEOUT: ${{ inputs.wait-timeout }}
+        NODUS_ACTION_PATH: ${{ github.action_path }}
+      run: python "$NODUS_ACTION_PATH/run.py"

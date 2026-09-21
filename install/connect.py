@@ -6,9 +6,11 @@ import argparse
 import asyncio
 from dataclasses import dataclass
 from datetime import timedelta
+import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -18,6 +20,7 @@ import json5
 import tomlkit
 
 SKILL_SOURCES = {}  # The website build embeds the public plugin skills here.
+LEGACY_SKILL_HASHES = {"setup": "749152fb43181374d336b4608c2033a3c4b4d1a5e4b24539af36d23c0a5a0c95", "workloads": "8676594ec59e511ea134cbaeb82744d5cab05d7e83f3a2c2660fdfbc1b35dc2b"}
 MCP_ARGS = ["-I", "-c", "from nodus.cli import main\nraise SystemExit(main(['mcp']))"]
 NAMES = {"claude": "Claude Code", "codex": "Codex", "cursor": "Cursor",
          "vscode": "VS Code", "gemini": "Gemini CLI", "opencode": "OpenCode",
@@ -48,7 +51,7 @@ def read(path: Path) -> bytes | None:
     return path.read_bytes() if path.exists() else None
 
 
-def config_edit(path: Path, kind: str, key: str, server: dict) -> Edit | None:
+def config_edit(path: Path, kind: str, key: str, server: dict, *, expected: dict | None = None) -> Edit | None:
     before = read(path)
     try:
         source = before.decode("utf-8-sig") if before is not None else ""
@@ -61,7 +64,8 @@ def config_edit(path: Path, kind: str, key: str, server: dict) -> Edit | None:
     if "nodus" in servers:
         if servers["nodus"] == server:
             return None
-        raise SetupError(f"{path.name} already has a different Nodus connection. Keep that connection or remove only its nodus entry before retrying.")
+        if expected is None or servers["nodus"] != expected:
+            raise SetupError(f"{path.name} already has a different Nodus connection. Run setup with --repair for an installer-managed connection. Keep manual connections or remove only their nodus entry before retrying.")
     servers["nodus"] = server
     content = tomlkit.dumps(data) if kind == "toml" else json.dumps(data, indent=2, ensure_ascii=False, allow_nan=False) + "\n"
     return Edit(path, before, content.encode("utf-8"))
@@ -213,9 +217,9 @@ def check_plugin(name: str, skill_dir: Path | None, config_path: Path | None) ->
             raise SetupError("Cannot read Claude plugin settings. Fix settings.json before retrying.") from None
         if not isinstance(settings, dict) or not isinstance(settings.get("enabledPlugins", {}), dict):
             raise SetupError("Unexpected Claude plugin settings. Fix settings.json before retrying.")
-        if settings.get("enabledPlugins", {}).get("nodus@nodus") is True:
+        if any(settings.get("enabledPlugins", {}).get(plugin) is True for plugin in ("nodus@nodus", "nodus-hosted@nodus")):
             raise SetupError("Claude Code already enables the Nodus plugin. Keep its tools and use manual sign-in if needed. Select only other agents for this installer.")
-    if name == "cursor" and (skill_dir.parent / "plugins/local/nodus").exists():
+    if name == "cursor" and any((skill_dir.parent / "plugins/local" / plugin).exists() for plugin in ("nodus", "nodus-hosted")):
         raise SetupError("Cursor already has local Nodus plugin files. Check that plugin in Cursor before adding another connection. Select only other agents for this installer.")
     if name == "codex":
         content = read(config_path)
@@ -225,13 +229,50 @@ def check_plugin(name: str, skill_dir: Path | None, config_path: Path | None) ->
             raise SetupError("Cannot read Codex plugin settings. Fix config.toml before retrying.") from None
         plugins = settings.get("plugins", {})
         if isinstance(plugins, dict):
-            plugin = plugins.get("nodus@nodus", {})
-            if "nodus@nodus" in plugins and isinstance(plugin, dict) and plugin.get("enabled", True) is not False:
+            if any(plugin in plugins and isinstance(plugins[plugin], dict) and plugins[plugin].get("enabled", True) is not False for plugin in ("nodus@nodus", "nodus-hosted@nodus")):
                 raise SetupError("Codex already enables the Nodus plugin. Keep its tools and use manual sign-in if needed. Select only other agents for this installer.")
 
 
-def plan(selected: list[str], command: str) -> list[Edit | None]:
+def legacy_connection(path: Path, kind: str, key: str) -> dict | None:
+    content = read(path)
+    if content is None:
+        return None
+    try:
+        data = tomlkit.parse(content.decode("utf-8-sig")) if kind == "toml" else json5.loads(content.decode("utf-8-sig"), allow_duplicate_keys=False)
+        server = data.get(key, {}).get("nodus")
+        if not isinstance(server, dict):
+            return None
+        command = server.get("command")
+        if server.get("type") == "local" and isinstance(command, list):
+            executable, arguments = command[0], command[1:]
+            expected = {"type": "local", "command": command, "enabled": True}
+        else:
+            executable, arguments = command, server.get("args")
+            expected = {"command": command, "args": MCP_ARGS}
+            if "type" in server:
+                expected["type"] = "stdio"
+        if not isinstance(executable, str) or arguments != MCP_ARGS or server != expected:
+            return None
+        relative = Path(executable).relative_to(Path.home() / ".nodus/agent-tools")
+        if len(relative.parts) != 3 or relative.parts[1:] not in (("bin", "python"), ("Scripts", "python.exe")):
+            return None
+        if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+-[0-9]+", relative.parts[0]):
+            return None
+        return server
+    except (ValueError, UnicodeError, TypeError, AttributeError, IndexError, tomlkit.exceptions.ParseError):
+        return None
+
+
+def plan(selected: list[str], command: str, *, repair: bool = False) -> list[Edit | None]:
     edits = []
+    record_path = Path.home() / ".nodus/agent-connections.json"
+    before_record = read(record_path)
+    try:
+        record = json.loads(before_record) if before_record else {}
+        if not isinstance(record, dict) or any(not isinstance(value, dict) for value in record.values()):
+            raise ValueError
+    except (ValueError, UnicodeError):
+        raise SetupError("Cannot read the setup ownership record. No settings were changed.") from None
     for name in selected:
         path, kind, key, skill_dir = locations()[name]
         check_plugin(name, skill_dir, path)
@@ -242,16 +283,29 @@ def plan(selected: list[str], command: str) -> list[Edit | None]:
             server["type"] = "stdio"
         elif name == "opencode":
             server = {"type": "local", "command": [command, *MCP_ARGS], "enabled": True}
-        edits.append(config_edit(path, kind, key, server))
+        previous = record.get(name, {})
+        expected = previous.get("server") if repair and previous.get("path") == str(path) else None
+        legacy = legacy_connection(path, kind, key) if repair and not previous else None
+        if expected is None:
+            expected = legacy
+        edits.append(config_edit(path, kind, key, server, expected=expected))
+        skill_hashes = {}
         if skill_dir is not None:
             for skill, content in skills().items():
                 target = skill_dir / ("nodus-" + skill) / "SKILL.md"
                 after = content.replace("name: " + skill + "\n", "name: nodus-" + skill + "\n", 1).encode()
                 before = read(target)
-                if before not in (None, after):
+                digest = hashlib.sha256(before).hexdigest() if before is not None else None
+                owned = repair and digest is not None and (previous.get("skills", {}).get(str(target)) == digest or (legacy is not None and LEGACY_SKILL_HASHES.get(skill) == digest))
+                if before not in (None, after) and not owned:
                     raise SetupError(f"An existing nodus-{skill} skill differs. Keep it or move it before retrying.")
-                if before is None:
-                    edits.append(Edit(target, None, after))
+                if before != after:
+                    edits.append(Edit(target, before, after))
+                skill_hashes[str(target)] = hashlib.sha256(after).hexdigest()
+        record[name] = {"path": str(path), "server": server, "skills": skill_hashes}
+    after_record = (json.dumps(record, indent=2, sort_keys=True) + "\n").encode()
+    if after_record != before_record:
+        edits.append(Edit(record_path, before_record, after_record))
     return edits
 
 
@@ -292,21 +346,52 @@ def main(argv=None) -> int:
     parser.add_argument("--yes", action="store_true", help="configure explicitly selected agents without another prompt")
     parser.add_argument("--no-browser", action="store_true", help="show the sign-in link instead of opening a browser")
     parser.add_argument("--dry-run", action="store_true", help="show the setup plan without signing in or writing settings")
+    parser.add_argument("--repair", action="store_true", help="update unchanged installer-managed connections and skills with backups")
+    parser.add_argument("--check", action="store_true", help="check selected settings and read workloads without changing agent settings or signing in")
     args = parser.parse_args(argv)
     try:
         if args.yes and not args.agents:
             raise SetupError("Use --agents with --yes so setup knows which agents to change.")
+        if args.check and args.repair:
+            raise SetupError("Choose --check or --repair.")
         selected = choose(args)
         print("\nSelected: " + ", ".join(NAMES[name] for name in selected))
         print("Adds Nodus tools and skills for your user account. Other settings stay in place.")
         if args.dry_run:
             print("Dry run. No sign-in or settings changes.")
             return 0
+        if args.check:
+            edits = [edit for edit in plan(selected, sys.executable, repair=True) if edit is not None]
+            if any(edit.before is None and edit.path.name != "agent-connections.json" for edit in edits):
+                raise SetupError("Selected agent settings are incomplete. Run setup again, or use --repair for managed connections.")
+            commands = set()
+            for name in selected:
+                path, kind, key, _ = locations()[name]
+                changed = next((edit for edit in edits if edit.path == path), None)
+                command = sys.executable
+                if changed:
+                    # Read the ownership-checked snapshot, never a later configuration edit.
+                    content = changed.before.decode("utf-8-sig")
+                    settings = tomlkit.parse(content) if kind == "toml" else json5.loads(content, allow_duplicate_keys=False)
+                    server = settings[key]["nodus"]
+                    if name == "opencode":
+                        command, arguments = server["command"][0], server["command"][1:]
+                    else:
+                        command, arguments = server["command"], server["args"]
+                    if not isinstance(command, str) or not Path(command).is_absolute() or arguments != MCP_ARGS:
+                        raise SetupError("The saved connection is not an installer runtime. Use manual verification.")
+                commands.add(command)
+            for command in sorted(commands):
+                asyncio.run(verify(command))
+            print("Nodus settings and workload access verified. Ask your agent to list workloads to confirm it loaded the tools.")
+            if any(edit.path.name != "agent-connections.json" for edit in edits):
+                print("An update is available. Use --repair to update managed tools and skills.")
+            return 0
         if not args.yes and input("Continue? [Y/n] ").strip().lower() not in ("", "y", "yes"):
             print("Setup cancelled. No agent settings were changed.")
             return 0
         command = sys.executable
-        edits = plan(selected, command)
+        edits = plan(selected, command, repair=args.repair)
         print("\nSigning in to Nodus...")
         sign_in(args.no_browser)
         print("Checking Nodus tools and reading your workload list...")

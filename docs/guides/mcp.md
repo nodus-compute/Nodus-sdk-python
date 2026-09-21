@@ -1,7 +1,7 @@
 # MCP tools
 
 Connect Claude, Cursor, Codex or another MCP client to Nodus. Ask your agent to
-submit GPU workloads, check progress, read logs and retrieve output metadata.
+submit GPU workloads, check progress, read logs and retrieve verified results.
 
 For the shortest setup, [choose your coding agent](connect.md). It includes
 copyable commands, a Cursor install link and configurations for other clients.
@@ -10,7 +10,20 @@ For Codex, Claude Code or Cursor, use the [Nodus plugin](plugins.md) to install
 the tools and setup guidance together. The manual configuration below works
 with other MCP clients too.
 
-## Connect in two steps
+## Hosted connection
+
+Use the [connection page](connect.md#quick-connection) for hosted HTTP MCP with
+browser authorization. Tools use a revocable grant bound to your account and
+team. Read-only grants omit submission and cancellation tools.
+
+Hosted `get_workload_output` returns a download URL valid for ten minutes,
+plus the file's SHA-256 and byte count. Download with your agent's own file
+tools, without an Authorization header and without following redirects.
+Verify the checksum before reporting delivery. Treat the URL as a secret.
+The hosted server cannot write to your local filesystem. Revoking the
+connection invalidates its download links.
+
+## Local connection in two steps
 
 You need [uv](https://docs.astral.sh/uv/getting-started/installation/) installed.
 `uvx` downloads the public Nodus package and starts the server for your client.
@@ -19,7 +32,7 @@ It manages the Python runtime and package dependencies for you.
 **1. Sign in once.** Run this in your terminal and complete browser sign-in:
 
 ```sh
-uvx --from 'nodus-compute[mcp]==0.4.2' nodus login
+uvx --from 'nodus-compute[mcp]==0.5.2' nodus login
 ```
 
 **2. Add Nodus to your MCP client.** In Claude Desktop or Cursor, add this to
@@ -30,7 +43,7 @@ your MCP server configuration and reload the connection:
   "mcpServers": {
     "nodus": {
       "command": "uvx",
-      "args": ["--from", "nodus-compute[mcp]==0.4.2", "nodus-mcp"]
+      "args": ["--from", "nodus-compute[mcp]==0.5.2", "nodus-mcp"]
     }
   }
 }
@@ -39,21 +52,21 @@ your MCP server configuration and reload the connection:
 For Codex, run this instead of editing JSON:
 
 ```sh
-codex mcp add nodus -- uvx --from 'nodus-compute[mcp]==0.4.2' nodus-mcp
+codex mcp add nodus -- uvx --from 'nodus-compute[mcp]==0.5.2' nodus-mcp
 ```
 
 The server uses your saved sign-in. There is no API key to paste into the
 configuration, private repository to clone or executable to compile.
 
 Ask your agent: **"List my Nodus workloads."** This checks the connection
-without starting paid compute. Your client should discover seven tools.
+without starting paid compute. Your local client should discover nine tools.
 
 ## Already using pip?
 
 Install the MCP extra and reuse your existing Nodus sign-in:
 
 ```sh
-pip install --upgrade 'nodus-compute[mcp]==0.4.2'
+pip install --upgrade 'nodus-compute[mcp]==0.5.2'
 nodus login
 ```
 
@@ -74,10 +87,14 @@ prompts, tool arguments and committed files. See
 
 ## Tool reference
 
-Arguments below are the JSON object passed to the named tool.
+Arguments below are the JSON object passed to the named tool. Hosted connections
+use `get_workload_output` instead of `download_workload_output`. Local downloads
+write on the machine running MCP and require an existing destination directory.
 
 | Tool | Required arguments | Optional arguments | Result |
 | --- | --- | --- | --- |
+| `validate_workload` | `workload` | None | Validation without admission, spending or capacity reservation |
+| `download_workload_output` | `workload_id`, `name`, `destination` | `stage` | Local verified download, existing files refused |
 | `submit_workload` | `idempotency_key`, `workload` | None | The API's submission response, including the workload ID |
 | `list_workloads` | None | `scope`, `limit`, `offset` | Workloads and `next_offset` when another page exists |
 | `get_workload` | `workload_id` | None | Workload details, status and current meter |
@@ -154,8 +171,8 @@ your program must write the output files described in
 [logs and results](monitoring-and-outputs.md).
 
 `list_workload_outputs` lists metadata. It does not download files to your
-machine. Use the authenticated HTTP download paths in the response or the
-Python SDK's output download methods to retrieve them.
+machine. Call `download_workload_output` locally or `get_workload_output`
+on a hosted connection to retrieve them.
 
 ## Read subsequent pages
 

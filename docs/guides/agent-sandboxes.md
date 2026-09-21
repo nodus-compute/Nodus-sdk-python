@@ -200,7 +200,7 @@ finally:
 
 The CLI uses the same nouns and verbs.
 
-SDK 0.5.1 and later accepts an active exact name in place of `SANDBOX_ID` for
+SDK 0.5.2 and later accepts an active exact name in place of `SANDBOX_ID` for
 `exec`, `logs`, `cost` and `rm`. Names and IDs are shown by `sandbox ls`. Use the
 ID for historical sessions. Name lookup never creates a replacement sandbox.
 See [CLI retry guidance](../reference/cli.md#agent-sandboxes-and-devboxes) for

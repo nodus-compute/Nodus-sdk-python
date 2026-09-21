@@ -1,11 +1,11 @@
 {
-  "name": "nodus",
-  "version": "0.2.0",
-  "description": "Run GPU workloads with Nodus, monitor progress, read logs and inspect results.",
+  "name": "nodus-hosted",
+  "version": "0.1.0",
+  "description": "Connect Nodus with browser sign-in, run GPU workloads within an explicit budget, and retrieve results.",
   "author": {
     "name": "Nodus, Inc."
   },
-  "homepage": "https://nodus-compute.ai/docs/guides/mcp/",
+  "homepage": "https://nodus-compute.ai/connect/",
   "repository": "https://github.com/nodus-compute/Nodus-sdk-python",
   "license": "Apache-2.0",
   "keywords": [
