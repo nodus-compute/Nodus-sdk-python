@@ -45,6 +45,7 @@ from ._rl import (
 from ._secrets import Secrets, AsyncSecrets
 from ._connections import Connections, AsyncConnections
 from ._workspaces import Workspaces, AsyncWorkspaces
+from ._operations import Operations, AsyncOperations, OperationDefinition, OperationCatalog, WorkloadPage, WorkloadValidation, RunDraft, RunDraftValues, RunDraftPatch
 
 from ._pool_predict import PredictSubscription, ForecastPoint, ForecastQueue, ForecastSeries, ForecastCalibration, PoolForecastSnapshot, PoolForecast, PoolRecommendation, PoolRecommendations, RecommendationOutcome
 from ._pool_act_proposals import PoolActOutcome, PoolActProposal, PoolActProposals
@@ -82,6 +83,7 @@ from .errors import (
     CapacityUnavailableError,
     ConfigurationError,
     IdempotencyConflictError,
+    RunDraftConflictError,
     NodusError,
     NotFoundError,
     RateLimitError,
@@ -160,6 +162,8 @@ __all__ = [
     "UtilizationMetrics",
     "Client",
     "AsyncClient",
+    "Operations", "AsyncOperations", "OperationDefinition", "OperationCatalog", "WorkloadPage", "WorkloadValidation",
+    "RunDraft", "RunDraftValues", "RunDraftPatch",
     "Workload",
     "WorkloadLink",
     "AsyncWorkload",
@@ -211,6 +215,7 @@ __all__ = [
     "NotFoundError",
     "ValidationError",
     "IdempotencyConflictError",
+    "RunDraftConflictError",
     "RateLimitError",
     "BudgetExceededError",
     "CapacityUnavailableError",
@@ -800,6 +805,14 @@ class Client(_Transport):
                     idempotency_key,
                 ) from exc
 
+            if 300 <= resp.status_code < 400:
+                raise self._unreached(
+                    APIError,
+                    f"{method} {path} returned HTTP {resp.status_code}. "
+                    "Redirects are refused. Configure the final API origin.",
+                    idempotency_key,
+                )
+
             if resp.status_code >= 400:
                 if attempt < retries and self._should_retry(method, resp.status_code, attempt):
                     delay = self._hold(attempt, resp, slept)
@@ -946,6 +959,11 @@ class Client(_Transport):
     def pools(self) -> Pools:
         """Manage customer-owned pools and observe-only hosts."""
         return Pools(self)
+
+    @property
+    def operations(self) -> Operations:
+        """Call typed workload operations through the version 1 interface."""
+        return Operations(self)
 
     @property
     def assets(self) -> Assets:
@@ -1411,6 +1429,11 @@ class AsyncClient(_Transport):
         return self._api_key_shown
 
     @property
+    def operations(self) -> AsyncOperations:
+        """Call typed workload operations through the version 1 interface."""
+        return AsyncOperations(self)
+
+    @property
     def connections(self) -> AsyncConnections:
         """Manage verified external connections."""
         return AsyncConnections(self)
@@ -1507,6 +1530,14 @@ class AsyncClient(_Transport):
                     f"{method} {path} failed to connect: {exc}",
                     idempotency_key,
                 ) from exc
+
+            if 300 <= resp.status_code < 400:
+                raise self._unreached(
+                    APIError,
+                    f"{method} {path} returned HTTP {resp.status_code}. "
+                    "Redirects are refused. Configure the final API origin.",
+                    idempotency_key,
+                )
 
             if resp.status_code >= 400:
                 if attempt < retries and self._should_retry(method, resp.status_code, attempt):
