@@ -170,3 +170,51 @@ async def launch_async(client, preview, stable_run_id):
         idempotency_key=stable_run_id,
     )
 ```
+
+## Read task evidence and grading receipts
+
+Use `client.rl.events()` for reported RL task evidence. `workload.events()`
+returns separate workload lifecycle events.
+
+```python
+def read_available_tasks(client, workload_id, cursor=None):
+    while True:
+        page = client.rl.events(workload_id, after=cursor, limit=100)
+        for row in page.events:
+            event = row.event
+            print(event.task_id, event.outcome, event.reward)
+        if page.truncated or page.dropped_events:
+            print("Task evidence is partial", page.dropped_events)
+        cursor = page.next_cursor
+        if not page.has_more:
+            return cursor
+```
+
+Pass `next_cursor` unchanged as `after`. Keep the returned cursor for the next
+read. A row ID is a separate string identity and must not be used as a cursor.
+An empty page or `has_more=False` means no more rows were available in that
+snapshot. Continue polling while the workload is active and read again after
+observing its terminal status. Task events are application-reported evidence.
+They do not independently prove model quality or workload completion.
+
+For a workload with a server-admitted private grading plan, request receipts
+for the explicit revision you submitted:
+
+```python
+def read_grading(client, workload_id, revision):
+    results = client.rl.grading_results(workload_id, revision=revision)
+    for receipt in results.receipts:
+        print(receipt.task_id, receipt.state, receipt.reward)
+    return results
+
+async def read_evidence_async(client, workload_id, revision, cursor=None):
+    page = await client.rl.events(workload_id, after=cursor)
+    grading = await client.rl.grading_results(workload_id, revision=revision)
+    return page, grading
+```
+
+Receipt rewards are `None` when absent and `0` for a measured zero. An
+infrastructure failure does not supply a model reward. Cleanup fields describe
+the grading attempts in the selected revision and do not establish parent
+cleanup or final billing. A missing grading plan raises `NotFoundError`.
+Reading receipts does not enable private grading for a workload.

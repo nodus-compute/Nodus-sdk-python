@@ -38,7 +38,10 @@ from pathlib import Path
 from ._freeze import WorkloadFreeze
 from ._outputs import download_path, verified_file, output_destinations
 from ._assets import Asset, Assets, AsyncAssets
-from ._rl import AsyncRL, RL, RLRecipe, RLRunPreview
+from ._rl import (
+    AsyncRL, RL, RLRecipe, RLRunPreview, RLEvent, RLEventRow, RLEventPage,
+    RLGradingReceipt, RLGradingResults,
+)
 from ._secrets import Secrets, AsyncSecrets
 from ._connections import Connections, AsyncConnections
 from ._workspaces import Workspaces, AsyncWorkspaces
@@ -125,6 +128,11 @@ __all__ = [
     "AsyncRL",
     "RLRecipe",
     "RLRunPreview",
+    "RLEvent",
+    "RLEventRow",
+    "RLEventPage",
+    "RLGradingReceipt",
+    "RLGradingResults",
     "Pool",
     "PoolHost",
     "HostDevice",
