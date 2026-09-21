@@ -229,49 +229,15 @@ nodus sandbox rm NAME_OR_ID
 
 ## Repository bootstrap preview
 
-Connect the GitHub App to your account and grant it read access to the selected
-repository. Use an image with a non-root user, a writable `/workspace` directory
-and the tools your project needs. Bootstrap requires `github.com` in the egress
-allowlist. Include any additional hosts needed by your setup command.
+Sandbox creation accepts a `bootstrap` mapping with `repo` in `owner/repo`
+form and optional `ref`, `setup`, and `dotfiles` values. It requires a connected
+GitHub App with repository access, `github.com` in the egress allowlist, and an
+image with the required tools and a writable `/workspace` directory.
 
-```python
-import nodus
-
-with nodus.Client() as client:
-    sandbox = client.sandboxes.create(
-        name="api-agent",
-        image="ghcr.io/your-org/research-agent:1",
-        budget=5,
-        bootstrap={
-            "repo": "your-org/api",
-            "ref": "main",
-            "setup": "make deps",
-        },
-        policy={
-            "network": "allowlist",
-            "egress_allow": ["github.com"],
-        },
-    )
-    print(sandbox.id)
-```
-
-Creation returns the sandbox ID while startup continues. The checkout lives in
-`/workspace`. The setup command appears as an ordinary execution whose ID begins
-with `ex_bootstrap_`. Inspect its output and completion before running commands
-that depend on it. Setup failure leaves the sandbox usable and adds a
-`bootstrap_failed` warning to its API response and SDK `warnings` list.
-
-The optional `bootstrap["dotfiles"]` selects a second connected repository in
-`owner/repo` form. Bootstrap clones it into `$HOME/.dotfiles` and runs its
-`install.sh` before setup. `bootstrap["ref"]` accepts a branch name or
-`refs/tags/name`. Repository URLs and embedded credentials are rejected.
-
-The installation credential is never supplied to customer commands or saved in
-the checkout. Later authenticated Git operations require your own connection
-method. Repository bootstrap does not turn the root filesystem into persistent
-storage. Production checkout and setup qualification is pending. Use the
-[reconnect and terminate](#reconnect-and-terminate) commands to manage the
-existing sandbox.
+Setup runs as an ordinary sandbox execution. Check its output and completion
+before running dependent commands. Setup failure adds `bootstrap_failed` to the
+SDK's `warnings` list. Bootstrap does not make the root filesystem persistent.
+Production qualification of repository checkout and setup remains pending.
 
 ## Async agents
 

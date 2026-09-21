@@ -1717,6 +1717,12 @@
           "policy": {
             "$ref": "#/components/schemas/SandboxPolicy"
           },
+          "profile": {
+            "type": "string",
+            "deprecated": true,
+            "readOnly": true,
+            "description": "Historical profile retained on previously admitted sandboxes. New sandbox requests cannot select a profile."
+          },
           "requirements": {
             "type": "object",
             "additionalProperties": true

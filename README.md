@@ -289,7 +289,7 @@ to add the MCP tools and setup guidance together.
 Sign in once, then connect Claude, Cursor, Codex or another MCP client:
 
 ```sh
-uvx --from 'nodus-compute[mcp]==0.4.2' nodus login
+uvx --from 'nodus-compute[mcp]==0.6.0' nodus login
 ```
 
 ```json
@@ -297,7 +297,7 @@ uvx --from 'nodus-compute[mcp]==0.4.2' nodus login
   "mcpServers": {
     "nodus": {
       "command": "uvx",
-      "args": ["--from", "nodus-compute[mcp]==0.4.2", "nodus-mcp"]
+      "args": ["--from", "nodus-compute[mcp]==0.6.0", "nodus-mcp"]
     }
   }
 }

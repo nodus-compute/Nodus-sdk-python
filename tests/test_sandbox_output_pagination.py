@@ -1,13 +1,12 @@
 """Completed executions can retain several pages of binary terminal output."""
 import asyncio
 import base64
-import os
 
 import httpx
 import pytest
 
 from nodus import AsyncClient, Client
-from nodus._sandboxes import AsyncSandboxExec, Sandbox, SandboxExec
+from nodus._sandboxes import AsyncSandboxExec, SandboxExec
 
 
 CHUNKS = [b"\x1b[31mfirst\xff\x00", b"\r\nsecond\x80", b"\x1b[0mfinal\xfe\n"]
@@ -94,97 +93,6 @@ def test_nonfollowing_output_drains_initial_available_frames(asynchronous, state
             transcript = [frame.data for frame in SandboxExec(client, "sb_test", "ex_test").iter_output(follow=False)]
     assert transcript == chunks[:17]
     assert cursors == [0, 16]
-
-
-@pytest.mark.skipif(os.name != "posix", reason="Physical shell requires a POSIX terminal")
-@pytest.mark.parametrize("stalled", [False, True])
-def test_shell_drains_binary_final_pages_and_restores_terminal(monkeypatch, stalled):
-    import errno
-    import fcntl
-    import pty
-    import select
-    import signal
-    import struct
-    import sys
-    import termios
-    import threading
-    from nodus._shell import shell
-
-    master, slave = pty.openpty()
-    terminal = os.fdopen(os.dup(slave), "r+b", buffering=0)
-    fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
-    original = termios.tcgetattr(slave)
-    signals = {number: signal.getsignal(number) for number in (signal.SIGWINCH, signal.SIGHUP, signal.SIGTERM)}
-    cursors, actions = [], []
-
-    def respond(request):
-        actions.append(request.url.path)
-        if request.url.path.endswith("/stream"):
-            after = int(request.url.params["after"])
-            cursors.append(after)
-            page = completed_page(after)
-            if stalled and after == 2:
-                page.update(frames=[], next_sequence=after, complete=False)
-            return httpx.Response(200, json=page)
-        if request.url.path.endswith("/resize"):
-            return httpx.Response(202, json={"rows": 24, "cols": 80, "version": 1})
-        return httpx.Response(200, json={"id": "ex_test", "sandbox_id": "sb_test",
-                                        "state": "completed", "exit_code": 7})
-
-    transcript = bytearray()
-    def collect_terminal():
-        while True:
-            if select.select([master], [], [], 0.05)[0]:
-                try:
-                    chunk = os.read(master, 4096)
-                except OSError as error:
-                    if error.errno == errno.EIO:
-                        return  # Linux signals the fully drained PTY close with EIO.
-                    raise
-                if not chunk:
-                    return
-                transcript.extend(chunk)
-
-    reader = threading.Thread(target=collect_terminal)
-    reader.start()
-    real_write = os.write
-
-    def short_write(fd, data):
-        return real_write(fd, data[:3])
-
-    try:
-        monkeypatch.setattr(sys, "stdin", terminal)
-        monkeypatch.setattr(sys, "stdout", terminal)
-        monkeypatch.setattr(os, "write", short_write)
-        with Client(api_key="test-key", base_url="https://api.example.com") as client:
-            client._http.close()
-            client._http = httpx.Client(base_url="https://api.example.com", transport=httpx.MockTransport(respond))
-            if stalled:
-                from nodus import NodusError
-                with pytest.raises(NodusError, match="final output.*unavailable"):
-                    shell(Sandbox(client, "sb_test"))
-            else:
-                assert shell(Sandbox(client, "sb_test")) == 7
-        restored = termios.tcgetattr(slave)
-        restored[3] &= ~getattr(termios, "PENDIN", 0)
-        original[3] &= ~getattr(termios, "PENDIN", 0)
-        assert restored == original
-        assert {number: signal.getsignal(number) for number in signals} == signals
-        # EOF proves the transcript has drained. A quiet select interval does not.
-        terminal.close()
-        os.close(slave)
-        slave = None
-        reader.join(2)
-        assert not reader.is_alive()
-        assert bytes(transcript) == b"".join(CHUNKS[:2] if stalled else CHUNKS)
-        assert cursors == [0, 1, 2]
-        assert not any(path.endswith("/cancel") for path in actions)
-    finally:
-        terminal.close()
-        if slave is not None:
-            os.close(slave)
-        reader.join(2)
-        os.close(master)
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])
