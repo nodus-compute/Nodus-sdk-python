@@ -88,3 +88,54 @@ def test_workload_file_preserves_scope_for_server_resolution(tmp_path, asynchron
         assert continuity['checkpoint_paths'] == paths
     if stage:
         assert payload['continuity']['checkpoint_paths'] == ['custom-state']
+
+
+@pytest.mark.parametrize('integration', [None, 'auto', 'none', 'hf-trainer-v1'])
+@pytest.mark.parametrize('asynchronous', [False, True])
+@pytest.mark.parametrize('stage', [False, True])
+def test_checkpoint_integration_reaches_submission_wire(tmp_path, integration, asynchronous, stage):
+    prefix = ('[[stages]]\nid="train"\nsource={command=["python", "train.py"]}\n'
+              '[stages.continuity]\n' if stage else
+              'command=["python", "train.py"]\n[continuity]\n')
+    source = tmp_path / 'workload.toml'
+    source.write_text(prefix + ('' if integration is None else f'integration="{integration}"\n'))
+    sent = []
+
+    def handler(request):
+        assert request.method == 'POST'
+        assert request.url.path == '/v1/workloads'
+        sent.append(json.loads(request.content))
+        return httpx.Response(202, json={'id': 'wl_fixture', 'status': 'accepted'})
+
+    if asynchronous:
+        async def submit():
+            async with nodus.AsyncClient(api_key='fixture', base_url='https://nodus.invalid') as client:
+                await client._http.aclose()
+                client._http = httpx.AsyncClient(base_url='https://nodus.invalid', transport=httpx.MockTransport(handler))
+                await client.run_file(source)
+        asyncio.run(submit())
+    else:
+        with nodus.Client(api_key='fixture', base_url='https://nodus.invalid') as client:
+            client._http.close()
+            client._http = httpx.Client(base_url='https://nodus.invalid', transport=httpx.MockTransport(handler))
+            client.run_file(source)
+    assert len(sent) == 1
+    value = sent[0]['stages'][0]['continuity'] if stage else sent[0]['continuity']
+    if integration is None:
+        assert 'integration' not in value
+    else:
+        assert value['integration'] == integration
+
+
+@pytest.mark.parametrize('integration', ['', 'accelerate', 'hf-trainer', None, True, 1, []])
+@pytest.mark.parametrize('stage', [False, True])
+def test_invalid_checkpoint_integration_is_rejected_before_submission(integration, stage):
+    values = {'continuity': {'integration': integration}}
+    if stage:
+        values = {'stages': [{'id': 'train', 'source': {'command': ['python', 'train.py']}, **values}]}
+    with pytest.raises(ValueError, match='integration must be auto, none, or hf-trainer-v1'):
+        build_payload(**values)
+
+
+def test_checkpoint_integration_is_part_of_typed_contract():
+    assert 'integration' in ContinuitySpec.__annotations__

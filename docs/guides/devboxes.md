@@ -32,7 +32,7 @@ you explicitly raise the budget. A name used by another sandbox profile is a
 conflict. `rm` terminates the active devbox with that exact name and does not
 create a replacement. `ls` walks all pages and includes terminated devboxes.
 
-SDK 0.5.1 also accepts the returned ID with `devbox shell` and `devbox rm`.
+SDK 0.5.2 also accepts the returned ID with `devbox shell` and `devbox rm`.
 Both commands verify that the target has the devbox profile. Sandbox commands
 accept active exact names as well as IDs in this release.
 

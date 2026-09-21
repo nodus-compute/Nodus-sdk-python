@@ -37,6 +37,7 @@ waiting. An accepted workload is not necessarily a completed workload.
 - [Train or fine-tune a model](guides/gpu-workloads.md)
 - [Run from a workload file](getting-started/workload-files.md)
 - [Run an agent sandbox](guides/agent-sandboxes.md)
+- [Run from GitHub Actions and automation tools](guides/automation.md)
 - [Connect MCP tools](guides/mcp.md)
 - [Install Codex, Claude Code and Cursor plugins](guides/plugins.md)
 

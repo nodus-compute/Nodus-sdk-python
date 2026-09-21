@@ -12,17 +12,19 @@ import shutil
 import tempfile
 import threading
 
+from verification_package import package_source
+
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 
 TOOLS = {
     "submit_workload", "list_workloads", "get_workload", "cancel_workload",
-    "get_workload_events", "get_workload_logs", "list_workload_outputs",
+    "get_workload_events", "get_workload_logs", "list_workload_outputs", "validate_workload", "download_workload_output",
 }
 
 
-async def verify(plugin: Path) -> None:
+async def verify(plugin: Path, wheel: Path | None = None) -> None:
     requests = []
 
     class Handler(BaseHTTPRequestHandler):
@@ -64,6 +66,8 @@ async def verify(plugin: Path) -> None:
                 launch = config["mcpServers"]["nodus"]
                 if set(launch) != {"command", "args"}:
                     raise RuntimeError("Expected a credential-free command and arguments")
+                version = launch["args"][1].split("==")[1]
+                launch["args"][1] = package_source(version, wheel)
                 command = shutil.which(launch["command"])
                 if command is None:
                     raise RuntimeError(f"Install {launch['command']} before verifying plugins")
@@ -84,7 +88,7 @@ async def verify(plugin: Path) -> None:
                     ("/v1/workloads?limit=1", "Bearer plugin-test-key")
                 ] * 2, requests
                 assert len({request[2] for request in requests}) == 1, requests
-                print(f"{client}: seven tools, saved login, two reads, one TCP connection")
+                print(f"{client}: nine tools, saved login, two reads, one TCP connection")
     finally:
         server.shutdown()
         server.server_close()
@@ -95,5 +99,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--plugin", type=Path,
                         default=Path(__file__).resolve().parents[1] / "plugins/nodus")
+    parser.add_argument("--wheel", type=Path, help="test a matching unpublished wheel")
     args = parser.parse_args()
-    asyncio.run(verify(args.plugin.resolve()))
+    asyncio.run(verify(args.plugin.resolve(), args.wheel))

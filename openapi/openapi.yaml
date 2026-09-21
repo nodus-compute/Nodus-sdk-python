@@ -706,6 +706,11 @@
           },
           "sequence": {
             "type": "integer"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Original commit time of the latest useful recovery checkpoint. Independent of event pagination and unchanged by commit retries or artifact-only uploads."
           }
         },
         "x-go-source": "internal/models/models.go",
@@ -738,6 +743,16 @@
               "maxLength": 512
             },
             "description": "Literal normalized paths relative to the code folder, with at most 512 UTF-8 bytes per path. Select files or folders containing recovery state. Empty or omitted at workload level defaults new submissions to [\"state\"]. The runner exposes this folder as NODUS_CHECKPOINT_DIR. Only explicitly selected paths are saved, not installed dependencies elsewhere in the code folder. Empty or omitted at stage level inherits workload paths, a nonempty list overrides them, and [\".\"] explicitly selects the whole folder. Absolute paths, traversal, backslashes, colons, control characters and the .nodus subtree are rejected. Missing paths are skipped without widening the selection. Dependencies outside selected paths must be recreated by the image or command. Final result files are independent. Framework shortcuts apply workload-level paths to their generated stages. Stage-specific paths alongside a framework shortcut are not supported, use explicit stages instead."
+          },
+          "integration": {
+            "type": "string",
+            "enum": [
+              "",
+              "none",
+              "auto",
+              "hf-trainer-v1"
+            ],
+            "description": "Application save and resume integration. New submissions leave application checkpoint preparation disabled unless auto or hf-trainer-v1 is explicitly selected. Omission and none preserve the original source and application-managed checkpoint behavior. A stage inherits an explicit workload selection when omitted. Imported source alone does not enable preparation. auto attempts the supported framework adapter and otherwise runs the original command with application-managed checkpoints. hf-trainer-v1 requires supported Hugging Face Trainer preparation and runtime validation. Explicit managed selections require execution-v2, enabled preparation and source.asset_id. Previously accepted submissions keep their original selection. Prepared source does not itself prove that application state has been saved or recovered."
           }
         },
         "x-go-source": "internal/models/models.go",
@@ -2922,6 +2937,13 @@
           "sink_error": {
             "type": "string",
             "description": "Value-free database sink failure. Workload completion is independent of sink loading."
+          },
+          "checkpoint_preparation": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CheckpointPreparationSummary"
+            },
+            "description": "Detail-only source preparation status for stages requesting managed checkpoint integration. Does not assert runtime framework compatibility or successful application recovery."
           }
         },
         "x-go-source": "internal/models/models.go",
@@ -3670,15 +3692,30 @@
         "x-go-source": "internal/store/research_workspaces.go",
         "x-go-type": "ResearchWorkspaceStorage"
       },
+      "WorkspacePendingUpload": {
+        "type": "object",
+        "description": "An unfinished customer folder upload. Use its ID with the existing transfer status, segment, finalize and discard routes. Available from any authenticated browser for this account. Reselecting files requires the same manifest commitment. Runtime saves are excluded.",
+        "required": ["id", "workspace_id", "state", "base_revision", "manifest_sha256", "manifest_bytes"],
+        "properties": {
+          "id": {"type": "string", "format": "uuid"},
+          "workspace_id": {"type": "string"},
+          "state": {"type": "string", "enum": ["uploading", "queued", "verifying"]},
+          "base_revision": {"type": "integer", "minimum": 0},
+          "manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "manifest_bytes": {"type": "integer", "minimum": 1, "maximum": 16777216}
+        }
+      },
       "ResearchWorkspace": {
         "description": "A durable named project and its saved configuration, with a replaceable compute session. Only saved files under /workspace are restored, not process memory.",
         "allOf": [
           {"$ref": "#/components/schemas/WorkspaceRecord"},
           {
             "type": "object",
-            "required": ["holder_id", "saved_at", "stored_bytes", "last_error", "saving_for_termination", "configuration", "storage_revision", "storage_policy_version", "session", "meter", "state", "status_message", "connections", "storage"],
+            "required": ["holder_id", "saved_at", "stored_bytes", "last_error", "saving_for_termination", "configuration", "configuration_revision", "pending_upload", "storage_revision", "storage_policy_version", "session", "meter", "state", "status_message", "connections", "storage"],
             "properties": {
               "configuration": {"$ref": "#/components/schemas/ResearchWorkspaceConfiguration"},
+              "pending_upload": {"oneOf": [{"$ref": "#/components/schemas/WorkspacePendingUpload"}, {"type": "null"}]},
+              "configuration_revision": {"type": "string", "pattern": "^[0-9a-f]{64}$", "description": "Saved configuration identity. Send this observed value when editing settings. Independent from the saved-file revision."},
               "storage_revision": {"type": "integer", "format": "int64", "minimum": 0, "description": "Current saved-file revision used to guard a stopped-workspace replacement."},
               "storage_policy_version": {"type": "string", "description": "Storage policy recorded for this workspace. Transfer endpoints require a compatible versioned storage policy on the workspace and deployment."},
               "session": {
@@ -6863,6 +6900,40 @@
         },
         "x-go-source": "internal/store/connection_loads.go",
         "x-go-type": "ConnectionLoad"
+      },
+      "CheckpointPreparationSummary": {
+        "type": "object",
+        "properties": {
+          "stage_id": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "ready",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "proposed_integration": {
+            "type": "string",
+            "enum": [
+              "none",
+              "hf-trainer-v1"
+            ],
+            "description": "Present after source preparation. hf-trainer-v1 is a proposed adapter that still requires validation when training starts. none retains application-managed checkpoints."
+          },
+          "ready_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "x-go-source": "internal/models/checkpoint_integration.go",
+        "x-go-type": "CheckpointPreparationSummary"
       }
     },
     "securitySchemes": {
@@ -9314,7 +9385,7 @@
             "schema": {
               "type": "integer"
             },
-            "description": "Page size. 1\u2013100. Omitted, nonpositive, or over 100 defaults to 50."
+            "description": "Page size. 1–100. Omitted, nonpositive, or over 100 defaults to 50."
           },
           {
             "name": "offset",
@@ -10279,6 +10350,29 @@
       }
     },
     "/v1/research-workspaces/{id}": {
+      "patch": {
+        "operationId": "updateResearchWorkspaceConfiguration",
+        "summary": "Change settings for the next workspace session",
+        "tags": ["Research workspaces"],
+        "description": "Requires stopped compute with confirmed release and no active file transfer. Send the complete configuration and its observed configuration_revision. Allows editor, SSH public key, GPU resources, session budget and duration changes. Name, environment, project capacity and repository bootstrap remain fixed. Saved files and previous workloads are preserved. An exact retry of already applied settings succeeds. Conflicting changes require reloading and reviewing the current configuration.",
+        "parameters": [
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}, "description": "Saved workspace identifier."}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {
+            "type": "object", "required": ["configuration_revision", "configuration"],
+            "properties": {
+              "configuration_revision": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+              "configuration": {"$ref": "#/components/schemas/ResearchWorkspaceConfiguration"}
+            }
+          }}}
+        },
+        "responses": {
+          "200": {"description": "Current workspace with saved settings", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ResearchWorkspace"}}}},
+          "default": {"description": "400 for invalid settings or revision. 404 for another account or missing workspace. 409 workspace_configuration_changed requires review of current settings. 409 workspace_configuration_busy requires compute and transfers to finish. Authentication and rate limits apply.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SandboxError"}}}}
+        }
+      },
       "get": {
         "operationId": "getResearchWorkspace",
         "summary": "Read workspace state, costs and tool readiness",
@@ -12572,6 +12666,74 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ConnectionLoad"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workloads/validate": {
+      "post": {
+        "tags": [
+          "Workloads"
+        ],
+        "summary": "Validate a prepared workload without submitting it",
+        "operationId": "validateWorkload",
+        "description": "Checks the workload request and referenced resources without admission, capacity reservation or spending. Requires an explicit positive outcome.max_cost_usd. A valid request can still fail admission when submitted.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkloadPayload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Request is valid and has not been submitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "valid",
+                    "submitted",
+                    "workload",
+                    "message"
+                  ],
+                  "properties": {
+                    "valid": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "submitted": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "workload": {
+                      "$ref": "#/components/schemas/WorkloadPayload"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
                 }
               }
             }

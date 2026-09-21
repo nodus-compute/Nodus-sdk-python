@@ -98,5 +98,6 @@ def test_configured_agent_discovers_tools_despite_python_overrides(
     assert asyncio.run(check()) == {
         "submit_workload", "list_workloads", "get_workload", "get_workload_events",
         "get_workload_logs", "list_workload_outputs", "cancel_workload",
+        "validate_workload", "download_workload_output",
     }
     assert not marker.exists()

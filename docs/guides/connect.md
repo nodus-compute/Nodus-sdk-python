@@ -2,10 +2,53 @@
 
 Connect Nodus to Claude Code, Codex, Cursor or another coding agent. Your agent
 can submit GPU workloads, follow progress, inspect logs and retrieve output
-metadata. Use the [connection page](https://nodus-compute.ai/connect/) for
-copy buttons and the Cursor install link.
+files. Use the [connection page](https://nodus-compute.ai/connect/) for
+native install buttons and copyable client commands.
 
 ## Quick connection
+
+Choose your agent on the [connection page](https://nodus-compute.ai/connect/),
+then approve access in your browser. Claude Code and Codex use the commands
+below. Cursor has a native install button. Hosted connections need no local
+Nodus package or copied API key.
+
+Claude Code:
+
+```sh
+claude mcp add --scope user --transport http nodus https://d1a0b732w6344o.cloudfront.net/mcp
+```
+
+Open `/mcp` in Claude Code and authenticate Nodus.
+
+Codex:
+
+```sh
+codex mcp add nodus --url https://d1a0b732w6344o.cloudfront.net/mcp
+codex mcp login nodus
+```
+
+For other clients, add this remote HTTP MCP URL and follow their OAuth prompt:
+
+```text
+https://d1a0b732w6344o.cloudfront.net/mcp
+```
+
+Ask **List my Nodus workloads.** The connection check starts no paid compute.
+Keep an existing working connection or remove it before adding another.
+[Plugins](plugins.md) bundle the hosted connection and workload guidance.
+
+The approval screen names the account, team, requested permissions and client
+return address. You can choose read-only access. Write access permits workload
+submission and cancellation, with an explicit budget on every submission.
+Access expires after 30 days. Authenticate again in the client to reconnect.
+
+[Connected agents](https://console.nodus-compute.ai/console/?view=agents) shows
+your grants and the last successful tool call. Disconnecting revokes the
+connection and its result download links. Existing workloads continue until
+completion or cancellation. Local API-key connections are managed separately
+under API keys.
+
+## Local installation
 
 Run one command in your terminal. Setup installs its own tools and Python,
 then lets you choose one or more agents. It opens browser sign-in, adds Nodus
@@ -55,13 +98,42 @@ Both are generated from the public [installer source](../../install/connect.py)
 and the pinned plugin package. The individual client instructions below remain
 available for manual setup and custom profiles.
 
+## Repair a local connection
+
+Check installed settings and read-only workload access without signing in or
+changing agent settings. Replace `cursor` with your client name:
+
+```sh
+curl -fsSL https://nodus-compute.ai/install | sh -s -- --agents cursor --check
+```
+
+Repair an installer-managed connection, update its runtime and skills, and
+refresh sign-in:
+
+```sh
+curl -fsSL https://nodus-compute.ai/install | sh -s -- --agents cursor --repair
+```
+
+On Windows, download and run the same installer with the repair option:
+
+```powershell
+Invoke-WebRequest https://nodus-compute.ai/install.ps1 -OutFile nodus-install.ps1
+.\nodus-install.ps1 --agents cursor --repair
+```
+
+Repair preserves unrelated servers and settings. It updates entries and skills
+only when they match the installer's ownership record or a recognized legacy
+installation. Manual changes are refused, with existing files retained. Private
+backups remain next to changed files. Restart the client, then ask it to list
+workloads to confirm that the client loaded its tools.
+
 ## Sign in once
 
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then run
 this in your terminal and complete browser sign-in:
 
 ```sh
-uvx --from 'nodus-compute[mcp]==0.4.2' nodus login
+uvx --from 'nodus-compute[mcp]==0.5.2' nodus login
 ```
 
 The package downloads automatically. Local clients running as the same OS
@@ -75,7 +147,7 @@ for unattended environments and custom deployments.
 Run this in your terminal to add Nodus across your projects:
 
 ```sh
-claude mcp add --scope user --transport stdio nodus -- uvx --from 'nodus-compute[mcp]==0.4.2' nodus-mcp
+claude mcp add --scope user --transport stdio nodus -- uvx --from 'nodus-compute[mcp]==0.5.2' nodus-mcp
 ```
 
 Restart Claude Code or reconnect through `/mcp`.
@@ -85,13 +157,13 @@ Restart Claude Code or reconnect through `/mcp`.
 Run this in your terminal, then start a new Codex session:
 
 ```sh
-codex mcp add nodus -- uvx --from 'nodus-compute[mcp]==0.4.2' nodus-mcp
+codex mcp add nodus -- uvx --from 'nodus-compute[mcp]==0.5.2' nodus-mcp
 ```
 
 ## Cursor
 
 Select Cursor on the [connection page](https://nodus-compute.ai/connect/) and
-click **Add to Cursor**. Review the configuration in Cursor and enable Nodus.
+open **Manual setup and other options**, then click **Add local server to Cursor**. Review the configuration in Cursor and enable Nodus.
 For manual setup, merge this into `~/.cursor/mcp.json`:
 
 ```json
@@ -99,7 +171,7 @@ For manual setup, merge this into `~/.cursor/mcp.json`:
   "mcpServers": {
     "nodus": {
       "command": "uvx",
-      "args": ["--from", "nodus-compute[mcp]==0.4.2", "nodus-mcp"]
+      "args": ["--from", "nodus-compute[mcp]==0.5.2", "nodus-mcp"]
     }
   }
 }
@@ -117,7 +189,8 @@ Reload the client's MCP connection or start a new session. Ask your agent:
 List my Nodus workloads.
 ```
 
-The agent should discover seven tools and call `list_workloads`. Check its
+A local connection exposes nine tools. Hosted read-only access exposes seven.
+Ask the agent to call `list_workloads`. Check its
 actual response. An empty list is valid. This read does not start paid compute.
 If it fails, use the [MCP troubleshooting guide](mcp.md#cancel-and-troubleshoot).
 
@@ -125,8 +198,8 @@ For your first workload, provide your image, command, GPU requirements and
 spending limit. Ask the agent to prepare your command with a maximum you
 specify and show the request before submission. Do not invent a budget or
 start compute to test the connection. The [workload guide](agents.md) covers
-execution and downloaded result verification. MCP output listing returns
-metadata. Use the SDK or authenticated API to download the files you need.
+execution and downloaded result verification. Use `download_workload_output`
+locally or `get_workload_output` on a hosted connection to retrieve results.
 
 ## VS Code and GitHub Copilot
 
@@ -138,7 +211,7 @@ Merge this into `.vscode/mcp.json` in your project, then enable Nodus in chat:
     "nodus": {
       "type": "stdio",
       "command": "uvx",
-      "args": ["--from", "nodus-compute[mcp]==0.4.2", "nodus-mcp"]
+      "args": ["--from", "nodus-compute[mcp]==0.5.2", "nodus-mcp"]
     }
   }
 }
@@ -162,7 +235,7 @@ Merge this into `opencode.json` in your project:
   "mcp": {
     "nodus": {
       "type": "local",
-      "command": ["uvx", "--from", "nodus-compute[mcp]==0.4.2", "nodus-mcp"],
+      "command": ["uvx", "--from", "nodus-compute[mcp]==0.5.2", "nodus-mcp"],
       "enabled": true
     }
   }
@@ -175,7 +248,7 @@ Restart OpenCode. See [OpenCode MCP setup](https://opencode.ai/docs/mcp-servers/
 
 Choose a **local** or **stdio** server in your client's MCP settings. Set the
 command to `uvx` and the arguments to
-`["--from", "nodus-compute[mcp]==0.4.2", "nodus-mcp"]`.
+`["--from", "nodus-compute[mcp]==0.5.2", "nodus-mcp"]`.
 For clients that accept an `mcpServers` object, merge the configuration from
 the Cursor section. Preserve unrelated settings and servers.
 
@@ -194,10 +267,9 @@ Client policy or administrator settings can restrict local servers.
 For the Devin Local agent, use the Devin CLI configuration described in
 the linked Windsurf documentation.
 
-Nodus supplies a local stdio server. A client that only accepts a hosted HTTP
-MCP URL cannot launch it directly. Use the Python SDK or customer API from an
-execution environment instead. Do not enter the Nodus API URL as an MCP URL.
-See the [MCP reference](mcp.md) for the seven workload tools.
+Clients that support HTTP MCP and OAuth can use the hosted connection at the
+start of this guide. The MCP endpoint ends in `/mcp`. See the
+[MCP reference](mcp.md) for the available workload tools.
 
 ## Agent skills
 
@@ -241,5 +313,5 @@ configuration interface.
 - [Python SDK](../reference/python/client.md) and [CLI](../reference/cli.md)
   support custom agents and automation with execution environments.
 - [Agent sandboxes](agent-sandboxes.md) support interactive commands and
-  streamed output through the SDK. The seven workload MCP tools do not
+  streamed output through the SDK. The workload MCP tools do not
   expose sandbox operations.
