@@ -7,6 +7,7 @@ import base64
 import json
 
 import httpx
+import pytest
 
 import nodus
 
@@ -159,6 +160,47 @@ def test_create_exec_stream_stdin_wait_and_terminate_journey():
     assert stdin_call[4] == "stdin-agent-step"
 
 
+@pytest.mark.parametrize("async_mode", [False, True], ids=["sync", "async"])
+@pytest.mark.parametrize(("options", "expected"), [
+    ({}, {}),
+    ({"requirements": {"vcpus": 2, "peak_memory_gb": 4}}, {"vcpus": 2, "peak_memory_gb": 4}),
+    ({"requirements": {"gpu": "L40S"}}, {"gpu": "L40S", "compute_class": "accelerator"}),
+    ({"requirements": {"gpu_count": 2}}, {"gpu_count": 2, "compute_class": "accelerator"}),
+    ({"requirements": {"gpu_count": 0}}, {"gpu_count": 0, "compute_class": "accelerator"}),
+    ({"requirements": {"gpu_interconnect": "nvlink"}}, {"gpu_interconnect": "nvlink", "compute_class": "accelerator"}),
+    ({"requirements": {"gpu_count": None}}, {"gpu_count": None}),
+    ({"requirements": {"compute_class": "vm"}}, {"compute_class": "vm"}),
+    ({"requirements": {"compute_class": "accelerator"}}, {"compute_class": "accelerator"}),
+    ({"profile": "devbox"}, {}),
+    ({"profile": "devbox", "requirements": {"gpu": "L40S"}}, {"gpu": "L40S"}),
+])
+def test_create_compute_requirements_preserve_caller_intent(async_mode, options, expected):
+    original = json.loads(json.dumps(options))
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        calls.append(body)
+        assert body["requirements"] == expected
+        assert body["outcome"] == {"max_cost_usd": 3}
+        assert request.headers["Idempotency-Key"] == "compute-intent"
+        return httpx.Response(202, json=SANDBOX)
+
+    async def run():
+        client = nodus.AsyncClient(api_key="nk_live_test", base_url="https://nodus.invalid")
+        client._http = httpx.AsyncClient(base_url="https://nodus.invalid", transport=httpx.MockTransport(handler))
+        async with client:
+            await client.sandboxes.create(image="python:3.12", budget=3, idempotency_key="compute-intent", **options)
+
+    if async_mode:
+        asyncio.run(run())
+    else:
+        with sync_client(handler) as client:
+            client.sandboxes.create(image="python:3.12", budget=3, idempotency_key="compute-intent", **options)
+    assert len(calls) == 1
+    assert options == original
+
+
 def test_top_level_sandbox_is_get_or_create_and_context_managed(monkeypatch):
     calls = []
 
@@ -188,7 +230,7 @@ def test_top_level_sandbox_is_get_or_create_and_context_managed(monkeypatch):
 
 def test_top_level_sandbox_can_reattach_by_name_without_an_image(monkeypatch):
     def handler(request: httpx.Request) -> httpx.Response:
-        assert json.loads(request.content) == {"name": "agent-session", "requirements": {"compute_class": "accelerator"}}
+        assert json.loads(request.content) == {"name": "agent-session", "requirements": {}}
         return httpx.Response(202, json=SANDBOX)
 
     client = sync_client(handler)

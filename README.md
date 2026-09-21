@@ -2,7 +2,7 @@
 
 # Nodus Python SDK
 
-**One interface for running AI workloads and agent sandboxes on GPUs.**
+**One interface for AI workload execution and agent sandboxes.**
 
 [![PyPI version](https://img.shields.io/pypi/v/nodus-compute)](https://pypi.org/project/nodus-compute/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://github.com/nodus-compute/Nodus-sdk-python/blob/main/pyproject.toml)
@@ -12,10 +12,20 @@
 
 </div>
 
-Run training, fine-tuning, batch experiments, and tool-driven agent sessions
+Run training, fine-tuning, and batch experiments
 when your local machine lacks the GPU memory or capacity they need. Provide a
 container image and resource requirements. Nodus matches the work to available
 GPU capacity. Add a budget to set a spending limit.
+
+Agent sandbox and devbox previews run tools in a separate environment. New
+sandboxes in SDK 0.5.3 and later use the server's CPU default unless accelerator
+resources are requested.
+These examples require deployments
+that enable CPU sandbox capacity. This preview is not generally available CPU
+workload execution.
+SDK 0.5.2 and earlier default ordinary sandboxes to accelerator resources.
+See the [sandbox guide](https://nodus-compute.ai/docs/guides/agent-sandboxes/) before retrying an
+uncertain submission across an SDK upgrade.
 
 ## 1. Install and sign in
 
@@ -26,7 +36,7 @@ nodus login
 
 Get [nodus-compute on PyPI](https://pypi.org/project/nodus-compute/).
 Requires Python 3.10 or newer. Upgrading an existing installation? Use
-`pip install --upgrade nodus-compute`. These docs cover SDK 0.5.1.
+`pip install --upgrade nodus-compute`. These docs cover SDK 0.5.3.
 
 Your browser opens Nodus sign-in. Sign in and approve the code matching your
 terminal. You can then close the tab. The terminal finishes automatically and
@@ -93,13 +103,17 @@ separate from a training or batch workload. Name it once, execute multiple
 commands, stream ordered stdout and stderr frames, and reconnect with the same
 name from another process.
 
+This example requires a deployment with CPU sandbox preview enabled. Replace
+the image with your published agent image, including a non-root `USER` and a
+writable working directory.
+
 ```python
 import nodus
 
 with nodus.Sandbox(
     name="research-agent",
-    image="pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime",
-    requirements={"gpu": "L40S", "peak_memory_gb": 32},
+    image="ghcr.io/your-org/research-agent:1",
+    requirements={"vcpus": 2, "peak_memory_gb": 4, "disk_gb": 10},
     budget=5,
 ) as sandbox:
     print("Sandbox:", sandbox.id)
@@ -125,7 +139,7 @@ place of `SANDBOX_ID`. Use the returned ID with older releases. See
 before retrying a request whose outcome is uncertain.
 
 ```bash
-nodus sandbox new pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime --name research-agent --budget 5
+nodus sandbox new ghcr.io/your-org/research-agent:1 --name research-agent --budget 5
 nodus sandbox exec SANDBOX_ID "python -c 'print(2 + 2)'"
 nodus sandbox cost SANDBOX_ID
 nodus sandbox rm SANDBOX_ID
