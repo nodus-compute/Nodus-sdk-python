@@ -12,6 +12,7 @@ import math
 import os
 from pathlib import Path
 import re
+import shlex
 import sys
 import threading
 import time
@@ -23,7 +24,7 @@ from typing import Any
 from . import Client, SandboxExec, __version__, _is_header_safe, _redact, _resolve_base_url, _current_hosted_url, config, login
 from ._terminal import clean, compute_label, format_cost, show_table, show_workload, status_label
 from ._brief import STATUS_FILTERS
-from .errors import ValidationError, NodusError, NotFoundError, AuthenticationError, APIConnectionError, APITimeoutError, asset_id_from_error
+from .errors import ValidationError, NodusError, NotFoundError, AuthenticationError, APIError, APIConnectionError, APITimeoutError, asset_id_from_error
 from .types import _num
 from ._workload_file import load_workload_file, write_workload_file
 
@@ -315,6 +316,69 @@ def _devboxes(client, *, name=None):
         cursor = next_cursor
 
 
+def _resolve_sandbox(client, reference, *, profile=None):
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", reference):
+        raise ValidationError("Use a sandbox ID or a name of up to 128 letters, digits, dots, underscores or dashes.")
+    missing = None
+    if reference.startswith("sb_") and "." not in reference:
+        try:
+            box = client.sandboxes.from_id(reference)
+        except NotFoundError as error:
+            if error.code != "not_found" or re.fullmatch(r"sb_[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", reference):
+                raise
+            missing = error
+        else:
+            if profile and box.envelope.get("profile") != profile:
+                raise ValidationError(f"That sandbox is not a {profile}. Use nodus {profile} ls.")
+            return box
+    cursor = None
+    seen = set()
+    matches = {}
+    while True:
+        rows, next_cursor = client.sandboxes.list_page(name=reference, cursor=cursor)
+        for box in rows:
+            if box.envelope.get("name") != reference or box.is_terminal:
+                continue
+            if profile and box.envelope.get("profile") != profile:
+                continue
+            matches[box.id] = box
+        if len(matches) > 1:
+            raise ValidationError("More than one active sandbox matches that name. Use an exact ID from nodus sandbox ls.")
+        if next_cursor is None:
+            break
+        if next_cursor in seen:
+            raise ValidationError("Sandbox pagination did not advance. Retry the command.")
+        seen.add(next_cursor)
+        cursor = next_cursor
+    if not matches:
+        if missing:
+            raise missing
+        resource = profile or "sandbox"
+        raise ValidationError(f"No active {resource} with that name was found. Check nodus {resource} ls and use its ID.")
+    return next(iter(matches.values()))
+
+
+@contextmanager
+def _sandbox_mutation(request_key, *, sandbox_id=None):
+    key = request_key or f"sandbox-cli-{uuid.uuid4()}"
+    try:
+        yield key
+    except (KeyboardInterrupt, NodusError) as error:
+        uncertain = isinstance(error, (KeyboardInterrupt, APIConnectionError, APITimeoutError))
+        if isinstance(error, NodusError):
+            uncertain = uncertain or bool(error.status_code and error.status_code >= 500)
+            uncertain = uncertain or (isinstance(error, APIError) and error.status_code is None)
+        if uncertain:
+            identity = f" Use sandbox ID {_safe_line(sandbox_id)} instead of its name." if sandbox_id else ""
+            print(
+                "Request outcome unknown. The operation may have been accepted."
+                + identity + " Retry the unchanged operation with --idempotency-key="
+                + shlex.quote(key) + " before the positional arguments. Do not submit it with a new key.",
+                file=sys.stderr,
+            )
+        raise
+
+
 def _cmd_devbox(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
         if args.devbox_cmd == "up":
@@ -323,21 +387,18 @@ def _cmd_devbox(args: argparse.Namespace) -> int:
             bootstrap = None
             if args.repo:
                 bootstrap = {key: value for key, value in (("repo", args.repo), ("ref", args.ref), ("setup", args.setup), ("dotfiles", args.dotfiles)) if value}
-            box = client.sandboxes.create(profile="devbox", name=args.name, image=args.image, budget=args.budget, bootstrap=bootstrap)
+            with _sandbox_mutation(args.idempotency_key) as key:
+                box = client.sandboxes.create(profile="devbox", name=args.name, image=args.image, budget=args.budget, bootstrap=bootstrap, idempotency_key=key)
             print(_safe_line(box.id))
             return 0
         if args.devbox_cmd == "shell":
             from ._shell import shell
-            matches = [box for box in _devboxes(client, name=args.name) if not box.is_terminal]
-            if len(matches) != 1:
-                raise ValidationError("Expected exactly one active devbox with that name. Use nodus devbox ls.")
-            return shell(matches[0])
+            return shell(_resolve_sandbox(client, args.name, profile="devbox"))
         if args.devbox_cmd == "rm":
-            matches = [box for box in _devboxes(client, name=args.name) if not box.is_terminal]
-            if len(matches) != 1:
-                raise ValidationError("Expected exactly one active devbox with that name. Use nodus devbox ls.")
-            matches[0].terminate()
-            print(_safe_line(matches[0].id))
+            box = _resolve_sandbox(client, args.name, profile="devbox")
+            with _sandbox_mutation(args.idempotency_key, sandbox_id=box.id) as key:
+                box.terminate(idempotency_key=key)
+            print(_safe_line(box.id))
             return 0
         boxes = list(_devboxes(client))
         if args.json:
@@ -495,11 +556,13 @@ def _cmd_pools(args: argparse.Namespace) -> int:
 def _cmd_sandbox(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
         if args.sandbox_cmd == "new":
-            sandbox = client.sandboxes.create(
-                image=args.image,
-                name=args.name,
-                budget=args.budget,
-            )
+            with _sandbox_mutation(args.idempotency_key) as key:
+                sandbox = client.sandboxes.create(
+                    image=args.image,
+                    name=args.name,
+                    budget=args.budget,
+                    idempotency_key=key,
+                )
             print(_safe_line(sandbox.id))
             return 0
         if args.sandbox_cmd == "ls":
@@ -508,6 +571,7 @@ def _cmd_sandbox(args: argparse.Namespace) -> int:
                 print(json.dumps([
                     {
                         "id": sandbox.id,
+                        "name": sandbox.envelope.get("name", ""),
                         "state": getattr(sandbox.state, "value", sandbox.state),
                         "cost_usd": sandbox.cost_usd,
                         "url": sandbox.url,
@@ -516,33 +580,59 @@ def _cmd_sandbox(args: argparse.Namespace) -> int:
                 ], indent=2, default=str))
             else:
                 show_table(
-                    ["Sandbox", "Status", "Cost"],
-                    [[sandbox.id, sandbox.state, format_cost(sandbox.cost_usd)] for sandbox in sandboxes],
+                    ["Sandbox", "Name", "Status", "Cost"],
+                    [[sandbox.id, sandbox.envelope.get("name", ""), sandbox.state, format_cost(sandbox.cost_usd)] for sandbox in sandboxes],
                     empty="No sandboxes yet. Use nodus sandbox new IMAGE to create one.",
                     plain=args.plain,
                 )
             return 0
         if args.sandbox_cmd == "exec":
-            sandbox = client.sandboxes.from_id(args.sandbox_id)
+            sandbox = _resolve_sandbox(client, args.sandbox_id)
             command: str | list[str] = args.command[0] if len(args.command) == 1 else args.command
-            process = sandbox.exec(command, cwd=args.cwd)
-            for frame in process.iter_output():
-                print(_safe(frame.text), end="", file=sys.stderr if frame.stream == "stderr" else sys.stdout)
-            process.wait()
+            with _sandbox_mutation(args.idempotency_key, sandbox_id=sandbox.id) as key:
+                process = sandbox.exec(command, cwd=args.cwd, idempotency_key=key)
+            try:
+                for frame in process.iter_output():
+                    print(_safe(frame.text), end="", file=sys.stderr if frame.stream == "stderr" else sys.stdout)
+                process.wait()
+            except (KeyboardInterrupt, NodusError) as error:
+                if not isinstance(error, KeyboardInterrupt):
+                    try:
+                        process.refresh()
+                    except NodusError:
+                        pass
+                if process.is_terminal and not process.succeeded:
+                    _sandbox_exec_failure(process)
+                print(_safe_line(
+                    f"Execution {process.id} was accepted in sandbox {sandbox.id}. "
+                    f"Resume output with nodus sandbox logs {shlex.quote(_safe_line(sandbox.id))} {shlex.quote(_safe_line(process.id))} --follow. "
+                    "Do not rerun exec to resume observation."
+                ), file=sys.stderr)
+                raise
+            if not process.succeeded:
+                _sandbox_exec_failure(process)
             return 0 if process.succeeded else 1
         if args.sandbox_cmd == "logs":
-            process = SandboxExec(client, args.sandbox_id, args.exec_id)
+            sandbox = _resolve_sandbox(client, args.sandbox_id)
+            process = SandboxExec(client, sandbox.id, args.exec_id)
             for frame in process.iter_output(follow=args.follow):
                 print(_safe(frame.text), end="", file=sys.stderr if frame.stream == "stderr" else sys.stdout)
             return 0
-        sandbox = client.sandboxes.from_id(args.sandbox_id)
+        sandbox = _resolve_sandbox(client, args.sandbox_id)
         if args.sandbox_cmd == "cost":
             sandbox.refresh()
             print(format_cost(sandbox.cost_usd))
             return 0
-        sandbox.terminate()
+        with _sandbox_mutation(args.idempotency_key, sandbox_id=sandbox.id) as key:
+            sandbox.terminate(idempotency_key=key)
         print(_safe_line(sandbox.id))
         return 0
+
+
+def _sandbox_exec_failure(process):
+    state = getattr(process.state, "value", process.state)
+    detail = process.failure_code or f"exit code {process.exit_code}"
+    print(_safe_line(f"Execution {process.id} ended {state}: {detail}."), file=sys.stderr)
 
 
 def _cmd_outputs(args: argparse.Namespace) -> int:
@@ -1020,6 +1110,7 @@ Use nodus COMMAND --help for command options.""",
     devbox_up.add_argument("name")
     devbox_up.add_argument("--image", default=None)
     devbox_up.add_argument("--budget", type=_positive_cost, default=None)
+    devbox_up.add_argument("--idempotency-key", help="reuse the same key when retrying an uncertain request")
     devbox_up.add_argument("--repo", help="connected GitHub repository as owner/name")
     devbox_up.add_argument("--ref", help="branch name or refs/tags/name")
     devbox_up.add_argument("--setup", help="setup command recorded as an ordinary sandbox execution")
@@ -1027,9 +1118,10 @@ Use nodus COMMAND --help for command options.""",
     devbox_ls = devbox_sub.add_parser("ls", help="list devbox sandboxes")
     devbox_ls.add_argument("--json", action="store_true")
     devbox_shell = devbox_sub.add_parser("shell", help="open an interactive terminal, Ctrl+] disconnects")
-    devbox_shell.add_argument("name")
-    devbox_rm = devbox_sub.add_parser("rm", help="terminate an active devbox by name")
-    devbox_rm.add_argument("name")
+    devbox_shell.add_argument("name", metavar="NAME_OR_ID")
+    devbox_rm = devbox_sub.add_parser("rm", help="terminate a devbox by name or ID")
+    devbox_rm.add_argument("name", metavar="NAME_OR_ID")
+    devbox_rm.add_argument("--idempotency-key", help="reuse the same key when retrying an uncertain request")
     benchmark = sub.add_parser("benchmark", help="run and inspect a hardware matrix")
     benchmark_sub = benchmark.add_subparsers(dest="benchmark_cmd", required=True)
     benchmark_run = benchmark_sub.add_parser("run", help="submit a benchmark JSON request")
@@ -1134,21 +1226,24 @@ Use nodus COMMAND --help for command options.""",
     sandbox_new.add_argument("image", nargs="?", default=None)
     sandbox_new.add_argument("--name", default=None)
     sandbox_new.add_argument("--budget", type=_positive_cost, default=None, help="maximum sandbox cost in USD")
+    sandbox_new.add_argument("--idempotency-key", help="reuse the same key when retrying an uncertain request")
     sandbox_list = sandbox_sub.add_parser("ls", help="list sandboxes")
     sandbox_list.add_argument("--limit", type=_page_limit, default=50)
     sandbox_list.add_argument("--json", action="store_true")
     sandbox_exec = sandbox_sub.add_parser("exec", help="run a command in a sandbox")
-    sandbox_exec.add_argument("sandbox_id")
+    sandbox_exec.add_argument("sandbox_id", metavar="NAME_OR_ID")
     sandbox_exec.add_argument("--cwd", default=None)
+    sandbox_exec.add_argument("--idempotency-key", help="reuse the same key when retrying an uncertain request")
     sandbox_exec.add_argument("command", nargs=argparse.REMAINDER)
     sandbox_logs = sandbox_sub.add_parser("logs", help="read command output")
-    sandbox_logs.add_argument("sandbox_id")
+    sandbox_logs.add_argument("sandbox_id", metavar="NAME_OR_ID")
     sandbox_logs.add_argument("exec_id")
     sandbox_logs.add_argument("--follow", action="store_true")
     sandbox_cost = sandbox_sub.add_parser("cost", help="show sandbox cost")
-    sandbox_cost.add_argument("sandbox_id")
+    sandbox_cost.add_argument("sandbox_id", metavar="NAME_OR_ID")
     sandbox_remove = sandbox_sub.add_parser("rm", help="terminate a sandbox")
-    sandbox_remove.add_argument("sandbox_id")
+    sandbox_remove.add_argument("sandbox_id", metavar="NAME_OR_ID")
+    sandbox_remove.add_argument("--idempotency-key", help="reuse the same key when retrying an uncertain request")
 
     e = sub.add_parser("events", help="lifecycle events")
     e.add_argument("workload_id")
@@ -1250,6 +1345,11 @@ def main(argv: list[str] | None = None) -> int:
                 message = "This server does not support sign-in verification. Contact Nodus support. Your saved sign-in is unchanged."
             elif hasattr(args, "workload_id"):
                 message = "That run was not found. Check the ID with nodus list and try again."
+            elif exc.code == "not_found":
+                if args.cmd in ("sandbox", "devbox"):
+                    message = f"That sandbox or execution was not found. Check nodus {args.cmd} ls and use the exact ID."
+                else:
+                    message = "That resource was not found. Check its ID and that you are signed in to the correct account."
             else:
                 message = "This endpoint is unavailable on the Nodus server. Contact Nodus support."
         elif isinstance(exc, NodusError) and not args.debug and exc.status_code in (401, 403):

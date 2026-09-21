@@ -70,3 +70,23 @@ def test_devbox_rm_does_not_create_or_remove_another_profile(monkeypatch):
 def test_devbox_rejects_internal_handle_arguments():
     with pytest.raises(nodus.ValidationError, match="handle"):
         nodus.Devbox(name="scratch", client=object(), sandbox_id="sb_other")
+
+
+@pytest.mark.parametrize("profile,expected", [("devbox", 0), ("sandbox", 2)])
+def test_devbox_rm_accepts_id_and_checks_profile(profile, expected, monkeypatch, capsys):
+    calls = []
+
+    def handler(request):
+        calls.append((request.method, request.url.path))
+        if request.url.path == "/v1/sandboxes":
+            return httpx.Response(200, json={"sandboxes": [], "next_cursor": None})
+        assert request.url.path in ("/v1/sandboxes/sb_dev", "/v1/sandboxes/sb_dev/terminate")
+        assert request.method == "GET" or profile == "devbox"
+        return httpx.Response(200, json={**BOX, "envelope": {"profile": profile, "name": "scratch"}})
+
+    monkeypatch.setattr(cli, "Client", client_factory(handler))
+    assert cli.main(["devbox", "rm", "sb_dev"]) == expected
+    if expected == 0:
+        assert ("POST", "/v1/sandboxes/sb_dev/terminate") in calls
+    else:
+        assert "not a devbox" in capsys.readouterr().err

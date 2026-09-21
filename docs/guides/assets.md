@@ -47,6 +47,11 @@ The source asset is extracted into the working directory. Each input is extracte
 into a directory exposed to your program as `NODUS_INPUT_<name>`. In this example,
 `data.csv` is inside the directory named by `NODUS_INPUT_training`.
 
+Pass the returned asset IDs through `source_asset_id` and named `inputs` as shown
+above. `client.run()` does not accept `assets` or a top-level `asset_id`. Putting
+these fields, or `source_asset_id`, inside `extra` does not attach files and is
+rejected before submission.
+
 Your program must write `model.bin` in its working directory for the declared
 `model` output to be available. After successful completion, call
 `workload.download()` to retrieve it. See [logs and results](monitoring-and-outputs.md).
