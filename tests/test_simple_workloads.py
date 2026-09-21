@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 import httpx
 import pytest
@@ -73,3 +74,70 @@ def test_input_cache_requires_explicit_boolean(cache):
     with pytest.raises(ValueError):
         build_payload(command=["python", "train.py"], budget=5,
                       inputs=[{"name": "weights", "asset_id": "asset_weights", "cache": cache}])
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("options", [
+    {"assets": ["private-asset-value"]},
+    {"asset_id": "private-asset-value"},
+    {"extra": {"assets": ["private-asset-value"]}},
+    {"extra": {"asset_id": "private-asset-value"}},
+    {"extra": {"source_asset_id": "private-asset-value"}},
+])
+def test_asset_alias_refusal_guides_a_valid_submission(asynchronous, options):
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(202, json={
+            "id": "wl_test", "workload_id": "wl_test", "status": "accepted", "revision": 1,
+        })
+
+    cls = nodus.AsyncClient if asynchronous else nodus.Client
+    client = cls(api_key="nk_test", base_url="https://nodus.invalid")
+    http = httpx.AsyncClient if asynchronous else httpx.Client
+    arguments = {"command": ["python", "train.py"], "budget": 5}
+    corrected = {
+        **arguments,
+        "source_asset_id": "asset_code",
+        "inputs": [{"name": "training", "asset_id": "asset_data"}],
+    }
+
+    def check_refusal(error):
+        message = str(error)
+        assert "source_asset_id=asset.id" in message
+        assert 'inputs=[{"name": "training", "asset_id": dataset.id}]' in message
+        assert "Pass extra=" not in message
+        assert "private-asset-value" not in message
+        assert not requests
+
+    if asynchronous:
+        async def run():
+            await client._http.aclose()
+            client._http = http(base_url="https://nodus.invalid", transport=httpx.MockTransport(handler))
+            async with client:
+                with pytest.raises(TypeError) as raised:
+                    await client.run(**arguments, **options)
+                check_refusal(raised.value)
+                return await client.run(**corrected)
+        result = asyncio.run(run())
+    else:
+        client._http.close()
+        client._http = http(base_url="https://nodus.invalid", transport=httpx.MockTransport(handler))
+        with client:
+            with pytest.raises(TypeError) as raised:
+                client.run(**arguments, **options)
+            check_refusal(raised.value)
+            result = client.run(**corrected)
+
+    assert result.id == "wl_test"
+    assert len(requests) == 1
+    assert requests[0].method == "POST"
+    assert requests[0].url.path == "/v1/workloads"
+    body = json.loads(requests[0].content)
+    assert body["source"] == {
+        "image": "python:3.11-slim", "command": ["python", "train.py"], "asset_id": "asset_code",
+    }
+    assert body["inputs"] == [{"name": "training", "asset_id": "asset_data"}]
+    assert body["outcome"] == {"max_cost_usd": 5}
+    assert not {"assets", "asset_id", "source_asset_id"} & body.keys()
