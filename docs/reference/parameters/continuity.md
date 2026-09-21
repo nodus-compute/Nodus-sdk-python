@@ -18,10 +18,49 @@ continuity = {"mode": "restartable", "resume_on_interruption": True}
 ```
 
 These values select a recovery policy. They do not instrument arbitrary code.
-A training program must write supported checkpoint state and restore it correctly.
+A training program needs a supported integration or its own save and restore code.
 Do not assume a default checkpoint mode guarantees lossless recovery for any
 container. Confirm your framework and deployment's runner integration before a
 long training run. Use restartable for short self-contained smoke tests.
+
+## Application checkpoint integration
+
+The optional `integration` field selects application save and resume support for
+source submissions. A stage can override the workload selection.
+
+| Value | Behavior |
+|---|---|
+| `auto` | Attempt a supported integration. Unsupported training configurations retain the original command and declared file-saving behavior |
+| `none` | Use the application's existing save and restore code |
+| `hf-trainer-v1` | Require the versioned Hugging Face Trainer integration. Unsupported configurations fail rather than silently restarting |
+
+The SDK preserves omission. New submissions do not request application checkpoint
+preparation unless `auto` or `hf-trainer-v1` is selected explicitly. A stage inherits
+an explicit workload selection when omitted. Existing accepted submissions and
+their idempotent retries retain their original selection.
+Explicit `auto` and `hf-trainer-v1` require checkpointed continuity and the
+dedicated `state` folder. Preparation availability depends on the deployment.
+
+`hf-trainer-v1` accepts unmodified Transformers Trainer with PyTorch 2.7.1,
+Transformers 4.57.6, Accelerate 1.12.0 and Datasets 4.4.2. Its supported profile
+uses one training process and device, float32 model state, a fingerprinted map-style Hugging
+Face Dataset, zero dataloader workers, the default data collator and standard
+built-in callbacks. Trainer creates the optimizer and scheduler. Complete
+model state must contain tensors only and fit within four billion bytes.
+Mixed precision, distributed training, streaming data, PEFT, quantized models,
+custom Trainer subclasses, custom loss functions and TRL require separate
+qualification. The profile requires `save_only_model=False`,
+`ignore_data_skip=False`, `load_best_model_at_end=False` and `push_to_hub=False`.
+
+The integration saves complete model, optimizer, scheduler, random generator
+and training-step state at an optimizer boundary. Nodus requests saves and
+preserves completed versions. Recovery checks the program, dataset,
+configuration, model structure, trainable parameters, device type and framework
+identities before resuming. An incompatible
+managed checkpoint fails even when `integration` is `auto`.
+
+Check that your GPU environment is qualified before relying on automatic recovery.
+Progress after the last committed checkpoint can still be lost.
 
 ## Files saved for recovery
 
@@ -29,6 +68,11 @@ New submissions save only the `state` folder by default. Write model weights,
 optimizer state and training progress there and load them when your program
 restarts. `NODUS_CHECKPOINT_DIR` points to this folder in the code directory.
 Nodus does not search other folders for training state.
+
+When your application manages its own state, write a complete version outside
+the selected paths and publish it with an atomic rename on the same filesystem.
+Do not overwrite files while Nodus may be copying them. A multi-file checkpoint
+needs a complete, immutable version that remains available during capture.
 
 Use `checkpoint_paths` when your program saves recovery files elsewhere:
 

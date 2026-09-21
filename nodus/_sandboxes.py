@@ -18,7 +18,7 @@ import uuid
 from urllib.parse import unquote, urlsplit
 
 from ._secrets import _names
-from .errors import APITimeoutError, NodusError, ValidationError
+from .errors import APIError, APITimeoutError, NodusError, ValidationError
 from .types import Event, _dt, _int, _num, _obj, _rows, _text
 
 __all__ = [
@@ -81,6 +81,22 @@ def _valid_id(value: Any, kind: str) -> str:
     raise ValidationError(
         f"{value!r} is not a {kind} id. Use letters, digits, underscores, and hyphens."
     )
+
+
+def _mutation_receipt(
+    client: Any, response: Any, path: str, idempotency_key: str,
+    *, expected_id: str | None = None, expected_sandbox_id: str | None = None,
+) -> dict[str, Any]:
+    try:
+        receipt = client._one(response, "POST", path)
+        received_id = _valid_id(receipt.get("id"), "sandbox")
+        if expected_id is not None and received_id != expected_id:
+            raise NodusError("Sandbox receipt identity differs from the request")
+        if expected_sandbox_id is not None and "sandbox_id" in receipt and receipt["sandbox_id"] != expected_sandbox_id:
+            raise NodusError("Execution receipt sandbox differs from the request")
+    except NodusError:
+        raise client._unreached(APIError, f"POST {path} returned an invalid sandbox receipt", idempotency_key) from None
+    return receipt
 
 
 def _http_path(sandbox_id: str, port: int, path: str, method: str) -> str:
@@ -450,13 +466,14 @@ class Sandboxes:
             from_snapshot=from_snapshot, secrets=secrets, connections=connections, service=service, bootstrap=bootstrap, stuck_after_s=stuck_after_s, workspace=workspace,
         )
         headers: dict[str, str] = {}
+        key = idempotency_key or f"sandbox-{uuid.uuid4()}"
         response = self._client._request(
             "POST", "/v1/sandboxes", json=body,
-            idempotency_key=idempotency_key or f"sandbox-{uuid.uuid4()}",
+            idempotency_key=key,
             headers_out=headers,
         )
         sandbox = Sandbox(self._client)
-        sandbox._absorb(self._client._one(response, "POST", "/v1/sandboxes"))
+        sandbox._absorb(_mutation_receipt(self._client, response, "/v1/sandboxes", key))
         sandbox.replayed = any(name.lower() == "idempotent-replayed" and value.lower() == "true" for name, value in headers.items())
         return sandbox
 
@@ -646,25 +663,27 @@ class Sandbox(_SandboxState):
         sandbox_id = _valid_id(self.id, "sandbox")
         path = f"/v1/sandboxes/{sandbox_id}/exec"
         headers: dict[str, str] = {}
+        key = idempotency_key or f"sandbox-exec-{uuid.uuid4()}"
         response = self._client._request(
             "POST", path,
             json=_exec_payload(command, cwd=cwd, env=env, timeout_seconds=timeout_seconds, stdin=stdin, tty=tty, rows=rows, cols=cols),
-            idempotency_key=idempotency_key or f"sandbox-exec-{uuid.uuid4()}",
+            idempotency_key=key,
             headers_out=headers,
         )
         execution = SandboxExec(self._client, sandbox_id)
-        execution._absorb(self._client._one(response, "POST", path))
+        execution._absorb(_mutation_receipt(self._client, response, path, key, expected_sandbox_id=sandbox_id))
         execution.replayed = any(name.lower() == "idempotent-replayed" and value.lower() == "true" for name, value in headers.items())
         return execution
 
     def terminate(self, *, idempotency_key: str | None = None) -> "Sandbox":
         sandbox_id = _valid_id(self.id, "sandbox")
         path = f"/v1/sandboxes/{sandbox_id}/terminate"
+        key = idempotency_key or f"sandbox-terminate-{uuid.uuid4()}"
         response = self._client._request(
             "POST", path, json={},
-            idempotency_key=idempotency_key or f"sandbox-terminate-{uuid.uuid4()}",
+            idempotency_key=key,
         )
-        self._absorb(self._client._one(response, "POST", path))
+        self._absorb(_mutation_receipt(self._client, response, path, key, expected_id=sandbox_id))
         return self
 
 
@@ -707,18 +726,23 @@ class SandboxExec(_SandboxExecState):
         return SandboxOutputPage.from_dict(self._client._one(response, "GET", path))
 
     def iter_output(self, *, after: int = 0, follow: bool = True) -> Iterator[SandboxOutputFrame]:
+        """Yield ordered output, draining only currently stored frames when follow is false."""
         cursor = after
+        end_sequence = None
         while True:
             previous_cursor = cursor
-            page = self.output(after=cursor, wait=follow)
+            limit = 16 if end_sequence is None else min(16, end_sequence - cursor)
+            page = self.output(after=cursor, limit=limit, wait=follow)
+            if not follow and end_sequence is None:
+                end_sequence = page.last_sequence
             for frame in page.frames:
                 if frame.sequence > cursor:
                     cursor = frame.sequence
                     yield frame
             cursor = max(cursor, page.next_sequence)
-            if (page.done and page.complete) or not follow:
+            if (page.done and page.complete) or (end_sequence is not None and cursor >= end_sequence):
                 return
-            if page.done and cursor <= previous_cursor:
+            if (page.done or end_sequence is not None) and cursor <= previous_cursor:
                 raise NodusError(f"Sandbox execution final output is unavailable after sequence {cursor}. Retry output(after={cursor}).")
 
     def write(
@@ -783,13 +807,14 @@ class AsyncSandboxes:
             from_snapshot=from_snapshot, secrets=secrets, connections=connections, service=service, bootstrap=bootstrap, stuck_after_s=stuck_after_s, workspace=workspace,
         )
         headers: dict[str, str] = {}
+        key = idempotency_key or f"sandbox-{uuid.uuid4()}"
         response = await self._client._request(
             "POST", "/v1/sandboxes", json=body,
-            idempotency_key=idempotency_key or f"sandbox-{uuid.uuid4()}",
+            idempotency_key=key,
             headers_out=headers,
         )
         sandbox = AsyncSandbox(self._client)
-        sandbox._absorb(self._client._one(response, "POST", "/v1/sandboxes"))
+        sandbox._absorb(_mutation_receipt(self._client, response, "/v1/sandboxes", key))
         sandbox.replayed = any(name.lower() == "idempotent-replayed" and value.lower() == "true" for name, value in headers.items())
         return sandbox
 
@@ -896,25 +921,27 @@ class AsyncSandbox(_SandboxState):
         sandbox_id = _valid_id(self.id, "sandbox")
         path = f"/v1/sandboxes/{sandbox_id}/exec"
         headers: dict[str, str] = {}
+        key = idempotency_key or f"sandbox-exec-{uuid.uuid4()}"
         response = await self._client._request(
             "POST", path,
             json=_exec_payload(command, cwd=cwd, env=env, timeout_seconds=timeout_seconds, stdin=stdin, tty=tty, rows=rows, cols=cols),
-            idempotency_key=idempotency_key or f"sandbox-exec-{uuid.uuid4()}",
+            idempotency_key=key,
             headers_out=headers,
         )
         execution = AsyncSandboxExec(self._client, sandbox_id)
-        execution._absorb(self._client._one(response, "POST", path))
+        execution._absorb(_mutation_receipt(self._client, response, path, key, expected_sandbox_id=sandbox_id))
         execution.replayed = any(name.lower() == "idempotent-replayed" and value.lower() == "true" for name, value in headers.items())
         return execution
 
     async def terminate(self, *, idempotency_key: str | None = None) -> "AsyncSandbox":
         sandbox_id = _valid_id(self.id, "sandbox")
         path = f"/v1/sandboxes/{sandbox_id}/terminate"
+        key = idempotency_key or f"sandbox-terminate-{uuid.uuid4()}"
         response = await self._client._request(
             "POST", path, json={},
-            idempotency_key=idempotency_key or f"sandbox-terminate-{uuid.uuid4()}",
+            idempotency_key=key,
         )
-        self._absorb(self._client._one(response, "POST", path))
+        self._absorb(_mutation_receipt(self._client, response, path, key, expected_id=sandbox_id))
         return self
 
 
@@ -957,18 +984,23 @@ class AsyncSandboxExec(_SandboxExecState):
         return SandboxOutputPage.from_dict(self._client._one(response, "GET", path))
 
     async def iter_output(self, *, after: int = 0, follow: bool = True) -> AsyncIterator[SandboxOutputFrame]:
+        """Yield ordered output, draining only currently stored frames when follow is false."""
         cursor = after
+        end_sequence = None
         while True:
             previous_cursor = cursor
-            page = await self.output(after=cursor, wait=follow)
+            limit = 16 if end_sequence is None else min(16, end_sequence - cursor)
+            page = await self.output(after=cursor, limit=limit, wait=follow)
+            if not follow and end_sequence is None:
+                end_sequence = page.last_sequence
             for frame in page.frames:
                 if frame.sequence > cursor:
                     cursor = frame.sequence
                     yield frame
             cursor = max(cursor, page.next_sequence)
-            if (page.done and page.complete) or not follow:
+            if (page.done and page.complete) or (end_sequence is not None and cursor >= end_sequence):
                 return
-            if page.done and cursor <= previous_cursor:
+            if (page.done or end_sequence is not None) and cursor <= previous_cursor:
                 raise NodusError(f"Sandbox execution final output is unavailable after sequence {cursor}. Retry output(after={cursor}).")
 
     async def write(

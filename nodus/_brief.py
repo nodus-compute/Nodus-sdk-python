@@ -115,9 +115,17 @@ def _enum_value(v: Any) -> Any:
     return getattr(v, "value", v)
 
 
+_ASSET_ATTACHMENT_GUIDANCE = (
+    "Attach source code with source_asset_id=asset.id and datasets with "
+    'inputs=[{"name": "training", "asset_id": dataset.id}]. '
+    "Pass these as run() keyword arguments. Asset aliases in extra do not attach files."
+)
+
 # Brief fields the control plane does not model, and what to reach for instead.
 # Sending one costs a caller the constraint they believe they set.
 UNSUPPORTED: dict[str, str] = {
+    "assets": _ASSET_ATTACHMENT_GUIDANCE,
+    "asset_id": _ASSET_ATTACHMENT_GUIDANCE,
     "expected_runtime_hours": "Remove expected_runtime_hours. Nodus estimates runtime automatically.",
     "interrupt_tolerance": (
         "the control plane does not model this yet: it derives the envelope's "
@@ -155,8 +163,8 @@ def _reject_unknown(unknown: dict[str, Any], known: tuple[str, ...]) -> None:
         "unknown brief field: "
         + ", ".join(parts)
         + ". The control plane ignores fields it does not model, so this would "
-        "have been submitted and silently dropped. Pass extra={...} to send a "
-        "field deliberately."
+        "have been submitted and silently dropped. Use a documented run() keyword. "
+        "Use extra={...} only for a confirmed server field that this SDK version does not model."
     )
 
 
@@ -197,6 +205,8 @@ def build_payload(
     _validate_assets(source_asset_id, inputs)
     _validate_outputs(outputs)
     for stage in stages or []:
+        if isinstance(stage, dict) and isinstance(stage.get("continuity"), dict):
+            validate_checkpoint_integration(stage["continuity"])
         if isinstance(stage, dict) and stage.get("outputs"):
             _validate_outputs(stage["outputs"])
             if not portable_output_name(stage.get("id")):
@@ -257,6 +267,7 @@ def build_payload(
     else:
         mode = _enum_value(continuity)
         cont = {"mode": mode, "resume_on_interruption": mode != "ephemeral"}
+    validate_checkpoint_integration(cont)
 
     payload: dict[str, Any] = {
         "requirements": req,
@@ -329,6 +340,12 @@ def build_payload(
             stage["requirements"] = validate_requirements(stage["requirements"])
     _warn_about_the_money(payload)
     return payload
+
+
+def validate_checkpoint_integration(continuity: dict[str, Any]) -> None:
+    """Validate an explicit application checkpoint integration selection."""
+    if 'integration' in continuity and continuity['integration'] not in ('auto', 'none', 'hf-trainer-v1'):
+        raise ValueError('continuity.integration must be auto, none, or hf-trainer-v1')
 
 
 def validate_placement(placement: Any) -> dict[str, str]:
@@ -496,6 +513,14 @@ def _merge_extra(payload: dict[str, Any], extra: dict[str, Any] | None) -> None:
     """
     if not extra:
         return
+    asset_aliases = sorted(set(extra) & {"assets", "asset_id", "source_asset_id"})
+    if asset_aliases:
+        raise TypeError(
+            "extra= contains unsupported asset fields: "
+            + ", ".join(asset_aliases)
+            + ". "
+            + _ASSET_ATTACHMENT_GUIDANCE
+        )
     clashes = sorted(set(extra) & set(payload))
     if clashes:
         raise TypeError(

@@ -223,15 +223,32 @@ def test_import_query_failed_asset_raises_safe_failure(asynchronous, monkeypatch
 
 @pytest.mark.parametrize("asynchronous", [False, True])
 def test_import_query_polling_has_overall_deadline(asynchronous, monkeypatch):
+    from types import SimpleNamespace
     import nodus._assets as module
+
+    # A coarse clock can return the same tick before and after a short sleep.
+    # Keep this clock local to the asset module so asyncio retains its real clock.
+    clock = SimpleNamespace(now=4096.0)
+    monkeypatch.setattr(module, "time", SimpleNamespace(
+        monotonic=lambda: clock.now, sleep=lambda delay: None))
+    async def sleep(delay):
+        pass
+    monkeypatch.setattr(module, "asyncio", SimpleNamespace(
+        sleep=sleep, CancelledError=asyncio.CancelledError))
     monkeypatch.setattr(module, "_QUERY_WAIT_SECONDS", 0.01)
     monkeypatch.setattr(module, "_QUERY_POLL_SECONDS", 0.002)
+    calls, timeouts = [], []
     def handler(req):
+        calls.append(req.method)
         if req.method == "GET":
-            assert req.extensions["timeout"]["read"] <= 0.01
+            timeout = req.extensions["timeout"]["read"]
+            timeouts.append(timeout)
+            clock.now += 0.006
         return httpx.Response(202 if req.method == "POST" else 200, json={**ROW, "state": "importing"})
     with pytest.raises(nodus.APITimeoutError, match="asset_123"):
         exercise(handler, asynchronous, lambda assets: assets.import_query("db", "SELECT 1"))
+    assert calls == ["POST", "GET", "GET"]
+    assert timeouts == pytest.approx([0.01, 0.004], rel=0, abs=1e-9)
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])

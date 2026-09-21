@@ -296,6 +296,15 @@ class _WaitPolicy:
     """
 
     def __init__(self, poll_seconds: float, timeout_seconds: float | None = None):
+        for name, value in (("poll_seconds", poll_seconds), ("timeout_seconds", timeout_seconds)):
+            if name == "timeout_seconds" and value is None:
+                continue
+            try:
+                valid = not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value) and value >= 0
+            except OverflowError:
+                valid = False
+            if not valid:
+                raise ValueError(f"{name} must be finite and nonnegative")
         self.poll_seconds = poll_seconds
         self.deadline = None if timeout_seconds is None else time.monotonic() + timeout_seconds
         self.failures = 0
