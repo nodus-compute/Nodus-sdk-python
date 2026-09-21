@@ -7,35 +7,79 @@ native install buttons and copyable client commands.
 
 ## Quick connection
 
-Choose your agent on the [connection page](https://nodus-compute.ai/connect/),
-then approve access in your browser. Claude Code and Codex use the commands
-below. Cursor has a native install button. Hosted connections need no local
-Nodus package or copied API key.
+Choose your agent on the [connection page](https://nodus-compute.ai/connect/).
+Hosted connections need no local Nodus package or copied API key.
 
-Claude Code:
+### Cursor
 
-```sh
-claude mcp add --scope user --transport http nodus https://d1a0b732w6344o.cloudfront.net/mcp
+1. Open the [Cursor setup](https://nodus-compute.ai/connect/#cursor) and select
+   **Add to Cursor**. Confirm the Nodus server in Cursor.
+2. Find **nodus** in Cursor's MCP settings and select **Connect**. Sign in to
+   Nodus, approve access in your browser, then return to Cursor.
+3. Ask **List my Nodus workloads.** This checks access without starting paid compute.
+
+If Cursor does not open, add a remote server named `nodus` in its MCP settings:
+
+```text
+https://mcp.nodus-compute.ai/mcp
 ```
 
-Open `/mcp` in Claude Code and authenticate Nodus.
+If your Cursor version opens `mcp.json`, merge this entry with your existing
+servers:
 
-Codex:
+```json
+{
+  "mcpServers": {
+    "nodus": {
+      "url": "https://mcp.nodus-compute.ai/mcp"
+    }
+  }
+}
+```
+
+Already added Nodus? Reconnect that server instead of adding a duplicate.
+
+### Codex app
+
+1. Open **Settings → MCP servers → Add server**. Name the server `nodus`,
+   choose **Streamable HTTP** and paste the URL below.
+2. Save, select **Restart**, then select **Authenticate** for nodus. Approve
+   access in your browser.
+3. Start a new conversation and ask **List my Nodus workloads.**
+
+```text
+https://mcp.nodus-compute.ai/mcp
+```
+
+For the Codex CLI, paste these commands into your terminal and complete
+browser sign-in. Then start a new Codex session:
 
 ```sh
-codex mcp add nodus --url https://d1a0b732w6344o.cloudfront.net/mcp
+codex mcp add nodus --url https://mcp.nodus-compute.ai/mcp
 codex mcp login nodus
 ```
 
-For other clients, add this remote HTTP MCP URL and follow their OAuth prompt:
+The app and CLI share their MCP configuration on the same machine. See the
+[official Codex MCP guide](https://developers.openai.com/codex/mcp).
 
-```text
-https://d1a0b732w6344o.cloudfront.net/mcp
+### Claude Code
+
+Paste this into your terminal:
+
+```sh
+claude mcp add --scope user --transport http nodus https://mcp.nodus-compute.ai/mcp
 ```
 
-Ask **List my Nodus workloads.** The connection check starts no paid compute.
-Keep an existing working connection or remove it before adding another.
+In Claude Code, open `/mcp`, choose `nodus` and authenticate. Approve access in
+your browser, then ask **List my Nodus workloads.**
+
+### Other clients
+
+Add `https://mcp.nodus-compute.ai/mcp` as a remote HTTP MCP server and follow
+the client's sign-in prompt. The client must support HTTP MCP and OAuth.
 [Plugins](plugins.md) bundle the hosted connection and workload guidance.
+Keep an existing working connection. Updating its URL requires authenticating
+again because access is bound to the server address.
 
 The approval screen names the account, team, requested permissions and client
 return address. You can choose read-only access. Write access permits workload
@@ -133,7 +177,7 @@ Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then run
 this in your terminal and complete browser sign-in:
 
 ```sh
-uvx --from 'nodus-compute[mcp]==0.5.2' nodus login
+uvx --from 'nodus-compute[mcp]==0.5.3' nodus login
 ```
 
 The package downloads automatically. Local clients running as the same OS
@@ -147,7 +191,7 @@ for unattended environments and custom deployments.
 Run this in your terminal to add Nodus across your projects:
 
 ```sh
-claude mcp add --scope user --transport stdio nodus -- uvx --from 'nodus-compute[mcp]==0.5.2' nodus-mcp
+claude mcp add --scope user --transport stdio nodus -- uvx --from 'nodus-compute[mcp]==0.5.3' nodus-mcp
 ```
 
 Restart Claude Code or reconnect through `/mcp`.
@@ -157,7 +201,7 @@ Restart Claude Code or reconnect through `/mcp`.
 Run this in your terminal, then start a new Codex session:
 
 ```sh
-codex mcp add nodus -- uvx --from 'nodus-compute[mcp]==0.5.2' nodus-mcp
+codex mcp add nodus -- uvx --from 'nodus-compute[mcp]==0.5.3' nodus-mcp
 ```
 
 ## Cursor
@@ -171,7 +215,7 @@ For manual setup, merge this into `~/.cursor/mcp.json`:
   "mcpServers": {
     "nodus": {
       "command": "uvx",
-      "args": ["--from", "nodus-compute[mcp]==0.5.2", "nodus-mcp"]
+      "args": ["--from", "nodus-compute[mcp]==0.5.3", "nodus-mcp"]
     }
   }
 }
@@ -211,7 +255,7 @@ Merge this into `.vscode/mcp.json` in your project, then enable Nodus in chat:
     "nodus": {
       "type": "stdio",
       "command": "uvx",
-      "args": ["--from", "nodus-compute[mcp]==0.5.2", "nodus-mcp"]
+      "args": ["--from", "nodus-compute[mcp]==0.5.3", "nodus-mcp"]
     }
   }
 }
@@ -235,7 +279,7 @@ Merge this into `opencode.json` in your project:
   "mcp": {
     "nodus": {
       "type": "local",
-      "command": ["uvx", "--from", "nodus-compute[mcp]==0.5.2", "nodus-mcp"],
+      "command": ["uvx", "--from", "nodus-compute[mcp]==0.5.3", "nodus-mcp"],
       "enabled": true
     }
   }
@@ -248,7 +292,7 @@ Restart OpenCode. See [OpenCode MCP setup](https://opencode.ai/docs/mcp-servers/
 
 Choose a **local** or **stdio** server in your client's MCP settings. Set the
 command to `uvx` and the arguments to
-`["--from", "nodus-compute[mcp]==0.5.2", "nodus-mcp"]`.
+`["--from", "nodus-compute[mcp]==0.5.3", "nodus-mcp"]`.
 For clients that accept an `mcpServers` object, merge the configuration from
 the Cursor section. Preserve unrelated settings and servers.
 

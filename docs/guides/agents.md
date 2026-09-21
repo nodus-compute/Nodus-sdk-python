@@ -136,10 +136,12 @@ memory are separate constraints.
 
 Optimization tiers are not supported. Omit
 `optimization` in new requests. Legacy arguments remain accepted for compatibility
-but have no preference effect on new runs. Nodus selects the cheapest compatible
-on-demand capacity by full hourly price. Your explicit GPU and resource
-requirements remain mandatory. Lower hourly prices do not guarantee lower total
-completion cost. Consult the
+but have no preference effect on new runs. Nodus uses qualified estimates of
+runtime cost when every eligible configuration has comparable measurements.
+Otherwise it orders compatible on-demand configurations by hourly price.
+Spending limits and independent price limits apply in both cases. Your explicit
+GPU and resource requirements remain mandatory. This does not guarantee the
+lowest total cost or shortest runtime. Consult the
 [GPU models and resource options](../reference/parameters/requirements.md)
 before choosing a model. Automatic selection can use newer GPUs, so use an
 image that supports the selected hardware.

@@ -1,6 +1,6 @@
 {
   "name": "nodus-hosted",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Connect Nodus with browser sign-in, run GPU workloads within an explicit budget, and retrieve results.",
   "author": {
     "name": "Nodus, Inc."

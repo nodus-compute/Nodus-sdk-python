@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.3
+
+- Use the server CPU default for ordinary sandboxes without GPU requirements, and preserve stored resources when reconnecting by name. CPU sandboxes require a deployment with the preview enabled.
+- Preserve explicit GPU and compute-class requirements. Document request identity when retrying an uncertain submission across SDK upgrades.
+- Align agent installation, plugin and automation package pins with SDK 0.5.3. Validate built wheels without a fixed version in CI.
+
 ## 0.5.2
 
 - Validate prepared MCP workload requests without starting compute and require an explicit positive submission budget.
