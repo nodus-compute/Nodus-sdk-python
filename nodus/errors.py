@@ -85,7 +85,7 @@ class NodusError(Exception):
     def code(self) -> str | None:
         """The machine-readable error code the control plane returned, if any."""
         if isinstance(self.body, dict):
-            value = self.body.get("error")
+            value = self.body.get("error") or self.body.get("code")
             if isinstance(value, str):
                 return value
         return None

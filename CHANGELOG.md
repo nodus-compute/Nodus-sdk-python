@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.1
+
+- Resolve sandbox command targets by active name or exact ID, and accept devbox IDs with profile checks. List sandbox names and distinguish missing resources from unavailable endpoints.
+- Preserve request keys after uncertain sandbox or devbox mutations. Use `--idempotency-key` to retry the same operation, and show failed execution IDs and reasons even when no logs exist.
+- Retain accepted execution IDs when observation fails. Reject malformed mutation receipts with the original retry key, and expose sandbox error codes from the server's response envelope.
+- Explain code and dataset attachment parameters when `assets` or `asset_id` is supplied, and reject asset aliases inside `extra` before submitting work.
+- Read every initially available sandbox output page without following later writes when `follow=False`.
+- Reject negative and nonfinite workload observation durations before making requests. Preserve zero durations and unbounded `timeout_seconds=None`.
+
 ## 0.5.0
 
 - Manage write-only tenant secrets and verified Postgres, Neon, Supabase and wandb connections with sync and async clients and CLI commands. Connections pin an immutable credential version, scope and optional region. Secret values are limited to 4096 UTF-8 bytes.
