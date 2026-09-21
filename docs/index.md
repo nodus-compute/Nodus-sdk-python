@@ -54,6 +54,7 @@ waiting. An accepted workload is not necessarily a completed workload.
 ## Reference
 
 - [Python client](reference/python/client.md)
+- [Versioned workload and draft operations](guides/operations.md)
 - [Terminal commands](reference/cli.md)
 - [Workload parameters](reference/parameters/index.md)
 - [GPU models and resources](reference/parameters/requirements.md#gpu-model)

@@ -10,6 +10,7 @@ Prefer a `with` block. Otherwise call `close()`.
 | `run(**brief)` | Accepted `Workload`. [all parameters](../parameters/index.md) |
 | `run_file(path="nodus.toml")` | Accepted `Workload` from a [workload file](../../getting-started/workload-files.md) |
 | `assets` | [Upload, import, list, and delete code or dataset assets](../../guides/assets.md) |
+| `operations` | [Typed version 1 workload and draft operations with contract discovery](../../guides/operations.md) |
 | `pools` | [Measure customer-owned GPU hosts, review forecasts, and configure Route](../../guides/pools.md) |
 | `sandboxes` | [Create, reconnect to, list, and control agent sandboxes](../../guides/agent-sandboxes.md) |
 | `get(id)` | Refreshed `Workload` |

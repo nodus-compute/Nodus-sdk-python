@@ -7274,6 +7274,543 @@
         },
         "x-go-source": "internal/models/checkpoint_integration.go",
         "x-go-type": "CheckpointPreparationSummary"
+      },
+      "OperationDefinition": {
+        "type": "object",
+        "x-go-source": "internal/operations/operations.go",
+        "x-go-type": "Definition",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string",
+            "const": "v1"
+          },
+          "name": {
+            "type": "string",
+            "description": "Compatible hosted agent tool name."
+          },
+          "description": {
+            "type": "string"
+          },
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "annotations": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "required_scope": {
+            "type": "string"
+          },
+          "transports": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "name",
+          "description",
+          "inputSchema",
+          "annotations",
+          "required_scope",
+          "transports"
+        ]
+      },
+      "OperationCatalog": {
+        "type": "object",
+        "required": [
+          "version",
+          "operations"
+        ],
+        "properties": {
+          "version": {
+            "type": "string",
+            "const": "v1"
+          },
+          "operations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OperationDefinition"
+            }
+          }
+        }
+      },
+      "OperationWorkloadsListArguments": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "offset": {
+            "maximum": 2147483647,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "scope": {
+            "description": "Omitted or empty scope uses the existing team default.",
+            "enum": [
+              "team",
+              "mine",
+              ""
+            ],
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "OperationWorkloadsGetArguments": {
+        "additionalProperties": false,
+        "properties": {
+          "workload_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workload_id"
+        ],
+        "type": "object"
+      },
+      "OperationWorkloadsEventsArguments": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "workload_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workload_id"
+        ],
+        "type": "object"
+      },
+      "OperationWorkloadsLogsArguments": {
+        "additionalProperties": false,
+        "properties": {
+          "workload_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workload_id"
+        ],
+        "type": "object"
+      },
+      "OperationWorkloadsOutputsArguments": {
+        "additionalProperties": false,
+        "properties": {
+          "workload_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workload_id"
+        ],
+        "type": "object"
+      },
+      "OperationWorkloadsValidateArguments": {
+        "additionalProperties": false,
+        "properties": {
+          "workload": {
+            "description": "Customer HTTP workload request with explicit outcome.max_cost_usd. Preserve the user's command, image, resources and budget.",
+            "properties": {
+              "outcome": {
+                "properties": {
+                  "max_cost_usd": {
+                    "exclusiveMinimum": 0,
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "max_cost_usd"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "outcome"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "workload"
+        ],
+        "type": "object"
+      },
+      "OperationWorkloadsSubmitArguments": {
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "maxLength": 256,
+            "minLength": 1,
+            "pattern": "^[^\\r\\n]+$",
+            "type": "string"
+          },
+          "workload": {
+            "description": "Customer HTTP workload request with explicit outcome.max_cost_usd. Preserve the user's command, image, resources and budget.",
+            "properties": {
+              "outcome": {
+                "properties": {
+                  "max_cost_usd": {
+                    "exclusiveMinimum": 0,
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "max_cost_usd"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "outcome"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "workload",
+          "idempotency_key"
+        ],
+        "type": "object"
+      },
+      "OperationWorkloadsCancelArguments": {
+        "additionalProperties": false,
+        "properties": {
+          "workload_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workload_id"
+        ],
+        "type": "object"
+      },
+      "OperationArguments": {
+        "description": "Select the schema matching the operation path parameter. Workload values also follow WorkloadPayload and ordinary submission validation. The catalog exposes the active argument contract. Unknown arguments are rejected.",
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/OperationWorkloadsListArguments"
+          },
+          {
+            "$ref": "#/components/schemas/OperationWorkloadsGetArguments"
+          },
+          {
+            "$ref": "#/components/schemas/OperationWorkloadsEventsArguments"
+          },
+          {
+            "$ref": "#/components/schemas/OperationWorkloadsLogsArguments"
+          },
+          {
+            "$ref": "#/components/schemas/OperationWorkloadsOutputsArguments"
+          },
+          {
+            "$ref": "#/components/schemas/OperationWorkloadsValidateArguments"
+          },
+          {
+            "$ref": "#/components/schemas/OperationRunDraftGetArguments"
+          },
+          {
+            "$ref": "#/components/schemas/OperationWorkloadsSubmitArguments"
+          },
+          {
+            "$ref": "#/components/schemas/OperationWorkloadsCancelArguments"
+          },
+          {
+            "$ref": "#/components/schemas/OperationRunDraftUpdateArguments"
+          }
+        ]
+      },
+      "WorkloadValidationResult": {
+        "type": "object",
+        "required": [
+          "valid",
+          "submitted",
+          "workload",
+          "message"
+        ],
+        "properties": {
+          "valid": {
+            "type": "boolean",
+            "const": true
+          },
+          "submitted": {
+            "type": "boolean",
+            "const": false
+          },
+          "workload": {
+            "$ref": "#/components/schemas/WorkloadPayload"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "OperationRunDraftGetArguments": {
+        "additionalProperties": false,
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "OperationRunDraftUpdateArguments": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "maximum": 9007199254740990,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "patch": {
+            "additionalProperties": false,
+            "maxProperties": 9,
+            "minProperties": 1,
+            "properties": {
+              "checkpoint_paths": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "description": "Relative path of at most 256 UTF-8 bytes without parent traversal, wildcards, backslashes, NUL, carriage returns or line feeds.",
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "maxItems": 8,
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "command": {
+                "anyOf": [
+                  {
+                    "description": "At most 4000 UTF-8 bytes. Empty strings are preserved.",
+                    "maxLength": 4000,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "gpu": {
+                "anyOf": [
+                  {
+                    "description": "At most 256 UTF-8 bytes. Empty strings are preserved.",
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "gpu_count": {
+                "anyOf": [
+                  {
+                    "maximum": 8,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "image": {
+                "anyOf": [
+                  {
+                    "description": "At most 256 UTF-8 bytes. Empty strings are preserved.",
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "max_cost_usd": {
+                "anyOf": [
+                  {
+                    "exclusiveMinimum": 0,
+                    "maximum": 100000,
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "memory_gb": {
+                "anyOf": [
+                  {
+                    "maximum": 1024,
+                    "minimum": 1,
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "name": {
+                "anyOf": [
+                  {
+                    "description": "At most 120 UTF-8 bytes. Empty strings are preserved.",
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "result_paths": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "description": "Relative path of at most 256 UTF-8 bytes without parent traversal, wildcards, backslashes, NUL, carriage returns or line feeds.",
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "maxItems": 8,
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "patch"
+        ],
+        "type": "object"
+      },
+      "RunDraftValues": {
+        "type": "object",
+        "maxProperties": 9,
+        "additionalProperties": false,
+        "description": "Explicitly saved partial form values. Missing fields have no saved value. Reading or editing a draft does not authorize spending.",
+        "properties": {
+          "checkpoint_paths": {
+            "items": {
+              "description": "Relative path of at most 256 UTF-8 bytes without parent traversal, wildcards, backslashes, NUL, carriage returns or line feeds.",
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 8,
+            "type": "array"
+          },
+          "command": {
+            "description": "At most 4000 UTF-8 bytes. Empty strings are preserved.",
+            "maxLength": 4000,
+            "type": "string"
+          },
+          "gpu": {
+            "description": "At most 256 UTF-8 bytes. Empty strings are preserved.",
+            "maxLength": 256,
+            "type": "string"
+          },
+          "gpu_count": {
+            "maximum": 8,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "image": {
+            "description": "At most 256 UTF-8 bytes. Empty strings are preserved.",
+            "maxLength": 256,
+            "type": "string"
+          },
+          "max_cost_usd": {
+            "exclusiveMinimum": 0,
+            "maximum": 100000,
+            "type": "number"
+          },
+          "memory_gb": {
+            "maximum": 1024,
+            "minimum": 1,
+            "type": "number"
+          },
+          "name": {
+            "description": "At most 120 UTF-8 bytes. Empty strings are preserved.",
+            "maxLength": 120,
+            "type": "string"
+          },
+          "result_paths": {
+            "items": {
+              "description": "Relative path of at most 256 UTF-8 bytes without parent traversal, wildcards, backslashes, NUL, carriage returns or line feeds.",
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 8,
+            "type": "array"
+          }
+        }
+      },
+      "RunDraft": {
+        "type": "object",
+        "x-go-source": "internal/rundraft/draft.go",
+        "x-go-type": "Draft",
+        "required": [
+          "revision",
+          "values",
+          "updated_at"
+        ],
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "values": {
+            "$ref": "#/components/schemas/RunDraftValues"
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
       }
     },
     "securitySchemes": {
@@ -12509,6 +13046,207 @@
           }
         }
       }
+    },
+    "/v1/operations/{version}": {
+      "get": {
+        "operationId": "listOperations",
+        "summary": "Discover versioned workload and draft operations",
+        "tags": [
+          "Operations"
+        ],
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "v1"
+              ]
+            },
+            "description": "Operation contract version. Unknown versions return 404."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The operations supported by this API transport. Discovery does not grant execution permissions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationCatalog"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/operations/{version}/{operation}": {
+      "post": {
+        "operationId": "invokeOperation",
+        "summary": "Invoke a versioned workload or draft operation",
+        "tags": [
+          "Operations"
+        ],
+        "description": "Workload operations use the same handlers as the direct routes. The authenticated credential determines team and member access. Submit requires an explicit positive outcome.max_cost_usd and a stable idempotency_key in the JSON arguments. Retry identical arguments after an uncertain response. Validation starts no compute and does not guarantee admission. Logs return text. Workload operations preserve their direct-route JSON response shape. Run drafts require a member-attributed credential and are isolated by team and member. Updates require expected_revision and a partial patch. Omitted fields remain unchanged and null removes a field. An immediate identical retry returns its saved revision. A conflicting edit returns HTTP 409 with run_draft_conflict. Draft operations do not submit workloads or authorize spending. Unsupported operations or versions return 404.",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "v1"
+              ]
+            },
+            "description": "Operation contract version. Unknown versions return 404."
+          },
+          {
+            "name": "operation",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "workloads.list",
+                "workloads.get",
+                "workloads.events",
+                "workloads.logs",
+                "workloads.outputs",
+                "workloads.validate",
+                "run_draft.get",
+                "workloads.submit",
+                "workloads.cancel",
+                "run_draft.update"
+              ]
+            },
+            "description": "Canonical operation identifier from the catalog."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OperationArguments"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Read, validation or saved draft result. The result schema depends on the operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "workloads": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/WorkloadListItem"
+                          }
+                        },
+                        "next_offset": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    {
+                      "$ref": "#/components/schemas/Workload"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "events": {
+                          "type": [
+                            "array",
+                            "null"
+                          ],
+                          "items": {
+                            "$ref": "#/components/schemas/WorkloadEvent"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "workload_id": {
+                          "type": "string"
+                        },
+                        "outputs": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Output"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "$ref": "#/components/schemas/WorkloadValidationResult"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RunDraft"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Submission accepted or cancellation requested. Acceptance is not completion.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SubmitResult"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "security": [
@@ -12541,6 +13279,9 @@
     },
     {
       "name": "Pools"
+    },
+    {
+      "name": "Operations"
     }
   ],
   "x-source-revision": "fd919e576d7300722d687111625114383475fcf4"

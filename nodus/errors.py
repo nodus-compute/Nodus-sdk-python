@@ -27,6 +27,7 @@ __all__ = [
     "NotFoundError",
     "ValidationError",
     "IdempotencyConflictError",
+    "RunDraftConflictError",
     "RateLimitError",
     "BudgetExceededError",
     "CapacityUnavailableError",
@@ -131,6 +132,10 @@ class IdempotencyConflictError(NodusError):
     it would destroy that identity. Resend the original payload, or mint a new
     key for the new intent.
     """
+
+
+class RunDraftConflictError(NodusError):
+    """409. Read the latest run draft before applying a reviewed replacement edit."""
 
 
 class RateLimitError(NodusError):
@@ -348,6 +353,8 @@ def error_from_response(
         cls: type[NodusError] = SignatureError
     elif status_code == 409 and code == "asset_in_use":
         cls = AssetInUseError
+    elif status_code == 409 and code == "run_draft_conflict":
+        cls = RunDraftConflictError
     elif status_code == 503 and code == "spend_check_unavailable":
         # The only 503 the control plane sends. Anything else at this status is
         # an infrastructure answer, not a statement about this brief.
