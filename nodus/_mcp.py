@@ -6,6 +6,7 @@ from http.cookiejar import CookieJar, DefaultCookiePolicy
 
 import ipaddress
 import json
+import math
 from typing import Annotated, Any, Literal
 
 import httpx
@@ -13,7 +14,7 @@ from mcp.server.fastmcp import Context, FastMCP
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from . import _headers, _resolve, _valid_id, _valid_idempotency_key
+from . import AsyncClient, _headers, _resolve, _valid_id, _valid_idempotency_key
 
 _MAX_RESPONSE_BYTES = 16 * 1024 * 1024
 Limit = Annotated[int, Field(strict=True, ge=1, le=100)]
@@ -77,9 +78,40 @@ async def _lifespan(server: FastMCP) -> AsyncIterator[httpx.AsyncClient]:
 
 
 def create_server(base_url: str | None = None) -> FastMCP:
-    """Create the seven workload tools with credentials resolved on each call."""
+    """Create workload tools with credentials resolved on each call."""
     server = FastMCP("nodus", log_level="WARNING", lifespan=_lifespan)
     read = ToolAnnotations(readOnlyHint=True, destructiveHint=False)
+
+    def require_budget(workload: dict[str, Any]) -> None:
+        outcome = workload.get("outcome")
+        value = outcome.get("max_cost_usd") if isinstance(outcome, dict) else None
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+            raise ValueError("Provide an explicit positive outcome.max_cost_usd authorized by the user.")
+
+    @server.tool(structured_output=False, annotations=read)
+    async def validate_workload(ctx: Context, workload: dict[str, Any]) -> str:
+        """Check a prepared HTTP workload request without submitting or charging.
+
+        Validation does not reserve capacity or guarantee admission.
+        """
+        require_budget(workload)
+        return await _request(ctx.request_context.lifespan_context, "POST", "/v1/workloads/validate",
+                              base_url=base_url, workload=workload)
+
+    @server.tool(structured_output=False, annotations=ToolAnnotations(
+        readOnlyHint=False, destructiveHint=False, idempotentHint=False))
+    async def download_workload_output(workload_id: str, name: str, destination: str,
+                                       stage: str | None = None) -> str:
+        """Download a requested output to a user-chosen local file and verify SHA-256.
+
+        The destination's parent must exist. Existing files are never overwritten.
+        This writes on the machine running the local MCP server.
+        """
+        key, origin = _resolve(None, base_url)
+        _check_origin(origin)
+        async with AsyncClient(api_key=key, base_url=origin, timeout=300) as client:
+            path = await client.download_output(workload_id, name, destination, stage=stage, overwrite=False)
+        return json.dumps({"path": str(path), "verified": True})
 
     @server.tool(structured_output=False, annotations=ToolAnnotations(
         readOnlyHint=False, destructiveHint=False, idempotentHint=True))
@@ -89,6 +121,7 @@ def create_server(base_url: str | None = None) -> FastMCP:
         Use a unique idempotency key for each intentional run. Retry an uncertain
         submission with the same key and unchanged workload to avoid a second run.
         """
+        require_budget(workload)
         return await _request(ctx.request_context.lifespan_context, "POST", "/v1/workloads", base_url=base_url,
                               workload=workload, idempotency_key=idempotency_key)
 

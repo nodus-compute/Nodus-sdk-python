@@ -1158,7 +1158,7 @@
               "fastest"
             ],
             "deprecated": true,
-            "description": "Optimization tiers are not currently supported. Omit this field. New workloads and stages use automatic routing. Accepted legacy values remain compatible but do not change routing for new submissions. Existing workloads retain their persisted settings. Automatic routing selects the lowest hourly price among compatible available on-demand configurations within spending and price limits. This does not guarantee the lowest total job cost or shortest runtime."
+            "description": "Optimization tiers are not currently supported. Omit this field. New workloads and stages use automatic routing. Accepted legacy values remain compatible but do not change routing for new submissions. Existing workloads retain their persisted settings. Automatic routing uses qualified runtime-cost estimates when all eligible configurations have comparable measurements. Otherwise it uses provisional hourly-price ordering within compatibility, spending and independent price limits. This does not guarantee the lowest total job cost or shortest runtime."
           },
           "disk_gb": {
             "type": "number",
@@ -2330,7 +2330,7 @@
               "vm",
               "accelerator"
             ],
-            "description": "Required infrastructure class. VM devboxes require a preview deployment with compatible capacity. Existing GPU sandbox clients explicitly request accelerator."
+            "description": "Infrastructure class. Omission selects vm (CPU) for a new sandbox and preserves the stored class when reconnecting by name. CPU sandboxes and devboxes require a preview deployment with compatible capacity. Existing GPU sandbox clients explicitly request accelerator."
           },
           "gpu": {
             "type": "string",
@@ -12425,6 +12425,74 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ConnectionLoad"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workloads/validate": {
+      "post": {
+        "tags": [
+          "Workloads"
+        ],
+        "summary": "Validate a prepared workload without submitting it",
+        "operationId": "validateWorkload",
+        "description": "Checks the workload request and referenced resources without admission, capacity reservation or spending. Requires an explicit positive outcome.max_cost_usd. A valid request can still fail admission when submitted.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkloadPayload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Request is valid and has not been submitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "valid",
+                    "submitted",
+                    "workload",
+                    "message"
+                  ],
+                  "properties": {
+                    "valid": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "submitted": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "workload": {
+                      "$ref": "#/components/schemas/WorkloadPayload"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
                 }
               }
             }
