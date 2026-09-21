@@ -36,7 +36,7 @@ nodus login
 
 Get [nodus-compute on PyPI](https://pypi.org/project/nodus-compute/).
 Requires Python 3.10 or newer. Upgrading an existing installation? Use
-`pip install --upgrade nodus-compute`. These docs cover SDK 0.5.3.
+`pip install --upgrade nodus-compute`. These docs cover SDK 0.6.0.
 
 Your browser opens Nodus sign-in. Sign in and approve the code matching your
 terminal. You can then close the tab. The terminal finishes automatically and
