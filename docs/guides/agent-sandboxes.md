@@ -16,11 +16,19 @@ nodus login
 ```
 
 Create a sandbox with a container image, resource requirements, and customer
-spending limit. Customer sandboxes currently use GPU infrastructure. Use a
+spending limit. New sandboxes use the server's CPU default unless accelerator
+resources are requested. These examples require a deployment with CPU sandbox preview enabled.
+They do not establish generally available CPU workload execution. Use a
 published image with an explicit non-root `USER`, a writable working directory
 and the programs your agent will execute. Replace
 `ghcr.io/your-org/research-agent:1` below with that image. A root-only base image
 must be rebuilt with a non-root user before submission.
+
+CPU defaults require SDK 0.5.3 or later. SDK 0.5.2 and earlier send accelerator
+requirements for ordinary sandboxes even when no GPU is named.
+When retrying an uncertain submission across an SDK upgrade, preserve its
+original resource requirements and idempotency key. Changing the compute class
+is a different request and can produce an idempotency conflict.
 
 ```python
 import nodus
@@ -30,10 +38,9 @@ sandbox = client.sandboxes.create(
     image="ghcr.io/your-org/research-agent:1",
     name="research-agent",
     requirements={
-        "gpu": "L40S",
-        "peak_memory_gb": 32,
-        "vcpus": 4,
-        "disk_gb": 50,
+        "peak_memory_gb": 4,
+        "vcpus": 2,
+        "disk_gb": 10,
     },
     budget=5,
     lifecycle={
@@ -71,6 +78,11 @@ shows the same failure guidance.
 
 Nodus matches infrastructure from the resource requirements. The customer API
 does not accept supplier names or supplier machine identifiers.
+
+Existing sandboxes retain their resource configuration when reconnected by
+name. Explicit GPU requirements retain their request semantics, but do not
+establish GPU access inside a sandbox. Use a GPU workload for training or
+other commands that require an accelerator.
 
 ## Execute commands and stream output
 
@@ -178,7 +190,7 @@ Its context manager terminates the sandbox when the block exits.
 with nodus.Sandbox(
     name="research-agent",
     image="ghcr.io/your-org/research-agent:1",
-    requirements={"gpu": "L40S", "peak_memory_gb": 32},
+    requirements={"vcpus": 2, "peak_memory_gb": 4, "disk_gb": 10},
     budget=5,
 ) as sandbox:
     process = sandbox.exec("python agent.py")
@@ -228,7 +240,7 @@ async def main():
     async with nodus.AsyncClient() as client:
         sandbox = await client.sandboxes.create(
             image="ghcr.io/your-org/research-agent:1",
-            requirements={"gpu": "L40S", "peak_memory_gb": 32},
+            requirements={"vcpus": 2, "peak_memory_gb": 4, "disk_gb": 10},
             budget=5,
         )
         execution = await sandbox.exec(["python", "agent.py"])
