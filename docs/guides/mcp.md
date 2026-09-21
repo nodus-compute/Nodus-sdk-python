@@ -3,6 +3,9 @@
 Connect Claude, Cursor, Codex or another MCP client to Nodus. Ask your agent to
 submit GPU workloads, check progress, read logs and retrieve output metadata.
 
+For the shortest setup, [choose your coding agent](connect.md). It includes
+copyable commands, a Cursor install link and configurations for other clients.
+
 For Codex, Claude Code or Cursor, use the [Nodus plugin](plugins.md) to install
 the tools and setup guidance together. The manual configuration below works
 with other MCP clients too.
