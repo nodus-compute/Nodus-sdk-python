@@ -212,20 +212,66 @@ finally:
 
 The CLI uses the same nouns and verbs.
 
-SDK 0.5.2 and later accepts an active exact name in place of `SANDBOX_ID` for
+SDK 0.5.2 and later accepts an active exact name or sandbox ID for `NAME_OR_ID` in
 `exec`, `logs`, `cost` and `rm`. Names and IDs are shown by `sandbox ls`. Use the
 ID for historical sessions. Name lookup never creates a replacement sandbox.
-See [CLI retry guidance](../reference/cli.md#agent-sandboxes-and-devboxes) for
+See [CLI retry guidance](../reference/cli.md#agent-sandboxes) for
 recovering an uncertain request without submitting duplicate work.
 
 ```bash
 nodus sandbox new ghcr.io/your-org/research-agent:1 --name research-agent --budget 5
 nodus sandbox ls
-nodus sandbox exec SANDBOX_ID "python agent.py"
-nodus sandbox logs SANDBOX_ID EXEC_ID
-nodus sandbox cost SANDBOX_ID
-nodus sandbox rm SANDBOX_ID
+nodus sandbox exec NAME_OR_ID "python agent.py"
+nodus sandbox logs NAME_OR_ID EXEC_ID
+nodus sandbox cost NAME_OR_ID
+nodus sandbox rm NAME_OR_ID
 ```
+
+## Repository bootstrap preview
+
+Connect the GitHub App to your account and grant it read access to the selected
+repository. Use an image with a non-root user, a writable `/workspace` directory
+and the tools your project needs. Bootstrap requires `github.com` in the egress
+allowlist. Include any additional hosts needed by your setup command.
+
+```python
+import nodus
+
+with nodus.Client() as client:
+    sandbox = client.sandboxes.create(
+        name="api-agent",
+        image="ghcr.io/your-org/research-agent:1",
+        budget=5,
+        bootstrap={
+            "repo": "your-org/api",
+            "ref": "main",
+            "setup": "make deps",
+        },
+        policy={
+            "network": "allowlist",
+            "egress_allow": ["github.com"],
+        },
+    )
+    print(sandbox.id)
+```
+
+Creation returns the sandbox ID while startup continues. The checkout lives in
+`/workspace`. The setup command appears as an ordinary execution whose ID begins
+with `ex_bootstrap_`. Inspect its output and completion before running commands
+that depend on it. Setup failure leaves the sandbox usable and adds a
+`bootstrap_failed` warning to its API response and SDK `warnings` list.
+
+The optional `bootstrap["dotfiles"]` selects a second connected repository in
+`owner/repo` form. Bootstrap clones it into `$HOME/.dotfiles` and runs its
+`install.sh` before setup. `bootstrap["ref"]` accepts a branch name or
+`refs/tags/name`. Repository URLs and embedded credentials are rejected.
+
+The installation credential is never supplied to customer commands or saved in
+the checkout. Later authenticated Git operations require your own connection
+method. Repository bootstrap does not turn the root filesystem into persistent
+storage. Production checkout and setup qualification is pending. Use the
+[reconnect and terminate](#reconnect-and-terminate) commands to manage the
+existing sandbox.
 
 ## Async agents
 

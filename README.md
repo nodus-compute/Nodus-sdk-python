@@ -17,7 +17,7 @@ when your local machine lacks the GPU memory or capacity they need. Provide a
 container image and resource requirements. Nodus matches the work to available
 GPU capacity. Add a budget to set a spending limit.
 
-Agent sandbox and devbox previews run tools in a separate environment. New
+Agent sandbox previews run tools in a separate environment. New
 sandboxes in SDK 0.5.3 and later use the server's CPU default unless accelerator
 resources are requested.
 These examples require deployments
@@ -133,16 +133,17 @@ See the [sandbox guide](https://nodus-compute.ai/docs/guides/agent-sandboxes/).
 
 The CLI mirrors the same resource and verbs.
 
-In SDK 0.5.1, these commands also accept the active name `research-agent` in
-place of `SANDBOX_ID`. Use the returned ID with older releases. See
-[CLI retry guidance](https://nodus-compute.ai/docs/reference/cli/#agent-sandboxes-and-devboxes)
+In SDK 0.5.1, use the active name `research-agent` or the returned sandbox ID
+for `NAME_OR_ID`. Use the returned ID with older releases. See
+[CLI retry guidance](https://nodus-compute.ai/docs/reference/cli/#agent-sandboxes)
 before retrying a request whose outcome is uncertain.
 
 ```bash
 nodus sandbox new ghcr.io/your-org/research-agent:1 --name research-agent --budget 5
-nodus sandbox exec SANDBOX_ID "python -c 'print(2 + 2)'"
-nodus sandbox cost SANDBOX_ID
-nodus sandbox rm SANDBOX_ID
+nodus sandbox ls
+nodus sandbox exec NAME_OR_ID "python -c 'print(2 + 2)'"
+nodus sandbox cost NAME_OR_ID
+nodus sandbox rm NAME_OR_ID
 ```
 
 ## Prefer the terminal?
@@ -200,7 +201,6 @@ See [troubleshooting](https://nodus-compute.ai/docs/operations/errors/) if a run
 
 See [RELEASING.md](https://github.com/nodus-compute/Nodus-sdk-python/blob/main/RELEASING.md) for release steps. Licensed under [Apache-2.0](https://github.com/nodus-compute/Nodus-sdk-python/blob/main/LICENSE).
 
-Devbox preview builds also include [named development sessions](https://github.com/nodus-compute/Nodus-sdk-python/blob/main/docs/guides/devboxes.md).
 ## Benchmark a workload
 
 `client.benchmark()` accepts an API workload payload, `gpu_families`, `batch_sizes`, `regions`, `repetitions`, an explicit `budget`, and an explicit `idempotency_key`. Reuse the same key after an uncertain response. Both synchronous and asynchronous clients return the server report.

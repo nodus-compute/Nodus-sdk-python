@@ -300,23 +300,7 @@ def _cmd_assets(args: argparse.Namespace) -> int:
     return 0
 
 
-def _devboxes(client, *, name=None):
-    cursor = None
-    seen = set()
-    while True:
-        rows, next_cursor = client.sandboxes.list_page(cursor=cursor, name=name)
-        for box in rows:
-            if box.envelope.get("profile") == "devbox" and (name is None or box.envelope.get("name", "") == name):
-                yield box
-        if next_cursor is None:
-            return
-        if next_cursor in seen:
-            raise ValidationError("Sandbox pagination did not advance. Retry the command.")
-        seen.add(next_cursor)
-        cursor = next_cursor
-
-
-def _resolve_sandbox(client, reference, *, profile=None):
+def _resolve_sandbox(client, reference):
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", reference):
         raise ValidationError("Use a sandbox ID or a name of up to 128 letters, digits, dots, underscores or dashes.")
     missing = None
@@ -328,8 +312,6 @@ def _resolve_sandbox(client, reference, *, profile=None):
                 raise
             missing = error
         else:
-            if profile and box.envelope.get("profile") != profile:
-                raise ValidationError(f"That sandbox is not a {profile}. Use nodus {profile} ls.")
             return box
     cursor = None
     seen = set()
@@ -338,8 +320,6 @@ def _resolve_sandbox(client, reference, *, profile=None):
         rows, next_cursor = client.sandboxes.list_page(name=reference, cursor=cursor)
         for box in rows:
             if box.envelope.get("name") != reference or box.is_terminal:
-                continue
-            if profile and box.envelope.get("profile") != profile:
                 continue
             matches[box.id] = box
         if len(matches) > 1:
@@ -353,8 +333,7 @@ def _resolve_sandbox(client, reference, *, profile=None):
     if not matches:
         if missing:
             raise missing
-        resource = profile or "sandbox"
-        raise ValidationError(f"No active {resource} with that name was found. Check nodus {resource} ls and use its ID.")
+        raise ValidationError("No active sandbox with that name was found. Check nodus sandbox ls and use its ID.")
     return next(iter(matches.values()))
 
 
@@ -378,36 +357,6 @@ def _sandbox_mutation(request_key, *, sandbox_id=None):
             )
         raise
 
-
-def _cmd_devbox(args: argparse.Namespace) -> int:
-    with Client(base_url=args.base_url) as client:
-        if args.devbox_cmd == "up":
-            if not args.repo and any((args.ref, args.setup, args.dotfiles)):
-                raise ValidationError("--ref, --setup and --dotfiles require --repo")
-            bootstrap = None
-            if args.repo:
-                bootstrap = {key: value for key, value in (("repo", args.repo), ("ref", args.ref), ("setup", args.setup), ("dotfiles", args.dotfiles)) if value}
-            with _sandbox_mutation(args.idempotency_key) as key:
-                box = client.sandboxes.create(profile="devbox", name=args.name, image=args.image, budget=args.budget, bootstrap=bootstrap, idempotency_key=key)
-            print(_safe_line(box.id))
-            return 0
-        if args.devbox_cmd == "shell":
-            from ._shell import shell
-            return shell(_resolve_sandbox(client, args.name, profile="devbox"))
-        if args.devbox_cmd == "rm":
-            box = _resolve_sandbox(client, args.name, profile="devbox")
-            with _sandbox_mutation(args.idempotency_key, sandbox_id=box.id) as key:
-                box.terminate(idempotency_key=key)
-            print(_safe_line(box.id))
-            return 0
-        boxes = list(_devboxes(client))
-        if args.json:
-            print(json.dumps([{"id": box.id, "name": box.envelope.get("name", ""), "state": box.state, "cost_usd": box.cost_usd} for box in boxes], indent=2, default=str))
-        else:
-            show_table(["Devbox", "Name", "Status", "Cost"],
-                       [[box.id, box.envelope.get("name", ""), box.state, format_cost(box.cost_usd)] for box in boxes],
-                       empty="No devboxes yet.", plain=args.plain)
-        return 0
 
 def _cmd_freeze(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
@@ -971,7 +920,7 @@ class _CommandHelpFormatter(argparse.RawDescriptionHelpFormatter):
             descriptions = {choice.dest: choice.help for choice in action._choices_actions}
             groups = (
                 ("Setup", ("login", "logout", "init")),
-                ("Run", ("run", "submit", "sandbox", "devbox")),
+                ("Run", ("run", "submit", "sandbox")),
                 ("Monitor", ("list", "status", "wait", "logs", "cancel")),
                 ("Results", ("download",)),
                 ("Advanced", ("upload", "assets", "asset", "pools", "events", "artifacts", "ledger", "explain")),
@@ -1097,24 +1046,6 @@ Use nodus COMMAND --help for command options.""",
     for verb in ("rm", "verify"):
         connection_sub.add_parser(verb).add_argument("connection")
 
-    devbox = sub.add_parser("devbox", help="create and manage devbox sandboxes")
-    devbox_sub = devbox.add_subparsers(dest="devbox_cmd", required=True, metavar="COMMAND")
-    devbox_up = devbox_sub.add_parser("up", help="create or reconnect to a named devbox")
-    devbox_up.add_argument("name")
-    devbox_up.add_argument("--image", default=None)
-    devbox_up.add_argument("--budget", type=_positive_cost, default=None)
-    devbox_up.add_argument("--idempotency-key", help="reuse the same key when retrying an uncertain request")
-    devbox_up.add_argument("--repo", help="connected GitHub repository as owner/name")
-    devbox_up.add_argument("--ref", help="branch name or refs/tags/name")
-    devbox_up.add_argument("--setup", help="setup command recorded as an ordinary sandbox execution")
-    devbox_up.add_argument("--dotfiles", help="connected GitHub dotfiles repository as owner/name")
-    devbox_ls = devbox_sub.add_parser("ls", help="list devbox sandboxes")
-    devbox_ls.add_argument("--json", action="store_true")
-    devbox_shell = devbox_sub.add_parser("shell", help="open an interactive terminal, Ctrl+] disconnects")
-    devbox_shell.add_argument("name", metavar="NAME_OR_ID")
-    devbox_rm = devbox_sub.add_parser("rm", help="terminate a devbox by name or ID")
-    devbox_rm.add_argument("name", metavar="NAME_OR_ID")
-    devbox_rm.add_argument("--idempotency-key", help="reuse the same key when retrying an uncertain request")
     benchmark = sub.add_parser("benchmark", help="run and inspect a hardware matrix")
     benchmark_sub = benchmark.add_subparsers(dest="benchmark_cmd", required=True)
     benchmark_run = benchmark_sub.add_parser("run", help="submit a benchmark JSON request")
@@ -1309,7 +1240,6 @@ def main(argv: list[str] | None = None) -> int:
         "connection": lambda: _cmd_connection(args),
         "pools": lambda: _cmd_pools(args),
         "sandbox": lambda: _cmd_sandbox(args),
-        "devbox": lambda: _cmd_devbox(args),
         "benchmark": lambda: _cmd_benchmark(args),
         "list": lambda: _cmd_list(args),
         "status": lambda: _cmd_status(args),
@@ -1338,7 +1268,7 @@ def main(argv: list[str] | None = None) -> int:
             elif hasattr(args, "workload_id"):
                 message = "That run was not found. Check the ID with nodus list and try again."
             elif exc.code == "not_found":
-                if args.cmd in ("sandbox", "devbox"):
+                if args.cmd == "sandbox":
                     message = f"That sandbox or execution was not found. Check nodus {args.cmd} ls and use the exact ID."
                 else:
                     message = "That resource was not found. Check its ID and that you are signed in to the correct account."

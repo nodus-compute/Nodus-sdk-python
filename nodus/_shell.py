@@ -14,7 +14,7 @@ from .errors import NodusError
 def shell(box: Any, command: list[str] | None = None) -> int:
     """Run a terminal and restore local terminal settings on every exit path."""
     if os.name != "posix" or not sys.stdin.isatty() or not sys.stdout.isatty():
-        raise ValueError("devbox shell requires an interactive POSIX terminal")
+        raise ValueError("sandbox shell requires an interactive POSIX terminal")
     import termios
     import tty
 

@@ -1621,13 +1621,6 @@
           "policy": {
             "$ref": "#/components/schemas/SandboxPolicy"
           },
-          "profile": {
-            "type": "string",
-            "enum": [
-              "devbox"
-            ],
-            "description": "Optional server preset. Devbox supplies a 7 day maximum lifetime, 30 minute idle suspend, 5 minute snapshot interval, 2 vCPUs, 4 GB memory, 20 GB disk, a 10 USD budget, and package-host egress. Explicit fields override preset defaults. Preview deployments only."
-          },
           "requirements": {
             "$ref": "#/components/schemas/SandboxRequirements"
           },
@@ -1723,13 +1716,6 @@
           },
           "policy": {
             "$ref": "#/components/schemas/SandboxPolicy"
-          },
-          "profile": {
-            "type": "string",
-            "enum": [
-              "devbox"
-            ],
-            "description": "Applied sandbox preset, when one was requested."
           },
           "requirements": {
             "type": "object",
@@ -2193,7 +2179,7 @@
           "max_cost_usd": {
             "type": "number",
             "exclusiveMinimum": 0,
-            "description": "Hard customer spending limit for this sandbox. The server default is 5 USD, or 10 USD for the devbox profile. Reconnecting without a budget preserves the existing limit. Account credits and configured account limits also apply."
+            "description": "Hard customer spending limit for this sandbox. The server default is 5 USD. Reconnecting without a budget preserves the existing limit. Account credits and configured account limits also apply."
           },
           "complete_by": {
             "type": "string",
@@ -2330,7 +2316,7 @@
               "vm",
               "accelerator"
             ],
-            "description": "Infrastructure class. Omission selects vm (CPU) for a new sandbox and preserves the stored class when reconnecting by name. CPU sandboxes and devboxes require a preview deployment with compatible capacity. Existing GPU sandbox clients explicitly request accelerator."
+            "description": "Infrastructure class. Omission selects vm (CPU) for a new sandbox and preserves the stored class when reconnecting by name. CPU sandboxes require a preview deployment with compatible capacity. Existing GPU sandbox clients explicitly request accelerator."
           },
           "gpu": {
             "type": "string",

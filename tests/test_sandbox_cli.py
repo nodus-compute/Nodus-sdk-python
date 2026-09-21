@@ -41,6 +41,39 @@ def client_factory(handler):
     return build
 
 
+@pytest.mark.parametrize("arguments", [
+    ["devbox", "up", "scratch"], ["devbox", "ls"],
+    ["devbox", "shell", "scratch"], ["devbox", "rm", "scratch"],
+])
+def test_cli_rejects_removed_devbox_commands(arguments):
+    with pytest.raises(SystemExit) as error:
+        cli.build_parser().parse_args(arguments)
+    assert error.value.code == 2
+
+
+@pytest.mark.parametrize("reference", ["sb_legacy", "scratch"])
+def test_existing_profile_resources_remain_inspectable_and_terminable(reference, monkeypatch, capsys):
+    legacy = {**SANDBOX, "id": "sb_legacy", "envelope": {"name": "scratch", "profile": "devbox"}}
+    calls = []
+
+    def handler(request):
+        calls.append((request.method, request.url.path))
+        if request.method == "GET" and request.url.path == "/v1/sandboxes":
+            return httpx.Response(200, json={"sandboxes": [legacy], "next_cursor": None})
+        if request.method == "GET" and request.url.path == "/v1/sandboxes/sb_legacy":
+            return httpx.Response(200, json=legacy)
+        assert request.method == "POST" and request.url.path == "/v1/sandboxes/sb_legacy/terminate"
+        assert request.headers["Idempotency-Key"] == "cleanup-existing"
+        return httpx.Response(200, json={**legacy, "state": "terminated"})
+
+    monkeypatch.setattr(cli, "Client", client_factory(handler))
+    assert cli.main(["sandbox", "ls", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)[0]["id"] == "sb_legacy"
+    assert cli.main(["sandbox", "rm", "--idempotency-key", "cleanup-existing", reference]) == 0
+    assert capsys.readouterr().out.strip() == "sb_legacy"
+    assert [call for call in calls if call[0] == "POST"] == [("POST", "/v1/sandboxes/sb_legacy/terminate")]
+
+
 def test_sandbox_cli_mirrors_create_exec_logs_cost_list_and_remove(monkeypatch, capsys):
     calls = []
 
@@ -256,8 +289,6 @@ def test_sandbox_list_includes_reusable_name(monkeypatch, capsys):
     ["sandbox", "new", "python:3.12", "--budget", "5"],
     ["sandbox", "exec", "sb_agent", "true"],
     ["sandbox", "rm", "sb_agent"],
-    ["devbox", "up", "scratch", "--image", "python:3.12", "--budget", "5"],
-    ["devbox", "rm", "sb_agent"],
 ])
 @pytest.mark.parametrize("failure", ["timeout", "server", "malformed"])
 def test_uncertain_sandbox_mutation_exposes_reusable_request_key(arguments, failure, monkeypatch, capsys):
@@ -265,7 +296,7 @@ def test_uncertain_sandbox_mutation_exposes_reusable_request_key(arguments, fail
 
     def handler(request):
         if request.method == "GET":
-            return httpx.Response(200, json={**SANDBOX, "envelope": {"profile": "devbox"}})
+            return httpx.Response(200, json=SANDBOX)
         requests.append(request)
         if failure == "timeout":
             raise httpx.ReadTimeout("response lost", request=request)
