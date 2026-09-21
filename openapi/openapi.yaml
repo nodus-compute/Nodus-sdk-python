@@ -6325,7 +6325,7 @@
             ]
           }
         ],
-        "description": "A persisted application-reported task event. The encoded event is limited to 16 KiB. Stable event IDs are deduplicated within a workload and stage across infrastructure generations. Reusing an identity with changed content is rejected. A stage, phase, task, attempt and kind may have only one immutable observation. Task completion is not workload completion, and these events do not change checkpoints or recovery progress. No task_started event is required before a task_completed event.",
+        "description": "A persisted application-reported task event. The encoded event is limited to 16 KiB. Stable event IDs are deduplicated within a workload, stage and execution generation. Reusing an identity with changed content in the same generation is rejected. A stage, generation, phase, task, attempt and kind may have only one immutable observation. Recovered generations retain separate observations, including identical content. Task completion is not workload completion, and these events do not change checkpoints or recovery progress. No task_started event is required before a task_completed event.",
         "x-go-source": "internal/models/rl.go",
         "x-go-type": "RLEvent"
       },
@@ -6351,7 +6351,7 @@
           },
           "generation": {
             "type": "integer",
-            "description": "Infrastructure generation that first persisted the event. Replayed application events retain their original row and generation."
+            "description": "Execution generation authorized to report this observation. Retries within a generation retain their original row. Recovered generations receive distinct rows, even for identical application events."
           },
           "received_at": {
             "type": "string",
