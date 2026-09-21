@@ -1158,7 +1158,7 @@
               "fastest"
             ],
             "deprecated": true,
-            "description": "Optimization tiers are not currently supported. Omit this field. New workloads and stages use automatic routing. Accepted legacy values remain compatible but do not change routing for new submissions. Existing workloads retain their persisted settings. Automatic routing uses qualified runtime-cost estimates when all eligible configurations have comparable measurements. Otherwise it uses provisional hourly-price ordering within compatibility, spending and independent price limits. This does not guarantee the lowest total job cost or shortest runtime."
+            "description": "Optimization tiers are not currently supported. Omit this field. New workloads and stages use automatic routing. Accepted legacy values remain compatible but do not change routing for new submissions. Existing workloads retain their persisted settings. Automatic routing uses qualified runtime-cost estimates when all eligible configurations have comparable measurements. Otherwise it provisionally ranks by hourly price with a temporary preference for compatible configurations without a recent matching startup failure. Compatibility, spending and independent price limits remain enforced. This does not guarantee the lowest total job cost or shortest runtime."
           },
           "disk_gb": {
             "type": "number",
@@ -3119,7 +3119,7 @@
               "fastest"
             ],
             "deprecated": true,
-            "description": "Deprecated compatibility field. Optimization tiers are not currently supported. New submissions use automatic routing regardless of accepted legacy values. Nodus selects the lowest-priced compatible on-demand configuration within resource, availability and spending constraints."
+            "description": "Deprecated compatibility field. Optimization tiers are not currently supported. New submissions use automatic routing regardless of accepted legacy values. Nodus uses qualified runtime-cost estimates when comparable measurements cover all eligible configurations. Otherwise it provisionally ranks by hourly price with a temporary preference for compatible configurations without a recent matching startup failure. Resource, availability, spending and independent price limits remain enforced."
           },
           "outcome": {
             "$ref": "#/components/schemas/Outcome"
