@@ -26,7 +26,7 @@ nodus login
 
 Get [nodus-compute on PyPI](https://pypi.org/project/nodus-compute/).
 Requires Python 3.10 or newer. Upgrading an existing installation? Use
-`pip install --upgrade nodus-compute`. These docs cover SDK 0.4.x.
+`pip install --upgrade nodus-compute`. These docs cover SDK 0.5.1.
 
 Your browser opens Nodus sign-in. Sign in and approve the code matching your
 terminal. You can then close the tab. The terminal finishes automatically and
@@ -118,6 +118,11 @@ Calling `nodus.Sandbox(name="research-agent")` reconnects to the named sandbox.
 See the [sandbox guide](https://nodus-compute.ai/docs/guides/agent-sandboxes/).
 
 The CLI mirrors the same resource and verbs.
+
+In SDK 0.5.1, these commands also accept the active name `research-agent` in
+place of `SANDBOX_ID`. Use the returned ID with older releases. See
+[CLI retry guidance](https://nodus-compute.ai/docs/reference/cli/#agent-sandboxes-and-devboxes)
+before retrying a request whose outcome is uncertain.
 
 ```bash
 nodus sandbox new pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime --name research-agent --budget 5

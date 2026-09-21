@@ -70,6 +70,9 @@ when the process is terminal. Check `succeeded` and `exit_code`. Call
 Sandbox calls use idempotency keys for create, exec, stdin, and terminate.
 Supply a stable key when your application retries after an uncertain response.
 Generated keys protect the SDK transport retries within one method call.
+If create, exec, or terminate returns an invalid receipt, the SDK raises
+`APIError` with the sent key in `error.payload["idempotency_key"]`. Reuse that
+key with the original arguments to recover the same operation.
 
 `Workload` offers `refresh`, `wait`, `cancel`, events, logs, artifacts, outputs,
 download, routing, and ledger methods without repeating the ID. Reads and waits
@@ -92,8 +95,8 @@ Use `download_output(name, destination, stage=...)` for one specific file.
 | `max_retries` | Additional request attempts, default `2`, giving up to three total attempts. Downloads do not retry automatically |
 | `limit`, `page_size` | Workloads requested per page, default `50` |
 | `offset` | Number of workloads to skip, default `0`. `list_page()` returns the next offset, or `None` at the end |
-| `poll_seconds` | Seconds between successful polls, default `2.0` |
-| `timeout_seconds` | Local wait duration in seconds, default `None` for no deadline. A timeout leaves the workload running |
+| `poll_seconds` | Finite nonnegative seconds between successful polls, default `2.0` |
+| `timeout_seconds` | Finite nonnegative local wait duration in seconds, default `None` for no deadline. A timeout leaves the workload running |
 | `on_update` | Optional synchronous callback called with each successful workload read during `wait()`, including the terminal read. Available on sync and async clients |
 | `progress` | `None` detects an interactive terminal, `True` enables output, `False` waits silently. [Live display](../../guides/monitoring-and-outputs.md#live-display) |
 | `events(after)`, `iter_events(after)` | Numeric sequence of the last event seen, default `0`. Returns events with later `seq` values, oldest first. `events()` returns at most 100 per page |

@@ -1,11 +1,20 @@
 # Changelog
 
-## 0.5.1
+## 0.5.2
 
 - Validate prepared MCP workload requests without starting compute and require an explicit positive submission budget.
 - Download requested outputs through the local MCP server with checksum verification and no overwrites.
 - Repair installer-managed agent connections and skills with backups, and diagnose local setup without signing in.
 - Package a hosted MCP plugin with browser authorization and a GitHub Action that preserves submission identity across retries and verifies results.
+
+## 0.5.1
+
+- Resolve sandbox command targets by active name or exact ID, and accept devbox IDs with profile checks. List sandbox names and distinguish missing resources from unavailable endpoints.
+- Preserve request keys after uncertain sandbox or devbox mutations. Use `--idempotency-key` to retry the same operation, and show failed execution IDs and reasons even when no logs exist.
+- Retain accepted execution IDs when observation fails. Reject malformed mutation receipts with the original retry key, and expose sandbox error codes from the server's response envelope.
+- Explain code and dataset attachment parameters when `assets` or `asset_id` is supplied, and reject asset aliases inside `extra` before submitting work.
+- Read every initially available sandbox output page without following later writes when `follow=False`.
+- Reject negative and nonfinite workload observation durations before making requests. Preserve zero durations and unbounded `timeout_seconds=None`.
 
 ## 0.5.0
 

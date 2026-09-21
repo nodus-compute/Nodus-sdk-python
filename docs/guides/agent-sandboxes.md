@@ -99,8 +99,10 @@ if not execution.succeeded:
 
 Output frames preserve the order recorded by the control plane. Each frame has
 a sequence, stream name, byte offset, raw `data`, decoded `text`, and creation
-time. `iter_output()` follows until the execution is terminal. Use
-`output(after=SEQUENCE, wait=False)` when your application manages cursors.
+time. `iter_output()` follows until the execution is terminal.
+`iter_output(follow=False)` drains every page available when reading starts
+without waiting for new output. Use `output(after=SEQUENCE, wait=False)` when
+your application manages cursors.
 
 ## Read network usage and denied destinations
 
@@ -197,6 +199,12 @@ finally:
 ```
 
 The CLI uses the same nouns and verbs.
+
+SDK 0.5.2 and later accepts an active exact name in place of `SANDBOX_ID` for
+`exec`, `logs`, `cost` and `rm`. Names and IDs are shown by `sandbox ls`. Use the
+ID for historical sessions. Name lookup never creates a replacement sandbox.
+See [CLI retry guidance](../reference/cli.md#agent-sandboxes-and-devboxes) for
+recovering an uncertain request without submitting duplicate work.
 
 ```bash
 nodus sandbox new ghcr.io/your-org/research-agent:1 --name research-agent --budget 5

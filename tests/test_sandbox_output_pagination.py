@@ -53,6 +53,49 @@ def test_output_iterator_drains_all_completed_pages(asynchronous):
     assert cursors == [0, 1, 2]
 
 
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("state", ["running", "completed"])
+def test_nonfollowing_output_drains_initial_available_frames(asynchronous, state):
+    chunks = [f"frame-{sequence}\n".encode() for sequence in range(1, 19)]
+    cursors = []
+
+    def respond(request):
+        assert request.method == "GET"
+        assert request.url.path == "/v1/sandboxes/sb_test/execs/ex_test/stream"
+        assert request.url.params["wait"] == "false"
+        after, limit = int(request.url.params["after"]), int(request.url.params["limit"])
+        assert len(cursors) < 2, "nonfollowing reads must not chase new output"
+        cursors.append(after)
+        last = 18 if state == "running" and after else 17
+        end = min(after + limit, last)
+        done = state == "completed" and end == last
+        return httpx.Response(200, json={
+            "frames": [{"sequence": index + 1, "stream": "stdout",
+                        "offset": sum(map(len, chunks[:index])),
+                        "data": base64.b64encode(chunks[index]).decode("ascii")}
+                       for index in range(after, end)],
+            "next_sequence": end, "last_sequence": last,
+            "final_sequence": last if state == "completed" else None,
+            "state": state, "done": done, "complete": done,
+        })
+
+    async def collect():
+        async with AsyncClient(api_key="test-key", base_url="https://api.example.com") as client:
+            await client._http.aclose()
+            client._http = httpx.AsyncClient(base_url="https://api.example.com", transport=httpx.MockTransport(respond))
+            return [frame.data async for frame in AsyncSandboxExec(client, "sb_test", "ex_test").iter_output(follow=False)]
+
+    if asynchronous:
+        transcript = asyncio.run(collect())
+    else:
+        with Client(api_key="test-key", base_url="https://api.example.com") as client:
+            client._http.close()
+            client._http = httpx.Client(base_url="https://api.example.com", transport=httpx.MockTransport(respond))
+            transcript = [frame.data for frame in SandboxExec(client, "sb_test", "ex_test").iter_output(follow=False)]
+    assert transcript == chunks[:17]
+    assert cursors == [0, 16]
+
+
 @pytest.mark.skipif(os.name != "posix", reason="Physical shell requires a POSIX terminal")
 @pytest.mark.parametrize("stalled", [False, True])
 def test_shell_drains_binary_final_pages_and_restores_terminal(monkeypatch, stalled):

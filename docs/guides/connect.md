@@ -132,7 +132,7 @@ Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then run
 this in your terminal and complete browser sign-in:
 
 ```sh
-uvx --from 'nodus-compute[mcp]==0.5.1' nodus login
+uvx --from 'nodus-compute[mcp]==0.5.2' nodus login
 ```
 
 The package downloads automatically. Local clients running as the same OS
@@ -146,7 +146,7 @@ for unattended environments and custom deployments.
 Run this in your terminal to add Nodus across your projects:
 
 ```sh
-claude mcp add --scope user --transport stdio nodus -- uvx --from 'nodus-compute[mcp]==0.5.1' nodus-mcp
+claude mcp add --scope user --transport stdio nodus -- uvx --from 'nodus-compute[mcp]==0.5.2' nodus-mcp
 ```
 
 Restart Claude Code or reconnect through `/mcp`.
@@ -156,7 +156,7 @@ Restart Claude Code or reconnect through `/mcp`.
 Run this in your terminal, then start a new Codex session:
 
 ```sh
-codex mcp add nodus -- uvx --from 'nodus-compute[mcp]==0.5.1' nodus-mcp
+codex mcp add nodus -- uvx --from 'nodus-compute[mcp]==0.5.2' nodus-mcp
 ```
 
 ## Cursor
@@ -170,7 +170,7 @@ For manual setup, merge this into `~/.cursor/mcp.json`:
   "mcpServers": {
     "nodus": {
       "command": "uvx",
-      "args": ["--from", "nodus-compute[mcp]==0.5.1", "nodus-mcp"]
+      "args": ["--from", "nodus-compute[mcp]==0.5.2", "nodus-mcp"]
     }
   }
 }
@@ -210,7 +210,7 @@ Merge this into `.vscode/mcp.json` in your project, then enable Nodus in chat:
     "nodus": {
       "type": "stdio",
       "command": "uvx",
-      "args": ["--from", "nodus-compute[mcp]==0.5.1", "nodus-mcp"]
+      "args": ["--from", "nodus-compute[mcp]==0.5.2", "nodus-mcp"]
     }
   }
 }
@@ -234,7 +234,7 @@ Merge this into `opencode.json` in your project:
   "mcp": {
     "nodus": {
       "type": "local",
-      "command": ["uvx", "--from", "nodus-compute[mcp]==0.5.1", "nodus-mcp"],
+      "command": ["uvx", "--from", "nodus-compute[mcp]==0.5.2", "nodus-mcp"],
       "enabled": true
     }
   }
@@ -247,7 +247,7 @@ Restart OpenCode. See [OpenCode MCP setup](https://opencode.ai/docs/mcp-servers/
 
 Choose a **local** or **stdio** server in your client's MCP settings. Set the
 command to `uvx` and the arguments to
-`["--from", "nodus-compute[mcp]==0.5.1", "nodus-mcp"]`.
+`["--from", "nodus-compute[mcp]==0.5.2", "nodus-mcp"]`.
 For clients that accept an `mcpServers` object, merge the configuration from
 the Cursor section. Preserve unrelated settings and servers.
 

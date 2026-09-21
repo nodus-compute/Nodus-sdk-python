@@ -241,3 +241,29 @@ def test_a_revoked_key_ends_the_event_stream_at_once(plane):
     with client(plane) as c:
         with pytest.raises(nodus.AuthenticationError):
             list(c.stream_events(WID, poll_seconds=0.01))
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("operation,field", [
+    ("wait", "poll_seconds"), ("wait", "timeout_seconds"),
+    ("stream_events", "poll_seconds"),
+])
+@pytest.mark.parametrize("value", [-1, float("-inf"), float("nan"), float("inf"), True, "1"])
+def test_invalid_observation_duration_refused_before_http(plane, asynchronous, operation, field, value):
+    async def observe():
+        async with async_client(plane) as c:
+            if operation == "wait":
+                await c.wait(WID, **{field: value}, progress=False)
+            else:
+                return [event async for event in c.stream_events(WID, **{field: value})]
+
+    with pytest.raises(ValueError, match=field):
+        if asynchronous:
+            asyncio.run(observe())
+        else:
+            with client(plane) as c:
+                if operation == "wait":
+                    c.wait(WID, **{field: value}, progress=False)
+                else:
+                    list(c.stream_events(WID, **{field: value}))
+    assert plane.script.seen == []
