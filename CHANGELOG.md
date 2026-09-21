@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Expose the server-reported inference component in account meters while preserving aggregate totals and older-server defaults.
+- Document the text inference HTTP API, required request keys, model catalog and request status in the public OpenAPI contract. Availability depends on the deployment.
+
 ## 0.5.3
 
 - Use the server CPU default for ordinary sandboxes without GPU requirements, and preserve stored resources when reconnecting by name. CPU sandboxes require a deployment with the preview enabled.

@@ -13,6 +13,7 @@ COMPONENTS = {
     "subscription_settled_usd": 0.0,
     "compute_accruing_usd": 1.25,
     "platform_fee_accruing_usd": 0.02,
+    "inference_settled_usd": 0.0,
 }
 
 
@@ -66,6 +67,17 @@ def test_subscription_is_read_as_account_component_without_inference():
     assert meter.compute_settled_usd == 2.5
     assert meter.platform_fee_settled_usd == 0.08
     assert meter.total_now_usd == 102.85
+
+
+def test_inference_account_charge_preserves_the_server_total():
+    meter = nodus.Meter.from_dict({
+        "inference_settled_usd": 0.000004,
+        "settled_usd": 0.000004, "total_now_usd": 0.000004,
+    })
+    assert meter.inference_settled_usd == 0.000004
+    assert meter.subscription_settled_usd == 0
+    assert meter.compute_settled_usd == 0
+    assert meter.total_now_usd == 0.000004
 
 
 @pytest.mark.parametrize("invalid", [None, True, "invalid", float("inf"), 2 ** 4096],
