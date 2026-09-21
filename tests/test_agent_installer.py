@@ -356,3 +356,18 @@ def test_existing_plugin_locations_prevent_duplicate_connections(installer, tmp_
         (tmp_path / ".cursor/plugins/local" / plugin).mkdir(parents=True)
     with pytest.raises(installer.SetupError, match="plugin"):
         installer.plan([agent], sys.executable)
+
+
+def test_check_verifies_owned_older_runtime_without_changing_settings(installer, tmp_path, monkeypatch):
+    monkeypatch.setattr(installer.Path, "home", lambda: tmp_path)
+    installer.SKILL_SOURCES = {"setup": "name: setup\nold", "workloads": "name: workloads\nold"}
+    installer.apply_edits(installer.plan(["cursor"], "/old/nodus/python"))
+    before = {str(path): path.read_bytes() for path in tmp_path.rglob("*") if path.is_file()}
+    installer.SKILL_SOURCES = {"setup": "name: setup\nnew", "workloads": "name: workloads\nnew"}
+    checked = []
+    async def verify(command):
+        checked.append(command)
+    monkeypatch.setattr(installer, "verify", verify)
+    assert installer.main(["--agents", "cursor", "--check"]) == 0
+    assert checked == ["/old/nodus/python"]
+    assert {str(path): path.read_bytes() for path in tmp_path.rglob("*") if path.is_file()} == before

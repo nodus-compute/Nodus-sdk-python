@@ -361,11 +361,31 @@ def main(argv=None) -> int:
             print("Dry run. No sign-in or settings changes.")
             return 0
         if args.check:
-            edits = plan(selected, sys.executable)
-            if any(edit is not None and edit.path.name != "agent-connections.json" for edit in edits):
+            edits = [edit for edit in plan(selected, sys.executable, repair=True) if edit is not None]
+            if any(edit.before is None and edit.path.name != "agent-connections.json" for edit in edits):
                 raise SetupError("Selected agent settings are incomplete. Run setup again, or use --repair for managed connections.")
-            asyncio.run(verify(sys.executable))
+            commands = set()
+            for name in selected:
+                path, kind, key, _ = locations()[name]
+                changed = next((edit for edit in edits if edit.path == path), None)
+                command = sys.executable
+                if changed:
+                    # Read the ownership-checked snapshot, never a later configuration edit.
+                    content = changed.before.decode("utf-8-sig")
+                    settings = tomlkit.parse(content) if kind == "toml" else json5.loads(content, allow_duplicate_keys=False)
+                    server = settings[key]["nodus"]
+                    if name == "opencode":
+                        command, arguments = server["command"][0], server["command"][1:]
+                    else:
+                        command, arguments = server["command"], server["args"]
+                    if not isinstance(command, str) or not Path(command).is_absolute() or arguments != MCP_ARGS:
+                        raise SetupError("The saved connection is not an installer runtime. Use manual verification.")
+                commands.add(command)
+            for command in sorted(commands):
+                asyncio.run(verify(command))
             print("Nodus settings and workload access verified. Ask your agent to list workloads to confirm it loaded the tools.")
+            if any(edit.path.name != "agent-connections.json" for edit in edits):
+                print("An update is available. Use --repair to update managed tools and skills.")
             return 0
         if not args.yes and input("Continue? [Y/n] ").strip().lower() not in ("", "y", "yes"):
             print("Setup cancelled. No agent settings were changed.")

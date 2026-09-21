@@ -11087,11 +11087,6 @@
         "summary": "Validate a prepared workload without submitting it",
         "operationId": "validateWorkload",
         "description": "Checks the workload request and referenced resources without admission, capacity reservation or spending. Requires an explicit positive outcome.max_cost_usd. A valid request can still fail admission when submitted.",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -11135,6 +11130,16 @@
                       "type": "string"
                     }
                   }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
