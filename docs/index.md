@@ -49,7 +49,6 @@ waiting. An accepted workload is not necessarily a completed workload.
 - [Concurrent experiments](guides/async-sweeps.md)
 - [Stages and downloadable files](guides/multi-stage-workloads.md)
 - [CI and safe retries](guides/ci-and-idempotency.md)
-- [Devbox preview](guides/devboxes.md) explains named development sessions and server defaults.
 
 ## Reference
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.0
+
+- Remove `nodus.Devbox`, the `nodus devbox` CLI and sandbox creation profiles. Use `nodus.Sandbox` or `client.sandboxes.create` with explicit resource, lifecycle and network settings.
+- Keep named sandbox reconnect, terminal sessions, repository bootstrap and explicit workspaces available to agent sandboxes. Existing sandbox IDs remain readable and can be terminated.
+
 ## 0.5.3
 
 - Use the server CPU default for ordinary sandboxes without GPU requirements, and preserve stored resources when reconnecting by name. CPU sandboxes require a deployment with the preview enabled.

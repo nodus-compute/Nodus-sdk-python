@@ -12,6 +12,40 @@ import pytest
 import nodus
 
 
+def test_public_sdk_exposes_agent_sandboxes_without_devbox_constructor():
+    assert not hasattr(nodus, "Devbox")
+    assert "Devbox" not in nodus.__all__
+    assert nodus.Sandbox and nodus.Sandboxes and nodus.AsyncSandboxes
+
+
+@pytest.mark.parametrize("entrypoint", ["sync", "async", "constructor"])
+def test_profile_creation_is_rejected_before_http(entrypoint, monkeypatch):
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(202, json=SANDBOX)
+
+    async def run():
+        async with nodus.AsyncClient(api_key="test", base_url="https://nodus.invalid") as client:
+            await client._http.aclose()
+            client._http = httpx.AsyncClient(base_url="https://nodus.invalid", transport=httpx.MockTransport(handler))
+            with pytest.raises(TypeError, match="profile"):
+                await client.sandboxes.create(image="customer:qualified", profile="devbox")
+
+    if entrypoint == "async":
+        asyncio.run(run())
+    else:
+        with sync_client(handler) as client:
+            monkeypatch.setattr(nodus, "Client", lambda: client)
+            with pytest.raises(TypeError, match="profile"):
+                if entrypoint == "constructor":
+                    nodus.Sandbox(image="customer:qualified", profile="devbox")
+                else:
+                    client.sandboxes.create(image="customer:qualified", profile="devbox")
+    assert calls == []
+
+
 SANDBOX = {
     "id": "sb_agent",
     "state": "ready",
@@ -75,6 +109,38 @@ def sync_client(handler) -> nodus.Client:
         headers={"Authorization": "Bearer nk_live_test"},
     )
     return client
+
+
+@pytest.mark.parametrize("async_mode", [False, True], ids=["sync", "async"])
+def test_existing_profile_handle_preserves_identity_and_cleanup(async_mode):
+    legacy = {**SANDBOX, "envelope": {**SANDBOX["envelope"], "profile": "devbox"}}
+    calls = []
+
+    def handler(request):
+        calls.append((request.method, request.url.path))
+        if request.method == "GET":
+            assert request.url.path == "/v1/sandboxes/sb_agent"
+            return httpx.Response(200, json=legacy)
+        assert request.method == "POST" and request.url.path == "/v1/sandboxes/sb_agent/terminate"
+        assert request.headers["Idempotency-Key"] == "cleanup-existing"
+        return httpx.Response(200, json={**legacy, "state": "terminated"})
+
+    async def run():
+        async with nodus.AsyncClient(api_key="test", base_url="https://nodus.invalid") as client:
+            await client._http.aclose()
+            client._http = httpx.AsyncClient(base_url="https://nodus.invalid", transport=httpx.MockTransport(handler))
+            box = await client.sandboxes.from_id("sb_agent")
+            assert box.envelope == legacy["envelope"]
+            assert (await box.terminate(idempotency_key="cleanup-existing")).is_terminal
+
+    if async_mode:
+        asyncio.run(run())
+    else:
+        with sync_client(handler) as client:
+            box = client.sandboxes.from_id("sb_agent")
+            assert box.envelope == legacy["envelope"]
+            assert box.terminate(idempotency_key="cleanup-existing").is_terminal
+    assert calls == [("GET", "/v1/sandboxes/sb_agent"), ("POST", "/v1/sandboxes/sb_agent/terminate")]
 
 
 def test_create_exec_stream_stdin_wait_and_terminate_journey():
@@ -171,8 +237,6 @@ def test_create_exec_stream_stdin_wait_and_terminate_journey():
     ({"requirements": {"gpu_count": None}}, {"gpu_count": None}),
     ({"requirements": {"compute_class": "vm"}}, {"compute_class": "vm"}),
     ({"requirements": {"compute_class": "accelerator"}}, {"compute_class": "accelerator"}),
-    ({"profile": "devbox"}, {}),
-    ({"profile": "devbox", "requirements": {"gpu": "L40S"}}, {"gpu": "L40S"}),
 ])
 def test_create_compute_requirements_preserve_caller_intent(async_mode, options, expected):
     original = json.loads(json.dumps(options))

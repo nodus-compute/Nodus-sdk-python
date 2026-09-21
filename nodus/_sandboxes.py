@@ -29,7 +29,6 @@ __all__ = [
     "SandboxInputReceipt",
     "Sandboxes",
     "Sandbox",
-    "Devbox",
     "SandboxExec",
     "AsyncSandboxes",
     "AsyncSandbox",
@@ -143,7 +142,6 @@ def _create_payload(
     image: str | None,
     cache_image: bool = False,
     name: str | None = None,
-    profile: str | None = None,
     budget: float | None = None,
     wake: str | None = None,
     requirements: dict[str, Any] | None = None,
@@ -174,7 +172,7 @@ def _create_payload(
     if image is not None:
         body["image"] = image
     selected_requirements = dict(requirements or {})
-    if profile != "devbox" and (
+    if (
         selected_requirements.get("gpu")
         or selected_requirements.get("gpu_count") is not None
         or selected_requirements.get("gpu_interconnect")
@@ -182,7 +180,6 @@ def _create_payload(
         selected_requirements.setdefault("compute_class", "accelerator")
     for key, value in (
         ("name", name),
-        ("profile", profile),
         ("wake", wake),
         ("requirements", selected_requirements),
         ("policy", policy),
@@ -445,7 +442,6 @@ class Sandboxes:
         image: str | None = None,
         cache_image: bool = False,
         name: str | None = None,
-        profile: str | None = None,
         budget: float | None = None,
         wake: str | None = None,
         requirements: dict[str, Any] | None = None,
@@ -464,7 +460,7 @@ class Sandboxes:
         idempotency_key: str | None = None,
     ) -> "Sandbox":
         body = _create_payload(
-            image=image, cache_image=cache_image, name=name, profile=profile, budget=budget, wake=wake, requirements=requirements,
+            image=image, cache_image=cache_image, name=name, budget=budget, wake=wake, requirements=requirements,
             outcome=outcome, policy=policy, lifecycle=lifecycle,
             reservation=reservation, continuity=continuity,
             from_snapshot=from_snapshot, secrets=secrets, connections=connections, service=service, bootstrap=bootstrap, stuck_after_s=stuck_after_s, workspace=workspace,
@@ -543,7 +539,6 @@ class Sandbox(_SandboxState):
         image: str | None = None,
         cache_image: bool = False,
         name: str | None = None,
-        profile: str | None = None,
         budget: float | None = None,
         wake: str | None = None,
         requirements: dict[str, Any] | None = None,
@@ -575,7 +570,6 @@ class Sandbox(_SandboxState):
                     image=image,
                     cache_image=cache_image,
                     name=name,
-                    profile=profile,
                     budget=budget,
                     wake=wake,
                     requirements=requirements,
@@ -786,7 +780,6 @@ class AsyncSandboxes:
         image: str | None = None,
         cache_image: bool = False,
         name: str | None = None,
-        profile: str | None = None,
         budget: float | None = None,
         wake: str | None = None,
         requirements: dict[str, Any] | None = None,
@@ -805,7 +798,7 @@ class AsyncSandboxes:
         idempotency_key: str | None = None,
     ) -> "AsyncSandbox":
         body = _create_payload(
-            image=image, cache_image=cache_image, name=name, profile=profile, budget=budget, wake=wake, requirements=requirements,
+            image=image, cache_image=cache_image, name=name, budget=budget, wake=wake, requirements=requirements,
             outcome=outcome, policy=policy, lifecycle=lifecycle,
             reservation=reservation, continuity=continuity,
             from_snapshot=from_snapshot, secrets=secrets, connections=connections, service=service, bootstrap=bootstrap, stuck_after_s=stuck_after_s, workspace=workspace,
@@ -1031,14 +1024,3 @@ class AsyncSandboxExec(_SandboxExecState):
         response = await self._client._request("POST", path, json={})
         self._absorb(self._client._one(response, "POST", path))
         return self
-
-
-class Devbox(Sandbox):
-    """Create or reconnect to a named sandbox using server devbox defaults."""
-
-    def __init__(self, *, name: str, image: str | None = None, **kwargs: Any):
-        if not isinstance(name, str) or not name.strip():
-            raise ValidationError("devbox name must be nonempty text")
-        if {"client", "sandbox_id"} & kwargs.keys():
-            raise ValidationError("Devbox creates a named session, not an internal handle")
-        super().__init__(name=name, image=image, profile="devbox", **kwargs)

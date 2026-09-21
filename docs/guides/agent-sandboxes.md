@@ -212,20 +212,32 @@ finally:
 
 The CLI uses the same nouns and verbs.
 
-SDK 0.5.2 and later accepts an active exact name in place of `SANDBOX_ID` for
+SDK 0.5.2 and later accepts an active exact name or sandbox ID for `NAME_OR_ID` in
 `exec`, `logs`, `cost` and `rm`. Names and IDs are shown by `sandbox ls`. Use the
 ID for historical sessions. Name lookup never creates a replacement sandbox.
-See [CLI retry guidance](../reference/cli.md#agent-sandboxes-and-devboxes) for
+See [CLI retry guidance](../reference/cli.md#agent-sandboxes) for
 recovering an uncertain request without submitting duplicate work.
 
 ```bash
 nodus sandbox new ghcr.io/your-org/research-agent:1 --name research-agent --budget 5
 nodus sandbox ls
-nodus sandbox exec SANDBOX_ID "python agent.py"
-nodus sandbox logs SANDBOX_ID EXEC_ID
-nodus sandbox cost SANDBOX_ID
-nodus sandbox rm SANDBOX_ID
+nodus sandbox exec NAME_OR_ID "python agent.py"
+nodus sandbox logs NAME_OR_ID EXEC_ID
+nodus sandbox cost NAME_OR_ID
+nodus sandbox rm NAME_OR_ID
 ```
+
+## Repository bootstrap preview
+
+Sandbox creation accepts a `bootstrap` mapping with `repo` in `owner/repo`
+form and optional `ref`, `setup`, and `dotfiles` values. It requires a connected
+GitHub App with repository access, `github.com` in the egress allowlist, and an
+image with the required tools and a writable `/workspace` directory.
+
+Setup runs as an ordinary sandbox execution. Check its output and completion
+before running dependent commands. Setup failure adds `bootstrap_failed` to the
+SDK's `warnings` list. Bootstrap does not make the root filesystem persistent.
+Production qualification of repository checkout and setup remains pending.
 
 ## Async agents
 

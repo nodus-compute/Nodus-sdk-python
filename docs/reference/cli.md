@@ -60,10 +60,10 @@ If submission ends with an uncertain outcome, the CLI prints a recovery key.
 Add that `idempotency_key` to the same workload file before retrying. Keep its
 other settings unchanged to avoid submitting duplicate work.
 
-## Agent sandboxes and devboxes
+## Agent sandboxes
 
 SDK 0.5.1 accepts active names or exact sandbox IDs for the commands below.
-Older releases require IDs for sandbox commands and names for devbox commands.
+Older releases require IDs for sandbox commands.
 
 | Command | What it does |
 |---|---|
@@ -73,8 +73,6 @@ Older releases require IDs for sandbox commands and names for devbox commands.
 | `nodus sandbox logs NAME_OR_ID EXEC_ID` | Read all currently stored command output |
 | `nodus sandbox cost NAME_OR_ID` | Read the reported cost |
 | `nodus sandbox rm NAME_OR_ID` | Request termination of the existing sandbox |
-| `nodus devbox shell NAME_OR_ID` | Open a terminal in an existing devbox |
-| `nodus devbox rm NAME_OR_ID` | Request termination after checking the devbox profile |
 
 Name lookup selects one active exact match in your account. It never creates a
 replacement. Use an ID for a terminated sandbox or when a name is ambiguous.
@@ -83,7 +81,7 @@ an ID-shaped name, use the actual ID returned at creation.
 An accepted create request does not confirm runtime readiness, and accepting
 termination does not confirm that remote cleanup has finished.
 
-`sandbox new`, `sandbox exec`, `sandbox rm`, `devbox up` and `devbox rm` accept
+`sandbox new`, `sandbox exec` and `sandbox rm` accept
 `--idempotency-key`. If a mutation has an uncertain outcome, preserve the printed
 key and retry the unchanged operation. Use the printed sandbox ID when available.
 For `exec`, put options before the sandbox reference so they are not interpreted
