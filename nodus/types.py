@@ -469,12 +469,15 @@ class Ledger:
 
     @property
     def charged_usd(self) -> float:
-        """What the customer was charged for this workload.
+        """Gross compute and platform fee credits charged for this workload.
 
-        The sum of the customer_charge credits, the same arithmetic the
-        control plane projects ``spend_usd`` from, so the two reconcile.
+        This matches ``spend_usd``. Refund debits and supplier accounting
+        remain separate from this posted charge total.
         """
-        return sum(e.credit_usd for e in self.entries if e.entry_type == CUSTOMER_CHARGE)
+        return sum(
+            e.credit_usd for e in self.entries
+            if e.entry_type in (CUSTOMER_CHARGE, "platform_fee")
+        )
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> "Ledger":
