@@ -1,4 +1,4 @@
-# Nodus Python SDK
+# Nodus Compute
 
 > Run training, fine-tuning, batch GPU experiments and tool-driven agent sandboxes through one Python interface. Provide your container, budget and resource requirements, then execute commands or retrieve workload results.
 
@@ -10,6 +10,13 @@ Authenticate: nodus login. Python clients reuse the saved login. Use the authent
 
 ## Start here
 
+- [One-command setup](https://nodus-compute.ai/install): macOS and Linux installer that connects selected local agents, opens browser sign-in and verifies a workload read. Windows uses https://nodus-compute.ai/install.ps1.
+- [Connect your coding agent](https://nodus-compute.ai/connect.md): Sign in once and connect Claude Code, Codex, Cursor, VS Code, Gemini CLI, OpenCode or another local MCP client. Includes installation commands, skills and a connection check that does not start paid compute.
+- [Connection page](https://nodus-compute.ai/connect/): Copyable setup and an Add to Cursor install link.
+- [MCP configuration](https://nodus-compute.ai/mcp.json): Credential-free local stdio configuration. This file is not a hosted MCP endpoint.
+- [Agent plugins](https://nodus-compute.ai/docs/source/guides/plugins.md): Bundle the seven MCP tools and setup and workload skills for Claude Code, Codex and Cursor.
+- [Setup skill](https://nodus-compute.ai/skills/setup/SKILL.md): Sign in and verify a connection by listing workloads.
+- [Workload skill](https://nodus-compute.ai/skills/workloads/SKILL.md): Preserve authorized budgets and retry keys, observe completion and verify actual results.
 - [MCP tools](https://nodus-compute.ai/docs/source/guides/mcp.md): Configure the local MCP server and use its seven workload tools, including safe retries, pagination, logs and cancellation.
 
 - [Official PyPI package](https://pypi.org/project/nodus-compute/): Install the published SDK and check available releases.
