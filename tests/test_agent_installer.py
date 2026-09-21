@@ -30,7 +30,8 @@ def test_repair_updates_owned_runtime_and_skills_without_touching_other_settings
     monkeypatch.setattr(installer.Path, "home", lambda: tmp_path)
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     installer.SKILL_SOURCES = {"setup": "name: setup\nold", "workloads": "name: workloads\nold"}
-    installer.apply_edits(installer.plan(["cursor"], "/old/nodus/python"))
+    old_runtime = str(tmp_path / "old" / "nodus" / "python")
+    installer.apply_edits(installer.plan(["cursor"], old_runtime))
     config = tmp_path / ".cursor/mcp.json"
     data = json.loads(config.read_text())
     data["mcpServers"]["other"] = {"command": "keep-me"}
@@ -361,7 +362,8 @@ def test_existing_plugin_locations_prevent_duplicate_connections(installer, tmp_
 def test_check_verifies_owned_older_runtime_without_changing_settings(installer, tmp_path, monkeypatch):
     monkeypatch.setattr(installer.Path, "home", lambda: tmp_path)
     installer.SKILL_SOURCES = {"setup": "name: setup\nold", "workloads": "name: workloads\nold"}
-    installer.apply_edits(installer.plan(["cursor"], "/old/nodus/python"))
+    old_runtime = str(tmp_path / "old" / "nodus" / "python")
+    installer.apply_edits(installer.plan(["cursor"], old_runtime))
     before = {str(path): path.read_bytes() for path in tmp_path.rglob("*") if path.is_file()}
     installer.SKILL_SOURCES = {"setup": "name: setup\nnew", "workloads": "name: workloads\nnew"}
     checked = []
@@ -369,5 +371,5 @@ def test_check_verifies_owned_older_runtime_without_changing_settings(installer,
         checked.append(command)
     monkeypatch.setattr(installer, "verify", verify)
     assert installer.main(["--agents", "cursor", "--check"]) == 0
-    assert checked == ["/old/nodus/python"]
+    assert checked == [old_runtime]
     assert {str(path): path.read_bytes() for path in tmp_path.rglob("*") if path.is_file()} == before
