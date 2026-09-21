@@ -42,13 +42,13 @@ def api(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_saved_login_and_all_seven_tool_contracts(api):
+async def test_saved_login_and_all_tool_contracts(api):
     server, requests, responses = api
     async with create_connected_server_and_client_session(server) as session:
         tools = {tool.name: tool for tool in (await session.list_tools()).tools}
         assert set(tools) == {"submit_workload", "list_workloads", "get_workload",
                               "cancel_workload", "get_workload_events", "get_workload_logs",
-                              "list_workload_outputs"}
+                              "list_workload_outputs", "validate_workload", "download_workload_output"}
         assert tools["cancel_workload"].inputSchema["required"] == ["workload_id"]
         assert all("ctx" not in tool.inputSchema["properties"] for tool in tools.values())
         workload = {"source": {"image": "example/image", "command": ["nvidia-smi"]},
@@ -81,9 +81,50 @@ async def test_saved_login_and_all_seven_tool_contracts(api):
 
 
 @pytest.mark.asyncio
+async def test_output_download_verifies_bytes_and_refuses_overwrite(api, tmp_path):
+    import hashlib
+    server, requests, responses = api
+    output = b'customer training result\n'
+    target = tmp_path / "result.txt"
+    headers = {"Content-Length": str(len(output)), "X-Nodus-SHA256": hashlib.sha256(output).hexdigest()}
+    async with create_connected_server_and_client_session(server) as session:
+        responses.append(httpx.Response(200, content=output, headers=headers))
+        result = await session.call_tool("download_workload_output", {"workload_id": "wl_test", "name": "result", "destination": str(target), "stage": "train"})
+        assert not result.isError, result
+        assert target.read_bytes() == output
+        assert requests[-1].url.path == "/v1/workloads/wl_test/outputs/result"
+        assert requests[-1].url.params["stage"] == "train"
+        responses.append(httpx.Response(200, content=b"replacement", headers=headers))
+        result = await session.call_tool("download_workload_output", {"workload_id": "wl_test", "name": "result", "destination": str(target)})
+        assert result.isError
+        assert target.read_bytes() == output
+
+
+@pytest.mark.asyncio
+async def test_validate_and_submit_require_explicit_positive_budget(api):
+    server, requests, responses = api
+    async with create_connected_server_and_client_session(server) as session:
+        for budget in (None, 0, -1, True, "10"):
+            workload = {"outcome": {"max_cost_usd": budget}}
+            for tool in ("validate_workload", "submit_workload"):
+                args = {"workload": workload}
+                if tool == "submit_workload":
+                    args["idempotency_key"] = "saved-before-submit"
+                result = await session.call_tool(tool, args)
+                assert result.isError
+        assert requests == []
+        workload = {"source": {"image": "customer/image", "command": ["python", "train.py"]}, "outcome": {"max_cost_usd": 10}}
+        responses.append(httpx.Response(200, json={"valid": True, "submitted": False, "workload": workload}))
+        result = await session.call_tool("validate_workload", {"workload": workload})
+        assert not result.isError
+        assert requests[-1].url.path == "/v1/workloads/validate"
+        assert json.loads(requests[-1].content) == workload
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("tool,args", [
     ("get_workload", {"workload_id": "../secrets"}),
-    ("submit_workload", {"idempotency_key": "bad\r\nkey", "workload": {}}),
+    ("submit_workload", {"idempotency_key": "bad\r\nkey", "workload": {"outcome": {"max_cost_usd": 10}}}),
     ("list_workloads", {"scope": "other"}),
     ("list_workloads", {"limit": 101}),
     ("list_workloads", {"limit": True}),
@@ -183,7 +224,7 @@ async def test_installed_executables_complete_real_mcp_session(executable, nodus
             async with ClientSession(reader, writer) as session:
                 result = await session.initialize()
                 assert result.serverInfo.name == "nodus"
-                assert len((await session.list_tools()).tools) == 7
+                assert len((await session.list_tools()).tools) == 9
                 listed = await session.call_tool("list_workloads", {})
                 assert not listed.isError
                 assert json.loads(listed.content[0].text) == {"workloads": [], "next_offset": None}
@@ -252,3 +293,31 @@ async def test_server_owns_and_closes_the_pool_after_tool_failure(monkeypatch):
         assert len(clients) == 1
         assert not clients[0].is_closed
     assert clients[0].is_closed
+
+
+@pytest.mark.asyncio
+async def test_download_keeps_resolved_credential_and_origin_together(api, nodus_config, tmp_path, monkeypatch):
+    import hashlib
+    from pathlib import Path
+    server, requests, responses = api
+    original_read = Path.read_text
+    changed = False
+
+    def change_login_after_read(path, *args, **kwargs):
+        nonlocal changed
+        content = original_read(path, *args, **kwargs)
+        if path == nodus_config and not changed:
+            changed = True
+            nodus_config.write_text('[default]\napi_key="other-account-key"\nbase_url="https://other.example.test"\n')
+        return content
+
+    monkeypatch.setattr(Path, "read_text", change_login_after_read)
+    data = b"verified result"
+    responses.append(httpx.Response(200, content=data, headers={"X-Nodus-SHA256": hashlib.sha256(data).hexdigest()}))
+    async with create_connected_server_and_client_session(server) as session:
+        result = await session.call_tool("download_workload_output", {
+            "workload_id": "wl_test", "name": "result", "destination": str(tmp_path / "result")})
+    assert not result.isError
+    assert changed
+    assert [(request.url.host, request.headers["authorization"]) for request in requests] == [
+        ("api.example.test", "Bearer saved-test-key")]

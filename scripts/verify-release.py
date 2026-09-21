@@ -55,7 +55,7 @@ def main() -> int:
                 time.sleep(10)
             suite = work / 'suite'
             suite.mkdir()
-            for name in ('tests', 'docs', 'examples', 'openapi', 'scripts', 'install', 'plugins', 'README.md', 'llms.txt',
+            for name in ('tests', 'docs', 'examples', 'openapi', 'scripts', 'install', 'plugins', 'actions', 'README.md', 'llms.txt',
                          'LICENSE', 'RELEASING.md', 'CHANGELOG.md', 'pyproject.toml'):
                 source_path = ROOT / name
                 if source_path.is_dir():

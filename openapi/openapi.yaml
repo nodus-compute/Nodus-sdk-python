@@ -11473,6 +11473,74 @@
         }
       }
     },
+    "/v1/workloads/validate": {
+      "post": {
+        "tags": [
+          "Workloads"
+        ],
+        "summary": "Validate a prepared workload without submitting it",
+        "operationId": "validateWorkload",
+        "description": "Checks the workload request and referenced resources without admission, capacity reservation or spending. Requires an explicit positive outcome.max_cost_usd. A valid request can still fail admission when submitted.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkloadPayload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Request is valid and has not been submitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "valid",
+                    "submitted",
+                    "workload",
+                    "message"
+                  ],
+                  "properties": {
+                    "valid": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "submitted": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "workload": {
+                      "$ref": "#/components/schemas/WorkloadPayload"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/models": {
       "get": {
         "operationId": "listInferenceModels",
