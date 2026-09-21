@@ -6446,7 +6446,20 @@
           "ready": {
             "type": "boolean"
           }
-        }
+        },
+        "required": [
+          "id",
+          "object",
+          "created",
+          "owned_by",
+          "revision",
+          "price_version",
+          "input_micros_per_million",
+          "output_micros_per_million",
+          "max_input_tokens",
+          "max_output_tokens",
+          "ready"
+        ]
       },
       "InferenceRequestStatus": {
         "type": "object",
@@ -6510,7 +6523,20 @@
           }
         },
         "x-go-source": "internal/store/inference.go",
-        "x-go-type": "InferenceRequest"
+        "x-go-type": "InferenceRequest",
+        "required": [
+          "id",
+          "model",
+          "status",
+          "price_version",
+          "reserved_micros",
+          "charge_micros",
+          "prompt_tokens",
+          "completion_tokens",
+          "created_at",
+          "expires_at",
+          "finished_at"
+        ]
       },
       "InferenceChatResponse": {
         "type": "object",
@@ -6549,7 +6575,10 @@
                     "reasoning_content": {
                       "type": "string"
                     }
-                  }
+                  },
+                  "required": [
+                    "role"
+                  ]
                 },
                 "finish_reason": {
                   "type": "string",
@@ -6559,13 +6588,26 @@
                     "content_filter"
                   ]
                 }
-              }
+              },
+              "required": [
+                "index",
+                "message",
+                "finish_reason"
+              ]
             }
           },
           "usage": {
             "$ref": "#/components/schemas/InferenceUsage"
           }
-        }
+        },
+        "required": [
+          "id",
+          "object",
+          "created",
+          "model",
+          "choices",
+          "usage"
+        ]
       },
       "InferenceError": {
         "type": "object",
@@ -6585,9 +6627,18 @@
               "param": {
                 "type": "null"
               }
-            }
+            },
+            "required": [
+              "message",
+              "type",
+              "code",
+              "param"
+            ]
           }
-        }
+        },
+        "required": [
+          "error"
+        ]
       }
     },
     "securitySchemes": {
@@ -11444,7 +11495,11 @@
                         "$ref": "#/components/schemas/InferenceModel"
                       }
                     }
-                  }
+                  },
+                  "required": [
+                    "object",
+                    "data"
+                  ]
                 }
               }
             }
