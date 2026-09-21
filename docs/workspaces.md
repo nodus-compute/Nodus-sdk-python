@@ -180,14 +180,19 @@ with nodus.Client() as client:
 ```
 
 `submit_and_wait` keeps the exact command, budget and retry key while the server
-saves files and prepares a source copy. Each phase can take up to 45 minutes.
-The default observation timeout is 95 minutes. Set `timeout_seconds` and
+saves files and prepares a source copy. Saving has a 45-minute deadline. Each
+source preparation attempt has a 45-minute deadline, with up to three automatic
+attempts. Cleanup waits can extend total preparation time. The default local
+observation timeout is 95 minutes. Set `timeout_seconds` and
 `poll_seconds` to change how long and how often the helper waits. It returns only
 after workload admission succeeds, not when source preparation starts.
 
 The helper retries only explicit `workspace_save_pending` and
 `workspace_source_pending` responses. Other failures are surfaced. A client timeout
-ends observation without cancelling the server operation. Retain the same key after
+ends observation without cancelling the server operation or releasing storage.
+A `cleanup_pending` submission is waiting for uncertain source writes to be
+cleaned up. Your saved project remains safe. Resume the same submission after
+cleanup, rather than creating another run. Retain the same key after
 an uncertain reply. The existing `submit` method still sends once and exposes
 pending responses for callers that manage their own polling.
 
@@ -222,7 +227,9 @@ Generated source copies have a separate included account retention pool of
 metadata. Identical captured revisions reuse one physical copy across submissions.
 These copies add no saved-workspace storage charge and do not consume the ordinary
 asset quota. Different retained revisions consume their actual reserved or stored
-bytes in this pool.
+bytes in this pool. `cleanup_pending_bytes` is the portion of `reserved_bytes`
+awaiting confirmed cleanup, not additional usage. A timeout alone does not make
+those bytes available.
 
 Manage retained source references through Assets:
 

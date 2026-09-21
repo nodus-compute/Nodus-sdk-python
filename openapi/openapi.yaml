@@ -3530,6 +3530,12 @@
           "billing_enabled": {
             "type": "boolean",
             "const": false
+          },
+          "cleanup_pending_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Bytes awaiting confirmed cleanup of uncertain source writes. Already included in reserved_bytes, not additional quota usage. A local observation timeout does not release them."
           }
         },
         "description": "Included account storage for generated workload source copies. This pool is separate from billed saved-workspace storage and ordinary asset import limits. Identical captured revisions reuse a physical copy. Reserved bytes can remain until pending writes or deletion are settled."
@@ -3600,6 +3606,7 @@
             "enum": [
               "saving",
               "exporting",
+              "cleanup_pending",
               "ready",
               "failed"
             ]
@@ -3616,7 +3623,7 @@
             "type": "string"
           }
         },
-        "description": "An authenticated recoverable submission. Resume only after an explicit customer action by sending this exact request and idempotency key to the same workspace. Reading this record does not admit a workload. Commands can contain sensitive values and must not be persisted in browser storage or analytics."
+        "description": "An authenticated recoverable submission. Resume only after an explicit customer action by sending this exact request and idempotency key to the same workspace. Reading this record does not admit a workload. Commands can contain sensitive values and must not be persisted in browser storage or analytics. cleanup_pending means the saved project is safe while a queued source waits for storage cleanup. Resume with the same request and key after cleanup. This state does not confirm workload admission."
       },
       "WorkspaceWorkloadList": {
         "type": "object",
@@ -10891,7 +10898,7 @@
         "operationId": "submitWorkspaceWorkload",
         "summary": "Submit an independent workload from this project",
         "tags": ["Research workspaces"],
-        "description": "Captures current project files from ready compute, or pins the last successful saved revision while stopped. The command uses that immutable project revision and the workspace environment image. Optional GPU overrides apply only to the submitted workload. Running workspace capture returns 409 workspace_save_pending until saving finishes. Source preparation returns 409 workspace_source_pending until its verified copy is ready. Each phase can take up to 45 minutes. Reuse the exact body and Idempotency-Key to check progress or retry an uncertain reply. Identical captured revisions reuse a source copy within the included account source pool. Exports exclude .nodus and .git. Regular files, empty directories and safe relative symbolic links within the project are preserved. Unsafe links and unsupported file types are rejected before admission. A 202 response means ordinary workload admission succeeded. It does not establish execution or completion. Later edits and stopping workspace compute do not stop an admitted workload. Both incur charges while running.",
+        "description": "Captures current project files from ready compute, or pins the last successful saved revision while stopped. The command uses that immutable project revision and the workspace environment image. Optional GPU overrides apply only to the submitted workload. Running workspace capture returns 409 workspace_save_pending until saving finishes. Source preparation returns 409 workspace_source_pending until its verified copy is ready. Saving has a 45-minute deadline. Each source preparation attempt has a 45-minute deadline, with up to three automatic attempts. Cleanup waits may extend total preparation. Console and SDK waiting pause local observation after 95 minutes by default while retaining the submission intent. Reuse the exact body and Idempotency-Key to check progress or retry an uncertain reply. Identical captured revisions reuse a source copy within the included account source pool. Exports exclude .nodus and .git. Regular files, empty directories and safe relative symbolic links within the project are preserved. Unsafe links and unsupported file types are rejected before admission. A 202 response means ordinary workload admission succeeded. It does not establish execution or completion. Later edits and stopping workspace compute do not stop an admitted workload. Both incur charges while running.",
         "parameters": [
           {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}, "description": "Workspace identifier owned by this account."},
           {"name": "Idempotency-Key", "in": "header", "required": true, "schema": {"type": "string", "minLength": 1}, "description": "Stable key for this logical submission and its captured source revision. Reuse the same body and key after saving is pending or the reply is uncertain."}

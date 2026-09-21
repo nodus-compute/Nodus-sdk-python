@@ -135,7 +135,7 @@ def _recover_submission(rows: Any, workspace_id: str, submission_id: str) -> tup
     for row in rows:
         if not isinstance(row, dict) or row.get("id") != submission_id or row.get("workspace_id") != workspace_id:
             continue
-        if row.get("state") not in {"saving", "exporting", "ready"}:
+        if row.get("state") not in {"saving", "exporting", "cleanup_pending", "ready"}:
             raise APIError("This submission cannot be resumed. Inspect its failure before creating another", body={"error": row.get("error", "workspace_capture_failed")})
         body = row.get("request")
         if not isinstance(body, dict) or not {"command", "budget_usd"} <= body.keys() or body.keys() - {"command", "budget_usd", "gpu", "gpu_count", "gpu_memory_gb"}:

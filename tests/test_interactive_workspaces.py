@@ -209,10 +209,11 @@ def test_submit_and_wait_preserves_intent_across_long_capture_and_export(asynchr
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])
-def test_resume_submission_fetches_owned_exact_request_and_never_infers_gpu_overrides(asynchronous):
+@pytest.mark.parametrize("state", ["ready", "cleanup_pending"])
+def test_resume_submission_fetches_owned_exact_request_and_never_infers_gpu_overrides(asynchronous, state):
     calls = []
     body = {'command': '  python train.py  ', 'budget_usd': 12, 'gpu_count': 4}
-    pending = {'id': 'wsub_original', 'workspace_id': 'ws_lab', 'idempotency_key': 'saved-key', 'request': body, 'state': 'ready', 'created_at': '2026-09-21T03:00:00Z'}
+    pending = {'id': 'wsub_original', 'workspace_id': 'ws_lab', 'idempotency_key': 'saved-key', 'request': body, 'state': state, 'created_at': '2026-09-21T03:00:00Z'}
     def handler(request):
         calls.append(request)
         if request.method == 'GET':
