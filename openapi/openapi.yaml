@@ -3362,6 +3362,19 @@
             },
             "description": "Accepted single-machine request counts. This is not a per-model qualification or availability inventory."
           },
+          "qualified_gpu_configurations": {
+            "type": "array",
+            "description": "Canonical GPU model and count pairs qualified for the deployment's exact active image and runtime artifacts. An empty array means no configuration is currently qualified. This is not live capacity or a price quote. Older servers may omit this field. Existing saved configurations remain readable even when absent from this list.",
+            "items": {
+              "type": "object",
+              "required": ["gpu", "gpu_count"],
+              "properties": {
+                "gpu": {"type": "string", "description": "Qualified canonical GPU model."},
+                "gpu_count": {"type": "integer", "enum": [1, 2, 4, 8]}
+              },
+              "additionalProperties": false
+            }
+          },
           "editors": {
             "type": "array",
             "items": {
