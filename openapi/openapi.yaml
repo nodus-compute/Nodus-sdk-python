@@ -3165,6 +3165,17 @@
             "maxLength": 120,
             "description": "Optional display name for the run, saved across sessions. Control characters are not allowed."
           },
+          "rl": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RLMetadata"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional RL experiment association for a customer-provided command. Omit or set null for an ordinary workload. Unknown fields inside a non-null RL object are rejected. This field does not configure the command or make a catalog environment executable."
+          },
           "placement": {
             "$ref": "#/components/schemas/Placement"
           },
@@ -3186,7 +3197,7 @@
         },
         "x-go-source": "internal/models/models.go",
         "x-go-type": "WorkloadPayload",
-        "description": "Customer workload request. Supply source.image/source.command, explicit stages, or the train_eval framework with source.command. Unknown JSON fields are currently ignored for compatibility: use documented names. The SDK validates its top-level arguments. Numeric fields retain existing server behavior. No stronger validation is implied here."
+        "description": "Customer workload request. Supply source.image/source.command, explicit stages, or the train_eval framework with source.command. Unknown top-level JSON fields are currently ignored for compatibility: use documented names. A non-null rl object follows the stricter RLMetadata contract. The SDK validates its top-level arguments. Numeric fields retain existing server behavior. No stronger validation is implied here."
       },
       "WorkloadSource": {
         "type": "object",
@@ -6820,6 +6831,968 @@
         },
         "x-go-source": "internal/models/assets.go",
         "x-go-type": "BucketInput"
+      },
+      "RLMetadata": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "environment_id",
+          "mode",
+          "model",
+          "planned_tasks"
+        ],
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 1,
+            "description": "Required contract version. The server does not default an omitted version."
+          },
+          "environment_id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+            "maxLength": 64,
+            "enum": [
+              "custom",
+              "reasoning-gym",
+              "swe-smith",
+              "textarena",
+              "miniwob",
+              "officeqa",
+              "appworld"
+            ],
+            "description": "Use custom for researcher-supplied training or evaluation without a catalog association, or choose an accepted catalog environment. This label does not establish runtime readiness or asset access."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "train",
+              "evaluate"
+            ],
+            "description": "Custom workloads support train or evaluate. Catalog environments must support the selected mode. OfficeQA supports evaluate only."
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Customer-supplied model identifier. UTF-8 text, at most 256 bytes. Leading or trailing whitespace and control characters are rejected."
+          },
+          "planned_tasks": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000,
+            "description": "Planned logical task count. The customer command must apply this selection and limit. Recorded attempts may include retries."
+          },
+          "recipe": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RLRecipeProvenance"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "readOnly": true,
+            "description": "Server-owned managed recipe identity. Custom workload submissions cannot set this field."
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "environment_id": {
+                  "const": "officeqa"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "mode": {
+                  "const": "evaluate"
+                }
+              }
+            }
+          }
+        ],
+        "description": "RL task association. Managed launches create the recipe provenance through /v1/rl-runs. For custom workloads, omit recipe and provide your own executable code, model setup, task limit and typed task events. Unknown and duplicate fields are rejected.",
+        "x-go-source": "internal/models/rl.go",
+        "x-go-type": "RLMetadata"
+      },
+      "RLGradingResults": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Verified public grading receipts for one parent workload revision. Private cases, candidate source and child resource identities are excluded.",
+        "required": [
+          "schema_version",
+          "workload_id",
+          "revision",
+          "plan_sha256",
+          "parent_status",
+          "grading_cleanup_complete",
+          "receipts"
+        ],
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 1
+          },
+          "workload_id": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647
+          },
+          "plan_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "parent_status": {
+            "type": "string",
+            "description": "Current parent workload status, read with the receipts in one consistent snapshot."
+          },
+          "grading_cleanup_complete": {
+            "type": "boolean",
+            "description": "Whether all grading attempts in this revision have completed cleanup. True for an empty receipt list. This does not establish parent cleanup, cleanup of other revisions or final billing settlement."
+          },
+          "receipts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RLGradingReceipt"
+            },
+            "description": "All admitted attempts in the requested revision, ordered by creation time and attempt identity. An empty list means no admitted attempts."
+          }
+        },
+        "x-go-source": "internal/store/rl_grading_results.go",
+        "x-go-type": "RLGradingResults"
+      },
+      "RLGradingReceipt": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "A grading attempt bound to its candidate, private plan and execution manifest by hashes. A reward is present only after trusted grading completes. Infrastructure failure never supplies a model reward.",
+        "required": [
+          "attempt_id",
+          "request_id",
+          "task_id",
+          "candidate_sha256",
+          "plan_sha256",
+          "manifest_sha256",
+          "state",
+          "cleanup_complete"
+        ],
+        "properties": {
+          "attempt_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "task_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "candidate_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "plan_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "manifest_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "completed",
+              "infrastructure_failure"
+            ]
+          },
+          "reward": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Present only for a completed grading attempt. A zero reward is a measured grading result."
+          },
+          "cleanup_complete": {
+            "type": "boolean",
+            "description": "Cleanup of this attempt is independent of its grading state and reward."
+          },
+          "infrastructure_code": {
+            "type": "string",
+            "enum": [
+              "execution_lost",
+              "execution_cancelled",
+              "execution_failed",
+              "output_incomplete",
+              "grading_unavailable"
+            ],
+            "description": "Present only when state is infrastructure_failure."
+          }
+        },
+        "x-go-source": "internal/protocol/rl_grading.go",
+        "x-go-type": "RLGradingResponse"
+      },
+      "RLEvent": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "event_id",
+          "phase",
+          "task_id",
+          "attempt",
+          "kind"
+        ],
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Stable application event identity. UTF-8 text, at most 128 bytes. Leading or trailing whitespace and control characters are rejected."
+          },
+          "phase": {
+            "type": "string",
+            "enum": [
+              "baseline",
+              "training",
+              "evaluation"
+            ],
+            "description": "Application-reported phase. A workload whose RL mode is evaluate cannot record training-phase events."
+          },
+          "task_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Logical task identity within a stage and phase. UTF-8 text, at most 128 bytes. Leading or trailing whitespace and control characters are rejected."
+          },
+          "attempt": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000000,
+            "description": "Application attempt number. Increment it for a genuinely repeated attempt. Infrastructure generation is separate and does not create a new logical attempt."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "task_started",
+              "task_completed"
+            ]
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "passed",
+              "failed",
+              "error"
+            ],
+            "description": "Required for task_completed and absent for task_started. Passed and failed describe a scored check. Error describes execution failure. Outcome is explicit and is never inferred from reward."
+          },
+          "reward": {
+            "type": "number",
+            "description": "Optional finite reward on a completed attempt. Absence means no reward was reported. Zero is a reported reward and must not be treated as missing. Negative and nonbinary finite rewards are allowed."
+          },
+          "duration_ms": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Optional finite nonnegative attempt duration in milliseconds on a completed attempt. Absence means not reported. Zero is valid."
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 1024,
+            "description": "Short task activity message. At most 1024 UTF-8 bytes. Newline, carriage return and tab are allowed. Other control characters are rejected. Present only when explicitly emitted by the runner."
+          },
+          "input": {
+            "type": "string",
+            "maxLength": 4096,
+            "description": "Task input evidence. At most 4096 UTF-8 bytes. Newline, carriage return and tab are allowed. Other control characters are rejected. Present only when explicitly emitted by the runner."
+          },
+          "output": {
+            "type": "string",
+            "maxLength": 4096,
+            "description": "Agent output evidence. At most 4096 UTF-8 bytes. Newline, carriage return and tab are allowed. Other control characters are rejected. Present only when explicitly emitted by the runner."
+          },
+          "verifier": {
+            "type": "string",
+            "maxLength": 4096,
+            "description": "Verifier evidence. At most 4096 UTF-8 bytes. Newline, carriage return and tab are allowed. Other control characters are rejected. Present only when explicitly emitted by the runner."
+          }
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "kind": {
+                "const": "task_started"
+              }
+            },
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "outcome"
+                  ]
+                },
+                {
+                  "required": [
+                    "reward"
+                  ]
+                },
+                {
+                  "required": [
+                    "duration_ms"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "properties": {
+              "kind": {
+                "const": "task_completed"
+              }
+            },
+            "required": [
+              "outcome"
+            ]
+          }
+        ],
+        "description": "A persisted application-reported task event. The encoded event is limited to 16 KiB. Stable event IDs are deduplicated within a workload, stage and execution generation. Reusing an identity with changed content in the same generation is rejected. A stage, generation, phase, task, attempt and kind may have only one immutable observation. Recovered generations retain separate observations, including identical content. Task completion is not workload completion, and these events do not change checkpoints or recovery progress. No task_started event is required before a task_completed event.",
+        "x-go-source": "internal/models/rl.go",
+        "x-go-type": "RLEvent"
+      },
+      "RLEventRow": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "stage_id",
+          "generation",
+          "received_at",
+          "event"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9]+$",
+            "description": "Server replay identity encoded as a decimal string to preserve integer precision. Treat it as an identifier. It is not the opaque after cursor or the application event_id."
+          },
+          "stage_id": {
+            "type": "string",
+            "description": "Server-authorized workload stage that received the event."
+          },
+          "generation": {
+            "type": "integer",
+            "description": "Execution generation authorized to report this observation. Retries within a generation retain their original row. Recovered generations receive distinct rows, even for identical application events."
+          },
+          "received_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Server time when the event was first persisted."
+          },
+          "event": {
+            "$ref": "#/components/schemas/RLEvent"
+          }
+        },
+        "description": "An immutable replay row. Events are returned in ascending server replay order.",
+        "x-go-source": "internal/store/rl_events.go",
+        "x-go-type": "RLEventRow"
+      },
+      "RLEventPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "events",
+          "next_cursor",
+          "has_more",
+          "dropped_events",
+          "truncated"
+        ],
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 1
+          },
+          "events": {
+            "type": "array",
+            "maxItems": 200,
+            "items": {
+              "$ref": "#/components/schemas/RLEventRow"
+            },
+            "description": "Available rows after the requested cursor, in ascending replay order. An empty array means no newer rows in this read."
+          },
+          "next_cursor": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "Opaque exclusive cursor for the next request. Pass this value unchanged as after. It remains at the supplied position when no newer rows are returned. Do not derive a cursor from a row ID."
+          },
+          "has_more": {
+            "type": "boolean",
+            "description": "More rows were available beyond this page in the current database snapshot. False does not mean the workload or task stream has ended."
+          },
+          "dropped_events": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Sum of the highest reported loss counter for each stage and infrastructure generation. It is not an exact count of every event that may be absent. The counter can exceed a single generation limit."
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "True when any delivery reported loss or hit a storage limit. Stored evidence is bounded to 100,000 events and 64 MiB of encoded event bodies per workload. Treat results as partial when true or dropped_events is nonzero. False does not prove lossless delivery after host loss."
+          }
+        },
+        "description": "Tenant-scoped persisted RL evidence with a consistent database snapshot for each page. While a run is active, keep polling the returned cursor even when has_more is false. After observing terminal workload status, perform a fresh drain before considering replay complete. A terminal workload status does not establish a task score.",
+        "x-go-source": "internal/store/rl_events.go",
+        "x-go-type": "RLEventPage"
+      },
+      "RLRecipeProvenance": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+          },
+          "version": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "runtime_image": {
+            "type": "string",
+            "maxLength": 512,
+            "description": "Immutable runtime image selected by Nodus for the managed recipe."
+          },
+          "model_revision": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{40}$"
+          },
+          "config_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "description": "SHA256 of the exact runtime configuration bytes."
+          },
+          "request_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "description": "Canonical reviewed request identity for durable retry."
+          },
+          "review_token": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "description": "Original reviewed launch identity retained for retry after runtime rotation."
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "runtime_image",
+          "model_revision",
+          "config_sha256",
+          "request_sha256",
+          "review_token"
+        ],
+        "x-go-source": "internal/models/rl.go",
+        "x-go-type": "RLRecipeProvenance"
+      },
+      "RLRecipeRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "recipe_id": {
+            "type": "string",
+            "default": "reasoning-gym-leg-counting",
+            "enum": [
+              "reasoning-gym-leg-counting"
+            ]
+          },
+          "recipe_version": {
+            "type": "string",
+            "default": "1.0.0",
+            "enum": [
+              "1.0.0"
+            ]
+          },
+          "mode": {
+            "type": "string",
+            "default": "evaluate",
+            "enum": [
+              "evaluate",
+              "train"
+            ]
+          },
+          "evaluation_tasks": {
+            "type": "integer",
+            "minimum": 4,
+            "maximum": 64,
+            "default": 16
+          },
+          "training_steps": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50,
+            "default": 20
+          },
+          "max_cost_usd": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 5,
+            "description": "Run spending limit. This is not a prediction of completion cost."
+          },
+          "seed": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647,
+            "default": 42
+          },
+          "include_traces": {
+            "type": "boolean",
+            "default": false,
+            "description": "Opt in to prompt, model response and verifier text in live task events."
+          }
+        },
+        "required": [],
+        "x-go-source": "internal/rlrecipe/recipe.go",
+        "x-go-type": "Request",
+        "description": "Omitted fields use these defaults. Explicit null, unknown or repeated fields are rejected. Model, runtime and commands are selected by the recipe."
+      },
+      "RLRunRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "recipe_id": {
+            "type": "string",
+            "default": "reasoning-gym-leg-counting",
+            "enum": [
+              "reasoning-gym-leg-counting"
+            ]
+          },
+          "recipe_version": {
+            "type": "string",
+            "default": "1.0.0",
+            "enum": [
+              "1.0.0"
+            ]
+          },
+          "mode": {
+            "type": "string",
+            "default": "evaluate",
+            "enum": [
+              "evaluate",
+              "train"
+            ]
+          },
+          "evaluation_tasks": {
+            "type": "integer",
+            "minimum": 4,
+            "maximum": 64,
+            "default": 16
+          },
+          "training_steps": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50,
+            "default": 20
+          },
+          "max_cost_usd": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 5,
+            "description": "Run spending limit. This is not a prediction of completion cost."
+          },
+          "seed": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647,
+            "default": 42
+          },
+          "include_traces": {
+            "type": "boolean",
+            "default": false,
+            "description": "Opt in to prompt, model response and verifier text in live task events."
+          },
+          "review_token": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        },
+        "required": [
+          "review_token"
+        ]
+      },
+      "RLRecipeOutput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "description"
+        ],
+        "x-go-source": "internal/rlrecipe/recipe.go",
+        "x-go-type": "Output"
+      },
+      "RLRecipePhase": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "baseline",
+              "training",
+              "evaluation",
+              "export"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "description"
+        ],
+        "x-go-source": "internal/rlrecipe/recipe.go",
+        "x-go-type": "Phase"
+      },
+      "RLRecipeDefaults": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "evaluation_tasks": {
+            "type": "integer",
+            "minimum": 4,
+            "maximum": 64,
+            "default": 16
+          },
+          "training_steps": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50,
+            "default": 20
+          },
+          "max_cost_usd": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 5,
+            "description": "Run spending limit. This is not a prediction of completion cost."
+          },
+          "seed": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647,
+            "default": 42
+          }
+        },
+        "required": [
+          "evaluation_tasks",
+          "training_steps",
+          "max_cost_usd",
+          "seed"
+        ],
+        "x-go-source": "internal/rlrecipe/recipe.go",
+        "x-go-type": "DefaultValues"
+      },
+      "RLRecipeLimits": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "evaluation_tasks_min": {
+            "type": "integer"
+          },
+          "evaluation_tasks_max": {
+            "type": "integer"
+          },
+          "training_steps_min": {
+            "type": "integer"
+          },
+          "training_steps_max": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "evaluation_tasks_min",
+          "evaluation_tasks_max",
+          "training_steps_min",
+          "training_steps_max"
+        ],
+        "x-go-source": "internal/rlrecipe/recipe.go",
+        "x-go-type": "Limits"
+      },
+      "RLRecipeDescriptor": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "environment_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "model_revision": {
+            "type": "string"
+          },
+          "taskset": {
+            "type": "string"
+          },
+          "modes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "evaluate",
+                "train"
+              ]
+            }
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "unavailable_reason": {
+            "type": "string"
+          },
+          "defaults": {
+            "$ref": "#/components/schemas/RLRecipeDefaults"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/RLRecipeLimits"
+          },
+          "outputs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RLRecipeOutput"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "environment_id",
+          "name",
+          "model",
+          "model_revision",
+          "taskset",
+          "modes",
+          "available",
+          "defaults",
+          "limits",
+          "outputs"
+        ],
+        "x-go-source": "internal/rlrecipe/recipe.go",
+        "x-go-type": "Descriptor"
+      },
+      "RLRunEstimate": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "estimator_version": {
+            "type": "string"
+          },
+          "catalog_version": {
+            "type": "string"
+          },
+          "profile_version": {
+            "type": "string"
+          },
+          "router_version": {
+            "type": "string"
+          },
+          "provenance": {
+            "type": "string"
+          },
+          "customer_price_version": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "estimated",
+              "partial",
+              "unavailable"
+            ]
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "valid_until": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "execution_seconds": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "low": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "high": {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "low",
+                  "high"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "completion_seconds": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "low": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "high": {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "low",
+                  "high"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "compute_cost_usd": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "low": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "high": {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "low",
+                  "high"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "status",
+          "reasons",
+          "valid_until",
+          "execution_seconds",
+          "completion_seconds",
+          "compute_cost_usd"
+        ],
+        "x-go-source": "internal/api/estimates.go",
+        "x-go-type": "EstimatePreview"
+      },
+      "RLRunPreview": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "recipe": {
+            "$ref": "#/components/schemas/RLRecipeDescriptor"
+          },
+          "configuration": {
+            "$ref": "#/components/schemas/RLRecipeRequest"
+          },
+          "review_token": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "Empty when the runtime is unavailable. Otherwise submit unchanged with the reviewed configuration."
+          },
+          "phases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RLRecipePhase"
+            }
+          },
+          "outputs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RLRecipeOutput"
+            }
+          },
+          "estimate": {
+            "$ref": "#/components/schemas/RLRunEstimate"
+          },
+          "launchable": {
+            "type": "boolean"
+          },
+          "blocking_reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "recipe",
+          "configuration",
+          "review_token",
+          "phases",
+          "outputs",
+          "estimate",
+          "launchable",
+          "blocking_reasons"
+        ],
+        "x-go-source": "internal/api/rl_runs.go",
+        "x-go-type": "rlRunPreview"
       },
       "ConnectionCreate": {
         "type": "object",
@@ -12626,6 +13599,340 @@
             }
           }
         }
+      }
+    },
+    "/v1/workloads/{id}/rl-grading-results": {
+      "get": {
+        "operationId": "getWorkloadRLGradingResults",
+        "summary": "Read verified public grading receipts",
+        "tags": [
+          "Workloads"
+        ],
+        "description": "Read a consistent snapshot of grading attempts for one parent workload revision in the authenticated tenant. Requires a server-admitted private grading plan. This endpoint does not enable private-code training. It excludes private cases, candidate source, runner credentials and grading child identities. Receipts are verified before publication and a corrupt snapshot returns an error. Cleanup covers only the requested revision's grading attempts.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            },
+            "description": "One explicit parent revision. Duplicate revision parameters and other query parameters are rejected."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Verified grading snapshot",
+            "headers": {
+              "Cache-Control": {
+                "description": "Grading evidence must not be cached.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RLGradingResults"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or missing revision. Error code is invalid_revision.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No grading plan exists for this parent workload revision in the authenticated tenant. Grading children are not accessible through this operation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The grading snapshot could not be verified or read. Error code is grading_results_unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, rate limits and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workloads/{id}/rl-events": {
+      "get": {
+        "operationId": "listWorkloadRLEvents",
+        "summary": "Read recorded RL task evidence",
+        "tags": [
+          "Workloads"
+        ],
+        "description": "Read typed task events for a workload in the authenticated tenant. Inherits the customer bearer authentication used by other workload operations. Events are reported by the customer runner and persisted by Nodus, not independently measured by this endpoint. The workload must carry RL metadata and its command must emit task events to produce evidence. A workload without recorded events returns an empty page. Follow has_more to drain available pages, then continue polling next_cursor while the workload is active. Read workload status separately and perform a fresh final drain after it becomes terminal. This endpoint does not install or launch a catalog environment and does not provide built-in training.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Workload identity in the authenticated tenant."
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "description": "Opaque exclusive replay cursor from a previous next_cursor. Omit it to begin at the first recorded event. Pass it unchanged and do not use a numeric row ID."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 100
+            },
+            "description": "Maximum number of event rows in this page."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Persisted RL event page",
+            "headers": {
+              "Cache-Control": {
+                "description": "Task evidence must not be cached.",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RLEventPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid cursor or page size. Error codes are invalid_cursor or invalid_limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The workload does not exist in the authenticated tenant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, rate limits and transient failures apply. The JSON error and message fields describe the failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/rl-recipes": {
+      "get": {
+        "operationId": "listRLRecipes",
+        "summary": "Discover managed RL recipes and availability",
+        "tags": [
+          "RL"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "recipes": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/RLRecipeDescriptor"
+                      }
+                    }
+                  },
+                  "required": [
+                    "recipes"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/rl-runs/preview": {
+      "post": {
+        "operationId": "previewRLRun",
+        "summary": "Review an RL setup without reserving compute",
+        "tags": [
+          "RL"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RLRunPreview"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RLRecipeRequest"
+              }
+            }
+          }
+        },
+        "description": "Authenticates the caller and prepares a server-owned recipe. Preview does not create a workload or reserve compute. An unavailable estimate is not a zero cost estimate. Launchability remains subject to current billing and capacity checks at submission and provisioning."
+      }
+    },
+    "/v1/rl-runs": {
+      "post": {
+        "operationId": "createRLRun",
+        "summary": "Launch the reviewed managed RL recipe",
+        "tags": [
+          "RL"
+        ],
+        "responses": {
+          "202": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmitResult"
+                }
+              }
+            },
+            "headers": {
+              "Idempotent-Replayed": {
+                "description": "true on a replay of the original submission.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error. The JSON error and message fields are stable. Additional fields may provide details. Authentication, rate limits, and transient failures apply to all operations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RLRunRequest"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "description": "Required stable key per logical submission. Replay the same payload with the same key. Different payload returns 409."
+          }
+        ],
+        "description": "Uses ordinary workload admission, billing and tenant ownership. 202 confirms acceptance. Reuse the exact body and Idempotency-Key after an uncertain response. A changed configuration or runtime returns 409 review_changed. After an earlier uncertain submission, keep the original key and check existing runs before starting another attempt. 503 rl_unavailable means new managed launches are paused or the runtime is unqualified. A completed run does not by itself establish improved model quality."
       }
     },
     "/v1/connections": {
