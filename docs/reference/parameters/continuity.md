@@ -34,7 +34,10 @@ source submissions. A stage can override the workload selection.
 | `none` | Use the application's existing save and restore code |
 | `hf-trainer-v1` | Require the versioned Hugging Face Trainer integration. Unsupported configurations fail rather than silently restarting |
 
-The SDK preserves omission so the server can apply its configured policy.
+The SDK preserves omission. New submissions do not request application checkpoint
+preparation unless `auto` or `hf-trainer-v1` is selected explicitly. A stage inherits
+an explicit workload selection when omitted. Existing accepted submissions and
+their idempotent retries retain their original selection.
 Explicit `auto` and `hf-trainer-v1` require checkpointed continuity and the
 dedicated `state` folder. Preparation availability depends on the deployment.
 

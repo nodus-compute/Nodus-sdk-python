@@ -73,6 +73,8 @@ class ContinuitySpec(TypedDict, total=False):
     Missing or empty workload checkpoint_paths defaults to ["state"] on the
     server. Missing or empty stage paths inherit workload paths. ["."] opts
     into the whole code folder. NODUS_CHECKPOINT_DIR remains the state folder.
+    Application checkpoint preparation is opt-in through integration="auto"
+    or "hf-trainer-v1". Omission or "none" leaves it disabled for new workloads.
     """
 
     mode: Literal["checkpointed", "restartable", "ephemeral"] | ContinuityMode

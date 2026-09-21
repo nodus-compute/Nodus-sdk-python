@@ -752,7 +752,7 @@
               "auto",
               "hf-trainer-v1"
             ],
-            "description": "Application save and resume integration. When enabled by the deployment, new checkpointed submissions with imported source and the state checkpoint folder default to auto. A stage inherits the workload selection when omitted. none opts out. auto attempts the supported framework adapter and otherwise runs the original command with application-managed checkpoints. hf-trainer-v1 requires supported Hugging Face Trainer preparation and runtime validation. Explicit managed selections require execution-v2, enabled preparation and source.asset_id. Previously accepted submissions keep their original selection. Prepared source does not itself prove that application state has been saved or recovered."
+            "description": "Application save and resume integration. New submissions leave application checkpoint preparation disabled unless auto or hf-trainer-v1 is explicitly selected. Omission and none preserve the original source and application-managed checkpoint behavior. A stage inherits an explicit workload selection when omitted. Imported source alone does not enable preparation. auto attempts the supported framework adapter and otherwise runs the original command with application-managed checkpoints. hf-trainer-v1 requires supported Hugging Face Trainer preparation and runtime validation. Explicit managed selections require execution-v2, enabled preparation and source.asset_id. Previously accepted submissions keep their original selection. Prepared source does not itself prove that application state has been saved or recovered."
           }
         },
         "x-go-source": "internal/models/models.go",
