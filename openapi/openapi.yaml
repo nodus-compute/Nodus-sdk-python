@@ -7516,7 +7516,7 @@
         "type": "object"
       },
       "OperationArguments": {
-        "description": "Select the schema matching the operation path parameter. Workload values also follow WorkloadPayload and ordinary submission validation. The catalog exposes the active argument contract. Unknown arguments are rejected.",
+        "description": "The generic endpoint accepts the union of operation argument shapes. OpenAPI validation alone cannot correlate the operation path parameter with the request body. Clients must validate against the selected operation inputSchema from the catalog. The server enforces that selected schema and rejects unknown arguments. Workload values also follow WorkloadPayload and ordinary submission validation.",
         "anyOf": [
           {
             "$ref": "#/components/schemas/OperationWorkloadsListArguments"
@@ -13164,10 +13164,25 @@
                         "next_offset": {
                           "type": "integer"
                         }
-                      }
+                      },
+                      "required": [
+                        "workloads"
+                      ]
                     },
                     {
-                      "$ref": "#/components/schemas/Workload"
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/Workload"
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "status",
+                            "revision"
+                          ]
+                        }
+                      ]
                     },
                     {
                       "type": "object",
@@ -13181,7 +13196,10 @@
                             "$ref": "#/components/schemas/WorkloadEvent"
                           }
                         }
-                      }
+                      },
+                      "required": [
+                        "events"
+                      ]
                     },
                     {
                       "type": "object",
@@ -13195,7 +13213,11 @@
                             "$ref": "#/components/schemas/Output"
                           }
                         }
-                      }
+                      },
+                      "required": [
+                        "workload_id",
+                        "outputs"
+                      ]
                     },
                     {
                       "$ref": "#/components/schemas/WorkloadValidationResult"
@@ -13226,9 +13248,13 @@
                       "type": "object",
                       "properties": {
                         "status": {
-                          "type": "string"
+                          "type": "string",
+                          "const": "cancel_requested"
                         }
-                      }
+                      },
+                      "required": [
+                        "status"
+                      ]
                     }
                   ]
                 }

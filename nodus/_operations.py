@@ -206,7 +206,7 @@ def _run_draft(value: Any) -> RunDraft:
             or (updated_at is not None and not isinstance(updated_at, str))):
         raise APIError("Operation returned an invalid run draft")
     for name, saved in values.items():
-        valid = True
+        valid = False
         if name in ("name", "command", "image", "gpu"):
             valid = isinstance(saved, str)
         elif name == "gpu_count":

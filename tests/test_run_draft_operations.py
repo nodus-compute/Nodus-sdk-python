@@ -121,6 +121,36 @@ def test_invalid_saved_field_types_are_rejected(asynchronous, values):
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("operation", ["get", "update"])
+@pytest.mark.parametrize("unknown", [{"typo": {"unexpected": True}}, {"max_cost": 300}])
+def test_unknown_saved_fields_cannot_become_typed_draft_receipts(asynchronous, operation, unknown):
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        assert (request.method, request.url.path) == ("POST", f"/v1/operations/v1/run_draft.{operation}")
+        assert json.loads(request.content) == ({} if operation == "get" else {
+            "expected_revision": 2, "patch": {"max_cost_usd": 3}})
+        return httpx.Response(200, json={"revision": 3, "values": {"max_cost_usd": 3, **unknown}})
+
+    with pytest.raises(nodus.APIError, match="invalid run draft field"):
+        exercise(asynchronous, handler, lambda operations: operations.get_run_draft() if operation == "get"
+            else operations.update_run_draft({"max_cost_usd": 3}, expected_revision=2), max_retries=2)
+    assert len(requests) == 1
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_supported_saved_fields_remain_typed_without_defaults(asynchronous):
+    values = {"name": "Research run", "command": "python train.py", "image": "python:3.12", "gpu": "H100",
+              "gpu_count": 2, "memory_gb": 80, "max_cost_usd": 3.5,
+              "checkpoint_paths": ["state"], "result_paths": ["results/model.bin"]}
+    draft = exercise(asynchronous, lambda request: httpx.Response(200, json={"revision": 3, "values": values}),
+                     lambda operations: operations.get_run_draft())
+    assert isinstance(draft, nodus.RunDraft)
+    assert draft.values == values
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
 @pytest.mark.parametrize("revision", [1, 2, 4, 9007199254740992])
 def test_update_receipt_must_confirm_exact_next_revision(asynchronous, revision):
     requests = []
