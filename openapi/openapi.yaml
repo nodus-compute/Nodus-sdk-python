@@ -1163,7 +1163,7 @@
               "fastest"
             ],
             "deprecated": true,
-            "description": "Optimization tiers are not currently supported. Omit this field. New workloads and stages use automatic routing. Accepted legacy values remain compatible but do not change routing for new submissions. Existing workloads retain their persisted settings. Automatic routing selects the lowest hourly price among compatible available on-demand configurations within spending and price limits. This does not guarantee the lowest total job cost or shortest runtime."
+            "description": "Optimization tiers are not currently supported. Omit this field. New workloads and stages use automatic routing. Accepted legacy values remain compatible but do not change routing for new submissions. Existing workloads retain their persisted settings. Automatic routing uses qualified runtime-cost estimates when all eligible configurations have comparable measurements. Otherwise it uses provisional hourly-price ordering within compatibility, spending and independent price limits. This does not guarantee the lowest total job cost or shortest runtime."
           },
           "disk_gb": {
             "type": "number",
@@ -2335,7 +2335,7 @@
               "vm",
               "accelerator"
             ],
-            "description": "Required infrastructure class. VM devboxes require a preview deployment with compatible capacity. Existing GPU sandbox clients explicitly request accelerator."
+            "description": "Infrastructure class. Omission selects vm (CPU) for a new sandbox and preserves the stored class when reconnecting by name. CPU sandboxes and devboxes require a preview deployment with compatible capacity. Existing GPU sandbox clients explicitly request accelerator."
           },
           "gpu": {
             "type": "string",

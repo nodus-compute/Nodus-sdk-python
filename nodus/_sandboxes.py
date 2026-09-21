@@ -174,7 +174,11 @@ def _create_payload(
     if image is not None:
         body["image"] = image
     selected_requirements = dict(requirements or {})
-    if profile != "devbox":
+    if profile != "devbox" and (
+        selected_requirements.get("gpu")
+        or selected_requirements.get("gpu_count") is not None
+        or selected_requirements.get("gpu_interconnect")
+    ):
         selected_requirements.setdefault("compute_class", "accelerator")
     for key, value in (
         ("name", name),

@@ -5,7 +5,10 @@ your local machine. Submit your command from Python or a workload file, follow
 its progress, and retrieve logs and output files through the same interface.
 For interactive agents, create a durable sandbox and execute multiple commands
 with streamed output and stdin.
-Nodus selects the cheapest compatible on-demand capacity by full hourly price.
+Nodus uses qualified estimates of runtime cost when every eligible configuration
+has comparable measurements. Otherwise it orders compatible on-demand
+configurations by hourly price. Spending limits and independent price limits
+apply in both cases.
 Set a workload budget to limit spending. Optimization tiers are not supported.
 
 Install [nodus-compute from PyPI](https://pypi.org/project/nodus-compute/)
