@@ -9090,7 +9090,7 @@
             "schema": {
               "type": "integer"
             },
-            "description": "Page size. 1\u2013100. Omitted, nonpositive, or over 100 defaults to 50."
+            "description": "Page size. 1 to 100. Omitted, nonpositive, or over 100 defaults to 50."
           },
           {
             "name": "offset",
