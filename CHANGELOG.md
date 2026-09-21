@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Expose the server-reported inference component in account meters while preserving aggregate totals and older-server defaults.
+- Document the text inference HTTP API, required request keys, model catalog and request status in the public OpenAPI contract. Availability depends on the deployment.
+
 ## 0.5.1
 
 - Resolve sandbox command targets by active name or exact ID, and accept devbox IDs with profile checks. List sandbox names and distinguish missing resources from unavailable endpoints.

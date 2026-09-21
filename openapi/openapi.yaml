@@ -1032,6 +1032,11 @@
             "type": "number",
             "default": 0,
             "description": "Platform fees accruing at as_of."
+          },
+          "inference_settled_usd": {
+            "type": "number",
+            "default": 0,
+            "description": "Settled inference charges in the account billing period. Zero in workload meters."
           }
         },
         "x-go-source": "internal/store/meter.go",
@@ -6245,6 +6250,288 @@
         },
         "x-go-source": "internal/store/connection_loads.go",
         "x-go-type": "ConnectionLoad"
+      },
+      "InferenceMessage": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "system",
+              "user",
+              "assistant"
+            ]
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "role",
+          "content"
+        ]
+      },
+      "InferenceUsage": {
+        "type": "object",
+        "properties": {
+          "prompt_tokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "completion_tokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "total_tokens": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "prompt_tokens",
+          "completion_tokens",
+          "total_tokens"
+        ]
+      },
+      "InferenceChatRequest": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string",
+            "pattern": "^nodus:"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InferenceMessage"
+            },
+            "minItems": 1,
+            "maxItems": 256
+          },
+          "max_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Required maximum output tokens within the selected model limit."
+          },
+          "temperature": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 2
+          },
+          "top_p": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1
+          },
+          "stream": {
+            "type": "boolean",
+            "default": false
+          },
+          "stream_options": {
+            "type": "object",
+            "properties": {
+              "include_usage": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false,
+        "x-go-source": "internal/inference/config.go",
+        "x-go-type": "Request",
+        "required": [
+          "model",
+          "messages",
+          "max_tokens"
+        ]
+      },
+      "InferenceModel": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "object": {
+            "type": "string",
+            "const": "model"
+          },
+          "created": {
+            "type": "integer"
+          },
+          "owned_by": {
+            "type": "string",
+            "const": "nodus"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "price_version": {
+            "type": "string"
+          },
+          "input_micros_per_million": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "output_micros_per_million": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "max_input_tokens": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "ready": {
+            "type": "boolean"
+          }
+        }
+      },
+      "InferenceRequestStatus": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "admitted",
+              "running",
+              "streaming",
+              "completed",
+              "failed",
+              "interrupted"
+            ]
+          },
+          "price_version": {
+            "type": "string"
+          },
+          "reserved_micros": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "charge_micros": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "prompt_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "completion_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finished_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "x-go-source": "internal/store/inference.go",
+        "x-go-type": "InferenceRequest"
+      },
+      "InferenceChatResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "object": {
+            "type": "string",
+            "const": "chat.completion"
+          },
+          "created": {
+            "type": "integer"
+          },
+          "model": {
+            "type": "string"
+          },
+          "choices": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "index": {
+                  "type": "integer"
+                },
+                "message": {
+                  "type": "object",
+                  "properties": {
+                    "role": {
+                      "type": "string",
+                      "const": "assistant"
+                    },
+                    "content": {
+                      "type": "string"
+                    },
+                    "reasoning_content": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "finish_reason": {
+                  "type": "string",
+                  "enum": [
+                    "stop",
+                    "length",
+                    "content_filter"
+                  ]
+                }
+              }
+            }
+          },
+          "usage": {
+            "$ref": "#/components/schemas/InferenceUsage"
+          }
+        }
+      },
+      "InferenceError": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "param": {
+                "type": "null"
+              }
+            }
+          }
+        }
       }
     },
     "securitySchemes": {
@@ -11072,6 +11359,265 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/models": {
+      "get": {
+        "operationId": "listInferenceModels",
+        "summary": "List available Nodus inference models and token prices",
+        "responses": {
+          "200": {
+            "description": "Qualified catalog for the current team. Ready indicates a recent health observation, not a capacity reservation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "object": {
+                      "type": "string",
+                      "const": "list"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/InferenceModel"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Valid Nodus authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InferenceError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Authentication or team rate limit reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InferenceError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/chat/completions": {
+      "post": {
+        "operationId": "createInferenceChat",
+        "summary": "Generate a text chat completion",
+        "description": "Supports text chat with buffered JSON or server-sent events. Requires a stable Idempotency-Key. Reserves shared team credits and validates the tokenized input and context limits before generation, then settles once from validated usage. A stream never changes generations after output begins. Failed and interrupted requests release customer funding without charge. Final success follows settlement. Prompts and outputs are not stored for replay.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1
+            },
+            "description": "Required stable key for one intended generation. Preserve it across retries. A replay returns 409 with the original request identity.",
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InferenceChatRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A completion or SSE chunks using the requested Nodus model ID. A stream may end with an error without [DONE].",
+            "headers": {
+              "X-Nodus-Request-ID": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Durable request identity for status lookup."
+              },
+              "X-Nodus-Price-Version": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Pinned customer price version."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InferenceChatResponse"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid text chat parameters, missing idempotency key or tokenized input outside the model limits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InferenceError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Valid Nodus authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InferenceError"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient credits or spending headroom.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InferenceError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The requested model is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InferenceError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The key is already admitted or belongs to a different payload. Inspect request status before choosing a new key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InferenceError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request exceeds 1 MiB.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InferenceError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Team rate limit reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InferenceError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Admissions, qualified capacity or accounting are temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InferenceError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/inference/requests/{id}": {
+      "get": {
+        "operationId": "getInferenceRequest",
+        "summary": "Read the current team's inference request status and charge",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Request identity, lifecycle and settled token receipt. No prompt or output content is retained.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InferenceRequestStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Valid Nodus authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InferenceError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No request with this identity belongs to the current team.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InferenceError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Team rate limit reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InferenceError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Request status is temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InferenceError"
                 }
               }
             }
