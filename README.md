@@ -164,9 +164,11 @@ nodus cancel WORKLOAD_ID
 
 ## Automatic capacity selection
 
-Nodus uses one policy for new runs: choose the cheapest compatible on-demand
-capacity by full hourly price. A lower hourly price does not guarantee a lower
-total completion cost. Optimization tiers are not supported.
+Nodus uses qualified estimates of runtime cost when every eligible configuration
+has comparable measurements. Otherwise it orders compatible on-demand
+configurations by hourly price. Spending limits and independent price limits
+apply in both cases. This does not guarantee the lowest total cost or shortest
+runtime. Optimization tiers are not supported.
 Existing optimization arguments remain accepted for backward compatibility
 but have no preference effect on new runs.
 
