@@ -1,19 +1,49 @@
 # Nodus plugins
 
 Install Nodus in Codex, Claude Code or Cursor to run GPU workloads from your
-coding agent. The plugin includes seven MCP tools and two skills for setup
-and workload execution. It downloads the public MCP package automatically.
+coding agent. The plugins include MCP tools and two skills for setup and workload execution.
+Choose hosted browser sign-in or a local package that reuses saved credentials.
 
 For a direct MCP connection or an Add to Cursor install link, use
 [Connect your coding agent](connect.md). Choose one MCP installation method
 per client to avoid duplicate tools.
+
+## Hosted plugin with browser sign-in
+
+The `nodus-hosted` plugin bundles remote MCP and skills. It requires no local
+Python or uv installation. Enable one Nodus plugin or manual connection at a
+time to avoid duplicate tools.
+
+Claude Code:
+
+```sh
+claude plugin marketplace add nodus-compute/Nodus-sdk-python
+claude plugin install nodus-hosted@nodus
+```
+
+Codex:
+
+```sh
+codex plugin marketplace add nodus-compute/Nodus-sdk-python
+codex plugin add nodus-hosted@nodus
+```
+
+Authenticate Nodus through your client's MCP controls, then ask it to list
+workloads. In Cursor, use the hosted install button on the
+[connection page](https://nodus-compute.ai/connect/) or import the repository's
+`plugins/nodus-hosted` package into your team marketplace.
+
+These packages are distributed through the Nodus repository marketplace.
+Public vendor directory listings require separate vendor review. No public
+listing is required to use the direct install buttons or repository commands.
+
 
 ## Sign in once
 
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then run:
 
 ```sh
-uvx --from 'nodus-compute[mcp]==0.4.2' nodus login
+uvx --from 'nodus-compute[mcp]==0.5.1' nodus login
 ```
 
 Complete browser sign-in on the same machine where your client runs. The
@@ -76,6 +106,8 @@ local plugin or importing the repository does not depend on that listing.
 The first workload listing checks your connection without launching paid
 compute. The plugin exposes:
 
+- `validate_workload`
+- `download_workload_output` locally or `get_workload_output` when hosted
 - `submit_workload`
 - `list_workloads`
 - `get_workload`
@@ -91,7 +123,8 @@ request does not start a workload.
 
 The workload skill helps the agent preserve your budget, avoid duplicate
 submissions after uncertain responses, and check results before reporting
-success. Output listing returns metadata, not downloaded files. See the
+success. Output listing returns metadata. Use the download tool to retrieve
+the requested files. See the
 [MCP tool reference](mcp.md#tool-reference) for arguments and examples.
 
 ## Troubleshooting and updates

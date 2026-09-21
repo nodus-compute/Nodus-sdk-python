@@ -11,6 +11,11 @@
       "name": "nodus",
       "source": "./plugins/nodus",
       "description": "Run GPU workloads with Nodus, monitor progress, read logs and inspect results."
+    },
+    {
+      "name": "nodus-hosted",
+      "source": "./plugins/nodus-hosted",
+      "description": "Hosted Nodus compute tools with browser sign-in and workload skills."
     }
   ]
 }

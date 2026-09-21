@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.1
+
+- Validate prepared MCP workload requests without starting compute and require an explicit positive submission budget.
+- Download requested outputs through the local MCP server with checksum verification and no overwrites.
+- Repair installer-managed agent connections and skills with backups, and diagnose local setup without signing in.
+- Package a hosted MCP plugin with browser authorization and a GitHub Action that preserves submission identity across retries and verifies results.
+
 ## 0.5.0
 
 - Manage write-only tenant secrets and verified Postgres, Neon, Supabase and wandb connections with sync and async clients and CLI commands. Connections pin an immutable credential version, scope and optional region. Secret values are limited to 4096 UTF-8 bytes.

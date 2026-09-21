@@ -14,7 +14,7 @@ The guided installer supplies an absolute executable path. The plugin uses uvx.
    [connection page](https://nodus-compute.ai/connect/). Add its remote server
    and finish the client's browser sign-in. Never ask for a token in chat.
    For clients requiring a local process, use the
-   [one-command setup guide](https://nodus-compute.ai/docs/guides/connect/#local-installation).
+   [one-command setup guide](https://nodus-compute.ai/docs/guides/connect/#quick-connection).
    The user selects agents and completes browser sign-in in their own terminal.
    Keep an existing plugin installation instead of adding duplicate MCP tools.
 3. For a plugin or manual connection using uvx, have the user sign in with:

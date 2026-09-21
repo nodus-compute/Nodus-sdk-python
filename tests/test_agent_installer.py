@@ -26,6 +26,59 @@ def test_dry_run_explains_selected_agents_without_creating_files(tmp_path):
     assert list(tmp_path.iterdir()) == before
 
 
+def test_repair_updates_owned_runtime_and_skills_without_touching_other_settings(installer, tmp_path, monkeypatch):
+    monkeypatch.setattr(installer.Path, "home", lambda: tmp_path)
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    installer.SKILL_SOURCES = {"setup": "name: setup\nold", "workloads": "name: workloads\nold"}
+    installer.apply_edits(installer.plan(["cursor"], "/old/nodus/python"))
+    config = tmp_path / ".cursor/mcp.json"
+    data = json.loads(config.read_text())
+    data["mcpServers"]["other"] = {"command": "keep-me"}
+    config.write_text(json.dumps(data))
+    installer.SKILL_SOURCES = {"setup": "name: setup\nnew", "workloads": "name: workloads\nnew"}
+    installer.apply_edits(installer.plan(["cursor"], "/new/nodus/python", repair=True))
+    data = json.loads(config.read_text())
+    assert data["mcpServers"]["nodus"]["command"] == "/new/nodus/python"
+    assert data["mcpServers"]["other"] == {"command": "keep-me"}
+    assert (tmp_path / ".cursor/skills/nodus-workloads/SKILL.md").read_text().endswith("new")
+    assert list(config.parent.glob("*.nodus-backup-*"))
+
+
+def test_repair_refuses_customer_changes_to_managed_connection(installer, tmp_path, monkeypatch):
+    monkeypatch.setattr(installer.Path, "home", lambda: tmp_path)
+    installer.apply_edits(installer.plan(["cursor"], "/old/nodus/python"))
+    config = tmp_path / ".cursor/mcp.json"
+    changed = '{"mcpServers":{"nodus":{"url":"https://my-custom-endpoint.test/mcp"}}}'
+    config.write_text(changed)
+    with pytest.raises(installer.SetupError):
+        installer.plan(["cursor"], "/new/nodus/python", repair=True)
+    assert config.read_text() == changed
+
+
+def test_repair_adopts_legacy_installer_runtime_without_executing_it(installer, tmp_path, monkeypatch):
+    monkeypatch.setattr(installer.Path, "home", lambda: tmp_path)
+    path = tmp_path / ".cursor/mcp.json"
+    path.parent.mkdir()
+    legacy = tmp_path / ".nodus/agent-tools/0.4.2-1/bin/python"
+    path.write_text(json.dumps({"mcpServers": {"nodus": {"command": str(legacy), "args": installer.MCP_ARGS}}}))
+    installer.apply_edits(installer.plan(["cursor"], "/new/runtime/python", repair=True))
+    assert json.loads(path.read_text())["mcpServers"]["nodus"]["command"] == "/new/runtime/python"
+    assert not legacy.exists()
+
+
+@pytest.mark.parametrize("version", ["..", "-", "0.4.2-.."])
+def test_repair_refuses_unowned_runtime_path(installer, tmp_path, monkeypatch, version):
+    monkeypatch.setattr(installer.Path, "home", lambda: tmp_path)
+    path = tmp_path / ".cursor/mcp.json"
+    path.parent.mkdir()
+    original = json.dumps({"mcpServers": {"nodus": {
+        "command": str(tmp_path / ".nodus/agent-tools" / version / "bin/python"), "args": installer.MCP_ARGS}}})
+    path.write_text(original)
+    with pytest.raises(installer.SetupError):
+        installer.plan(["cursor"], "/new/runtime/python", repair=True)
+    assert path.read_text() == original
+
+
 @pytest.fixture
 def installer():
     spec = importlib.util.spec_from_file_location("nodus_agent_installer", SCRIPT)
@@ -274,30 +327,32 @@ def test_no_success_or_config_write_after_verification_failure(installer, tmp_pa
     assert "Connected" not in capsys.readouterr().out
 
 
-def test_existing_claude_plugin_prevents_duplicate_connection(installer, tmp_path, monkeypatch):
+@pytest.mark.parametrize("plugin", ["nodus", "nodus-hosted"])
+def test_existing_claude_plugin_prevents_duplicate_connection(installer, tmp_path, monkeypatch, plugin):
     monkeypatch.setattr(installer.Path, "home", lambda: tmp_path)
     monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
     directory = tmp_path / ".claude"
     directory.mkdir()
-    (directory / "settings.json").write_text('{"enabledPlugins":{"nodus@nodus":true}}')
+    (directory / "settings.json").write_text(json.dumps({"enabledPlugins": {plugin + "@nodus": True}}))
     with pytest.raises(installer.SetupError, match="plugin"):
         installer.plan(["claude"], sys.executable)
     assert not (tmp_path / ".claude.json").exists()
 
 
+@pytest.mark.parametrize("plugin", ["nodus", "nodus-hosted"])
 @pytest.mark.parametrize(("agent", "plugin_config"), [
     ("codex", '[plugins."nodus@nodus"]\nenabled = true\n'),
     ("codex", '[plugins."nodus@nodus"]\n'),
     ("cursor", None),
 ])
-def test_existing_plugin_locations_prevent_duplicate_connections(installer, tmp_path, monkeypatch, agent, plugin_config):
+def test_existing_plugin_locations_prevent_duplicate_connections(installer, tmp_path, monkeypatch, agent, plugin_config, plugin):
     monkeypatch.setattr(installer.Path, "home", lambda: tmp_path)
     monkeypatch.delenv("CODEX_HOME", raising=False)
     if agent == "codex":
         directory = tmp_path / ".codex"
         directory.mkdir()
-        (directory / "config.toml").write_text(plugin_config)
+        (directory / "config.toml").write_text(plugin_config.replace("nodus@nodus", plugin + "@nodus"))
     else:
-        (tmp_path / ".cursor/plugins/local/nodus").mkdir(parents=True)
+        (tmp_path / ".cursor/plugins/local" / plugin).mkdir(parents=True)
     with pytest.raises(installer.SetupError, match="plugin"):
         installer.plan([agent], sys.executable)
