@@ -192,6 +192,9 @@ def read_available_tasks(client, workload_id, cursor=None):
 
 Pass `next_cursor` unchanged as `after`. Keep the returned cursor for the next
 read. A row ID is a separate string identity and must not be used as a cursor.
+Recovery can repeat an application event identity in a later execution
+generation. Keep each row and inspect its `generation` instead of deduplicating
+across generations.
 An empty page or `has_more=False` means no more rows were available in that
 snapshot. Continue polling while the workload is active and read again after
 observing its terminal status. Task events are application-reported evidence.

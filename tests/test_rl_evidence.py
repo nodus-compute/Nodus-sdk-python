@@ -65,7 +65,10 @@ def test_rl_evidence_pages_keep_opaque_cursor_and_loss_metadata(asynchronous):
         assert request.url.params["limit"] == "2"
         if len(requests) == 1:
             assert "after" not in request.url.params
-            return httpx.Response(200, json=PAGE)
+            recovered = deepcopy(PAGE["events"][0])
+            recovered.update(id="9007199254740994", generation=3)
+            recovered["event"].update(outcome="passed", reward=1)
+            return httpx.Response(200, json={**PAGE, "events": [PAGE["events"][0], recovered]})
         assert request.url.params["after"] == "opaque_cursor-1"
         return httpx.Response(200, json={**PAGE, "events": [], "has_more": False})
 
@@ -80,6 +83,11 @@ def test_rl_evidence_pages_keep_opaque_cursor_and_loss_metadata(asynchronous):
     assert (row.event.phase, row.event.kind, row.event.outcome) == ("evaluation", "task_completed", "failed")
     assert row.event.reward == 0 and row.event.duration_ms == 0
     assert row.event.raw["future_evidence"] == "preserved"
+    assert len(first.events) == 2
+    recovered = first.events[1]
+    assert recovered.event.event_id == row.event.event_id
+    assert (recovered.id, recovered.generation) == ("9007199254740994", 3)
+    assert (recovered.event.outcome, recovered.event.reward) == ("passed", 1)
     assert second.events == [] and not second.has_more
     assert second.next_cursor == first.next_cursor == "opaque_cursor-1"
     assert second.truncated and second.dropped_events == 3
