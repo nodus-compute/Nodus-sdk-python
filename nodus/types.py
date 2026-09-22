@@ -491,18 +491,11 @@ class Ledger:
 
 @dataclass
 class Meter:
-    """What a workload costs at one instant: what is settled plus what is accruing.
+    """Settled and accruing customer cost at ``as_of``.
 
-    A charge is booked when a lease closes, so ``settled_usd`` does not move
-    while the work runs. ``total_now_usd`` is what answers "what is this
-    costing me right now". ``as_of`` is part of that number, a live figure
-    without the instant it was true cannot be read, and
-    ``accruing_rate_usd_hour`` is what ticks it forward between polls.
-
-    Component fields distinguish compute, platform fees and account subscription
-    charges. Older servers omit these components, which default to zero. Keep
-    using the aggregate fields for totals rather than inferring them from missing
-    components. Subscription charges occur only in account-scoped meters.
+    Server aggregates are authoritative, not sums of optional components.
+    Subscription and saved-file charges are account-only components.
+    Omitted components default to zero.
     """
 
     settled_usd: float = 0.0
@@ -516,6 +509,7 @@ class Meter:
     subscription_settled_usd: float = 0.0
     compute_accruing_usd: float = 0.0
     platform_fee_accruing_usd: float = 0.0
+    storage_settled_usd: float = 0.0
 
 
     @classmethod
@@ -526,6 +520,7 @@ class Meter:
             compute_settled_usd=_num(d.get("compute_settled_usd")),
             platform_fee_settled_usd=_num(d.get("platform_fee_settled_usd")),
             subscription_settled_usd=_num(d.get("subscription_settled_usd")),
+            storage_settled_usd=_num(d.get("storage_settled_usd")),
             compute_accruing_usd=_num(d.get("compute_accruing_usd")),
             platform_fee_accruing_usd=_num(d.get("platform_fee_accruing_usd")),
             settled_usd=_num(d.get("settled_usd")),

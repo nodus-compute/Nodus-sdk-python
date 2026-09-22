@@ -56,6 +56,10 @@ def docs_api(monkeypatch):
                   "live_mode": False, "verified_at": "2026-09-19T00:00:00Z",
                   "created_at": "2026-09-19T00:00:00Z", "created_by": "key_docs"}
 
+    workspace = {"id": "ws_1234-abcd", "state": "stopped", "configuration_revision": "a" * 64,
+                 "configuration": {"name": "kernel-lab", "environment": "pytorch-cuda", "editor": "vscode",
+                     "gpu": "H100", "gpu_count": 1, "gpu_memory_gb": 80, "budget_usd": 5, "max_hours": 2, "size_gb": 10}}
+
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_):
             pass
@@ -75,6 +79,20 @@ def docs_api(monkeypatch):
             calls.append(("GET", path))
             if self.headers.get("Authorization") != "Bearer nk_docs":
                 return self.reply({"error": "unauthorized"}, 401)
+            if path == "/v1/research-workspaces/ws_1234-abcd":
+                return self.reply(workspace)
+            if path == "/v1/research-workspaces/ws_1234-abcd/workloads":
+                return self.reply({"workloads": [], "pending_submissions": [{
+                    "id": "wsub_original-submission-id", "workspace_id": "ws_1234-abcd",
+                    "idempotency_key": "kernel-lab-training-1", "state": "ready",
+                    "request": {"command": "python train.py", "budget_usd": 6},
+                    "created_at": "2026-09-21T00:00:00Z"}]})
+            if path == "/v1/research-workspaces/capabilities":
+                return self.reply({"available": True, "storage_limit_bytes": 10000000000, "storage_policy_version": "r2-standard-10gb-account-v1",
+                    "workload_source_limit_bytes": 10000000000,
+                    "environments": [{"id": "pytorch-cuda", "name": "PyTorch and CUDA", "description": "Development image"}],
+                    "gpu_counts": [1, 2, 4, 8], "editors": ["vscode", "jupyter", "ssh"],
+                    "browser_available": True, "workload_submission": True})
             if path == "/v1/pools/pool_docs/proposals":
                 query = parse_qs(urlsplit(self.path).query)
                 if query != {"limit": ["25"], "state": ["pending"]}:
@@ -99,7 +117,12 @@ def docs_api(monkeypatch):
                                    "export": {"id": "export_docs", "connection_id": "conn_docs", "asset_id": "asset_docs", "query_hash": "a" * 64,
                                               "format": "parquet", "row_count": 10, "bytes": 256, "created_at": "2026-09-19T00:00:00Z"}})
             if path == "/v1/assets":
-                return self.reply({"assets": [], "max_import_bytes": 1048576})
+                return self.reply({"assets": [{"id": "asset_unused-source-reference", "name": "Project source", "kind": "workspace_source", "state": "ready", "stored_bytes": 1024,
+                    "workspace_source": {"source_id": "source_docs", "workspace_id": "ws_1234-abcd", "source_revision": "a" * 64,
+                        "exporter_version": "workspace-source-v1", "state": "ready", "removable": True, "shared_alias_count": 1}}],
+                    "max_import_bytes": 268435456, "storage_quota_bytes": 2147483648,
+                    "workspace_source_storage": {"included_bytes": 21073741824, "retained_bytes": 1024,
+                        "reserved_bytes": 0, "available_bytes": 21073740800, "billing_enabled": False}})
             if path == "/v1/workloads":
                 return self.reply({"workloads": [row]})
             if path == "/v1/workloads/wl_docs":
@@ -141,7 +164,7 @@ def docs_api(monkeypatch):
             calls.append(("DELETE", path))
             if self.headers.get("Authorization") != "Bearer nk_docs":
                 return self.reply({"error": "unauthorized"}, 401)
-            if path == "/v1/connections/conn_docs":
+            if path in ("/v1/connections/conn_docs", "/v1/assets/asset_unused-source-reference"):
                 return self.reply(b"", 204)
             return self.reply({"error": "not_found"}, 404)
 
@@ -151,6 +174,10 @@ def docs_api(monkeypatch):
             calls.append(("PATCH", path))
             if self.headers.get("Authorization") != "Bearer nk_docs":
                 return self.reply({"error": "unauthorized"}, 401)
+            if path == "/v1/research-workspaces/ws_1234-abcd":
+                assert payload == {"configuration_revision": "a" * 64,
+                    "configuration": {**workspace["configuration"], "editor": "jupyter", "budget_usd": 8}}
+                return self.reply({**workspace, **payload, "configuration_revision": "b" * 64})
             if path != "/v1/pools/pool_docs":
                 return self.reply({"error": "not_found"}, 404)
             if payload.get("route_enabled") is True and (payload.get("accepted_route_rate_version") != "route-platform-v1" or payload.get("accepted_route_rate_micros") != 20000):
@@ -218,6 +245,24 @@ def docs_api(monkeypatch):
                     "last_error": "", "saving_for_termination": False,
                     "billing_status": "disabled_no_approved_storage_rate",
                 }, 201)
+            if path == "/v1/research-workspaces":
+                assert payload == {"name": "kernel-lab", "environment": "pytorch-cuda", "editor": "jupyter",
+                    "gpu": "H100", "gpu_count": 1, "gpu_memory_gb": 80, "budget_usd": 8,
+                    "max_hours": 2, "size_gb": 10}
+                return self.reply({"id": "ws_1234-abcd", "name": "kernel-lab", "configuration": payload,
+                    "state": "stopped", "session": None}, 201)
+            if path == "/v1/research-workspaces/ws_1234-abcd/start":
+                assert self.headers.get("Idempotency-Key") == "kernel-lab-session-1"
+                assert payload == {}
+                return self.reply({"id": "ws_1234-abcd", "state": "creating"}, 202)
+            if path == "/v1/research-workspaces/ws_1234-abcd/workloads":
+                assert self.headers.get("Idempotency-Key") == "kernel-lab-training-1"
+                assert payload == {"command": "python train.py", "budget_usd": 6}
+                return self.reply({"id": "wl_docs", "workload_id": "wl_docs", "status": "accepted", "revision": 1}, 202)
+            if path == "/v1/research-workspaces/ws_1234-abcd/connections/retry":
+                assert payload in ({"tool": "editor"}, {"tool": "notebook"})
+                assert self.headers.get("Idempotency-Key") is None
+                return self.reply({"status": "retry_scheduled"}, 202)
             if path == "/v1/sandboxes":
                 return self.reply(sandbox, 202)
             if path in ("/v1/sandboxes/sb_docs/exec", "/v1/sandboxes/sb_example/exec"):
@@ -279,6 +324,9 @@ def test_python_documentation_executes(path, number, body, docs_api, tmp_path, m
             state["input"] = {"invoice_id": 42}
             namespace["send_to_invoice_service"] = lambda invoice_id: "synthetic-remote-7"
         exec(compile(body.replace('"YOUR_WORKLOAD_ID"', '"wl_docs"'), str(path), "exec"), namespace)
+    if path.name == "workspaces.md" and number in (1, 2):
+        assert docs_api[1].count(("POST", "/v1/research-workspaces/ws_1234-abcd/connections/retry")) == 1
+        assert ("POST", "/v1/workloads") not in docs_api[1]
     # Compile embedded Python argv too, without pretending it ran on a GPU.
     for payload in docs_api[2]:
         sources = [payload.get("source", {})] + [s.get("source", {}) for s in payload.get("stages", [])]

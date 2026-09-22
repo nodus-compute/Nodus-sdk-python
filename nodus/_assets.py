@@ -34,6 +34,7 @@ class Asset:
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
     export: dict[str, Any] | None = None
     error: str = ""
+    workspace_source: dict[str, Any] | None = None
 
     @classmethod
     def from_dict(cls, row: Any) -> Asset:
@@ -41,7 +42,7 @@ class Asset:
             raise APIError("The API returned an invalid asset")
         return cls(row["id"], row.get("state", ""), row.get("kind", ""),
                    row.get("name", ""), row.get("stored_bytes"),
-                   row.get("imported_bytes"), dict(row), row.get("export"), row.get("error", ""))
+                   row.get("imported_bytes"), dict(row), row.get("export"), row.get("error", ""), row.get("workspace_source"))
 
 
 def _query_result(asset: Asset) -> Asset:
@@ -190,6 +191,11 @@ class Assets:
         """List up to the server's 500 most recent assets."""
         return _rows(self._request("GET", "/v1/assets"))
 
+    def storage(self) -> dict[str, Any]:
+        """Read ordinary asset limits and the separate included workspace source pool."""
+        result = self._request("GET", "/v1/assets")
+        return {key: value for key, value in result.items() if key != "assets"}
+
     def upload(self, path: str | Path) -> Asset:
         """Upload one file or archive and return the ready asset."""
         source, limit = _file(path, self._request("GET", "/v1/assets"))
@@ -263,6 +269,11 @@ class AsyncAssets:
     async def list(self) -> list[Asset]:
         """List up to the server's 500 most recent assets."""
         return _rows(await self._request("GET", "/v1/assets"))
+
+    async def storage(self) -> dict[str, Any]:
+        """Read ordinary asset limits and the separate included workspace source pool."""
+        result = await self._request("GET", "/v1/assets")
+        return {key: value for key, value in result.items() if key != "assets"}
 
     async def upload(self, path: str | Path) -> Asset:
         """Upload one file or archive and return the ready asset."""

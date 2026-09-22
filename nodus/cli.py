@@ -957,6 +957,13 @@ Use nodus COMMAND --help for command options.""",
     i.add_argument("--force", action="store_true", help="sign in again even when already signed in")
 
     sub.add_parser("logout", help="delete the stored API key")
+    workspaces = sub.add_parser("workspaces", help="connect to an interactive workspace")
+    workspace_commands = workspaces.add_subparsers(dest="workspace_cmd", required=True)
+    proxy = workspace_commands.add_parser("ssh-proxy", help="forward an SSH connection through Nodus")
+    proxy.add_argument("workspace_id")
+    proxy.add_argument("--session", required=True)
+    proxy.add_argument("--generation", type=_positive_integer, required=True)
+    proxy.add_argument("--debug", action="store_true", default=argparse.SUPPRESS, help=argparse.SUPPRESS)
     m = sub.add_parser("mcp", help="start the local MCP server for AI clients")
     m.add_argument("--base-url", default=argparse.SUPPRESS, help="custom API origin")
 
@@ -1228,6 +1235,7 @@ def main(argv: list[str] | None = None) -> int:
         "login": lambda: _cmd_login(args),
         "mcp": lambda: _cmd_mcp(args),
         "logout": lambda: _cmd_logout(args),
+        "workspaces": lambda: _cmd_workspace_proxy(args),
         "init": lambda: _cmd_init(args),
         "run": lambda: _cmd_run(args),
         "submit": lambda: _cmd_run(args),
@@ -1296,6 +1304,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.cmd == "asset" and (recovery := _query_recovery(exc)):
             print(recovery, file=sys.stderr)
         return 130
+
+
+def _cmd_workspace_proxy(args: argparse.Namespace) -> int:
+    from ._workspace_ssh import ssh_proxy
+    return ssh_proxy(args.workspace_id, session_id=args.session, generation=args.generation, base_url=args.base_url)
 
 
 

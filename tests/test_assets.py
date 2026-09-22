@@ -439,3 +439,22 @@ def test_asset_identity_accessor_uses_validated_metadata_without_error_text():
     original.__cause__ = wrapper
     assert nodus.asset_id_from_error(wrapper) is None
     assert nodus.asset_id_from_error(nodus.APIError("asset_from_untrusted_text")) is None
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_workspace_sources_preserve_separate_usage_and_removal_contract(asynchronous):
+    source = {"source_id": "source_shared", "workspace_id": "ws_lab", "source_revision": "a" * 64,
+              "exporter_version": "workspace-source-v1", "state": "ready", "removable": False, "shared_alias_count": 2}
+    usage = {"included_bytes": 21073741824, "retained_bytes": 10000000000, "reserved_bytes": 1000,
+             "available_bytes": 11073740824, "billing_enabled": False}
+    response = {"assets": [{**ROW, "kind": "workspace_source", "workspace_source": source}],
+                "max_import_bytes": 268435456, "storage_quota_bytes": 2147483648,
+                "stored_bytes": 12, "staged_bytes": 0, "billing_enabled": False,
+                "workspace_source_storage": usage}
+    def handler(request):
+        assert request.method == "GET"
+        assert request.url.path == "/v1/assets"
+        return httpx.Response(200, json=response)
+    asset = exercise(handler, asynchronous, lambda assets: assets.list())[0]
+    assert asset.workspace_source == source
+    assert asset.raw["workspace_source"] == source
+    assert exercise(handler, asynchronous, lambda assets: assets.storage()) == {key: value for key, value in response.items() if key != "assets"}
