@@ -439,3 +439,40 @@ def test_asset_identity_accessor_uses_validated_metadata_without_error_text():
     original.__cause__ = wrapper
     assert nodus.asset_id_from_error(wrapper) is None
     assert nodus.asset_id_from_error(nodus.APIError("asset_from_untrusted_text")) is None
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_upload_identity_is_validated_before_network(asynchronous, tmp_path):
+    source = tmp_path / "project.tar.gz"
+    source.write_bytes(b"exact bytes")
+    with pytest.raises(nodus.ValidationError):
+        exercise(lambda request: pytest.fail("invalid upload key reached HTTP"), asynchronous,
+                 lambda assets: assets.upload(source, idempotency_key="bad\r\nkey"))
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_explicit_upload_identity_binds_exact_bytes(asynchronous, tmp_path):
+    import hashlib
+    source = tmp_path / "project.tar.gz"
+    source.write_bytes(b"exact bytes")
+    def handler(request):
+        if request.method == "GET":
+            return httpx.Response(200, json={"max_import_bytes": 100, "upload_idempotency": True})
+        assert request.headers["Idempotency-Key"] == "one-project"
+        assert request.headers["X-Nodus-SHA256"] == hashlib.sha256(request.content).hexdigest()
+        assert request.content == b"exact bytes"
+        return httpx.Response(201, json=ROW)
+    result = exercise(handler, asynchronous, lambda assets: assets.upload(source, idempotency_key="one-project"))
+    assert result.id == ROW["id"]
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("capability", [None, False, "true"])
+def test_keyed_upload_refuses_controllers_without_durable_receipts(asynchronous, capability, tmp_path):
+    source = tmp_path / "project.tar.gz"
+    source.write_bytes(b"exact bytes")
+    def handler(request):
+        assert request.method == "GET", "unqualified controller received a keyed upload"
+        return httpx.Response(200, json={"max_import_bytes": 100, "upload_idempotency": capability})
+    with pytest.raises(nodus.APIError, match="idempotent uploads"):
+        exercise(handler, asynchronous, lambda assets: assets.upload(source, idempotency_key="one-project"))

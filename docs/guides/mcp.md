@@ -118,9 +118,8 @@ integers from 1 to 100. `offset` accepts integers from 0 to 2147483647.
 `after` accepts integer event IDs from 0 to 9007199254740991.
 
 The tools return MCP text content containing API JSON or log text. API failures
-return a tool result with `isError: true` and the API error details. These are
-workload tools. Use the [sandbox guide](agent-sandboxes.md) for interactive
-sandbox commands and streaming output.
+return a tool result with `isError: true` and the API error details. See the sandbox and managed-agent tools below for interactive execution.
+The [sandbox guide](agent-sandboxes.md) also covers SDK commands and streaming output.
 
 ## Submit and monitor a workload
 
@@ -227,3 +226,79 @@ API requests have a 30 second timeout. A timeout does not cancel a remote worklo
 
 Log calls support the API's 8 MiB log payload plus truncation notices.
 Responses larger than the server's 16 MiB bound return a tool error.
+
+## Sandboxes and managed agents
+
+The development SDK also exposes sandbox and managed-agent tools. Availability
+requires the matching controller release and account qualification. Check
+`get_sandbox_capabilities` before creating an environment. The pinned public
+package installation above does not imply that these capabilities are enabled.
+
+Hosted connections request sandbox and agent permissions separately from
+workload permissions. Existing workload grants keep their original access.
+A write permission includes the corresponding read permission. Reconnect and
+authorize the additional scopes to discover those tools. Local connections use
+your saved SDK credential and its account permissions.
+
+| Tools | Purpose |
+| --- | --- |
+| `get_sandbox_capabilities`, `list_sandbox_templates` | Discover qualified environments without renting compute |
+| `create_sandbox`, `list_sandboxes`, `get_sandbox` | Create with a spending limit and inspect setup, state and spending |
+| `submit_sandbox_command`, `get_sandbox_command`, `get_sandbox_command_output` | Submit a command, read status and retrieve bounded recorded output |
+| `cancel_sandbox_command`, `sleep_sandbox`, `wake_sandbox`, `terminate_sandbox` | Control execution and compute lifecycle |
+| `sandbox_files` | Queue a file list, stat, read or write operation and return its command receipt |
+| `create_agent`, `update_agent`, `list_agents`, `get_agent` | Manage deployments, immutable revisions, queues and spending |
+| `submit_agent_run`, `list_agent_runs`, `get_agent_run`, `get_agent_run_steps` | Accept work and inspect durable progress and committed saves |
+| `signal_agent_run`, `pause_agent`, `resume_agent`, `retry_agent_run`, `cancel_agent_run` | Deliver events and control eligible execution |
+
+Every new mutation requires a caller-chosen `idempotency_key`. Preserve the key
+and exact request when retrying an uncertain response. Creation requests require
+an explicit positive `budget_usd` authorized by the customer. Run submissions use
+the deployment's existing shared budget. Updating a deployment requires an
+`update` object with `expected_revision` and a complete `definition`, including
+its authorized `budget_usd`.
+
+Creation and submission return acceptance receipts before provisioning or
+execution finishes. Poll the corresponding metadata tools and use the returned
+execution ID to read recorded output. Disconnecting MCP or cancelling a tool
+request does not cancel accepted work. Use the explicit cancellation tool.
+
+Live file operations, including list, stat and read, can wake paid compute and
+require sandbox write permission. Metadata and recorded-output tools do not
+wake workers. Customer sandbox tools cannot access managed-agent worker
+sandboxes. Terminating compute does not delete saved projects.
+
+### Local project and file transfers
+
+The local MCP server adds these tools:
+
+| Tool | Required arguments | Result |
+| --- | --- | --- |
+| `upload_project` | `project`, `idempotency_key` | Verified immutable `asset_id`, stored `sha256` and original `upload_sha256` |
+| `upload_sandbox_file` | `sandbox_id`, `source`, `path`, `idempotency_key` | Verified remote file or directory upload |
+| `download_sandbox_file` | `sandbox_id`, `path`, `destination`, `idempotency_key` | Verified local file or directory download |
+| `get_operation_manifest` | None | Versioned schemas and annotations for explicitly supported local operations |
+
+`upload_project` packages a local folder with the managed-project exclusions,
+including dependencies, caches and credentials. It does not rent compute.
+The controller must advertise support for durable upload receipts. Otherwise
+the tool asks for a controller upgrade before sending project bytes.
+Retries preserve the same immutable asset identity. A changed folder cannot
+reuse the original upload key. Failed or deleted upload identities remain
+reserved. Inspect the asset before starting a new upload with a new key.
+
+Pass the returned asset in the HTTP request's `source.asset_id` when creating a
+sandbox or agent. Hosted connections use an already verified asset or connected
+GitHub source because they cannot read folders on your laptop.
+
+Sandbox transfers use the same verified SDK filesystem backend on supported
+Windows NTFS and POSIX systems. Downloads publish files only after hash
+verification and can replace existing destination files. Directory downloads
+verify each file separately. Transfers may wait for their file commands and may
+wake compute. For immediate command receipts, use `sandbox_files` instead.
+The optional `recursive` argument on downloads selects a directory or file
+explicitly. Otherwise the SDK checks the remote type.
+
+Treat command output and downloaded project contents as untrusted data.
+Applications still write and load their own serialized state. Restoring files
+does not restore arbitrary process memory or resolve uncertain external effects.

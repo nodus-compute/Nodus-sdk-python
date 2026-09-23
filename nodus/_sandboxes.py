@@ -362,12 +362,15 @@ class _SandboxState:
         self.replayed = False
         self.failure = None
         self.network_usage = None
+        self.startup = None
         self.warnings: list[str] = []
 
     def _absorb(self, value: dict[str, Any] | None) -> None:
         body = _obj(value)
         self.id = _text(body.get("id")) or self.id
         self.warnings = [x for x in body.get("warnings", []) if isinstance(x, str)]
+        startup = body.get("startup")
+        self.startup = dict(startup) if isinstance(startup, dict) else None
         usage = body.get("network_usage")
         self.network_usage = dict(usage) if isinstance(usage, dict) else None
         failure = body.get("failure")

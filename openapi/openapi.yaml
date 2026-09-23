@@ -547,6 +547,10 @@
           },
           "workspace_source_storage": {
             "$ref": "#/components/schemas/WorkspaceSourceStorage"
+          },
+          "upload_idempotency": {
+            "type": "boolean",
+            "description": "True when uploads support persistent request keys bound to exact content hashes. Clients requiring durable upload receipts must check this capability before sending bytes."
           }
         },
         "required": [
@@ -1572,6 +1576,9 @@
             "type": "string",
             "format": "date-time",
             "description": "Last verified nonempty saved project. Absence does not imply saved application progress."
+          },
+          "startup": {
+            "$ref": "#/components/schemas/SandboxStartup"
           }
         }
       },
@@ -8430,6 +8437,84 @@
           },
           {
             "$ref": "#/components/schemas/OperationRunDraftUpdateArguments"
+          },
+          {
+            "$ref": "#/components/schemas/OperationSandboxesCapabilitiesArguments"
+          },
+          {
+            "$ref": "#/components/schemas/OperationSandboxesTemplatesArguments"
+          },
+          {
+            "$ref": "#/components/schemas/OperationSandboxesCreateArguments"
+          },
+          {
+            "$ref": "#/components/schemas/OperationSandboxesListArguments"
+          },
+          {
+            "$ref": "#/components/schemas/OperationSandboxesGetArguments"
+          },
+          {
+            "$ref": "#/components/schemas/OperationSandboxesExecArguments"
+          },
+          {
+            "$ref": "#/components/schemas/OperationSandboxesExecGetArguments"
+          },
+          {
+            "$ref": "#/components/schemas/OperationSandboxesExecOutputArguments"
+          },
+          {
+            "$ref": "#/components/schemas/OperationSandboxesExecCancelArguments"
+          },
+          {
+            "$ref": "#/components/schemas/OperationSandboxesFilesArguments"
+          },
+          {
+            "$ref": "#/components/schemas/OperationSandboxesSleepArguments"
+          },
+          {
+            "$ref": "#/components/schemas/OperationSandboxesWakeArguments"
+          },
+          {
+            "$ref": "#/components/schemas/OperationSandboxesTerminateArguments"
+          },
+          {
+            "$ref": "#/components/schemas/OperationAgentsCreateArguments"
+          },
+          {
+            "$ref": "#/components/schemas/OperationAgentsUpdateArguments"
+          },
+          {
+            "$ref": "#/components/schemas/OperationAgentsListArguments"
+          },
+          {
+            "$ref": "#/components/schemas/OperationAgentsGetArguments"
+          },
+          {
+            "$ref": "#/components/schemas/OperationAgentsSubmitArguments"
+          },
+          {
+            "$ref": "#/components/schemas/OperationAgentsRunsArguments"
+          },
+          {
+            "$ref": "#/components/schemas/OperationAgentsRunGetArguments"
+          },
+          {
+            "$ref": "#/components/schemas/OperationAgentsRunStepsArguments"
+          },
+          {
+            "$ref": "#/components/schemas/OperationAgentsSignalArguments"
+          },
+          {
+            "$ref": "#/components/schemas/OperationAgentsPauseArguments"
+          },
+          {
+            "$ref": "#/components/schemas/OperationAgentsResumeArguments"
+          },
+          {
+            "$ref": "#/components/schemas/OperationAgentsRunRetryArguments"
+          },
+          {
+            "$ref": "#/components/schemas/OperationAgentsRunCancelArguments"
           }
         ]
       },
@@ -8836,6 +8921,16 @@
               "unresolved": {
                 "type": "integer",
                 "minimum": 0
+              },
+              "ready": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Unused current-revision workers with successful setup, available to compatible independent work."
+              },
+              "waiting": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Workers retained by waiting logical runs."
               }
             },
             "required": []
@@ -8846,6 +8941,11 @@
           },
           "url": {
             "type": "string"
+          },
+          "queued": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Accepted queued or recovering runs."
           }
         },
         "required": [
@@ -8946,6 +9046,9 @@
           },
           "segment": {
             "type": "integer"
+          },
+          "startup": {
+            "$ref": "#/components/schemas/SandboxStartup"
           }
         },
         "required": [
@@ -9080,6 +9183,1565 @@
           "definition",
           "created_at"
         ]
+      },
+      "OperationSandboxesCapabilitiesArguments": {
+        "additionalProperties": false,
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "OperationSandboxesTemplatesArguments": {
+        "additionalProperties": false,
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "OperationSandboxesCreateArguments": {
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[!-~]{1,200}$",
+            "type": "string"
+          },
+          "sandbox": {
+            "additionalProperties": false,
+            "description": "Customer sandbox create request. Use verified assets or a connected GitHub source and secret references.",
+            "properties": {
+              "bootstrap": {
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "dotfiles": {
+                        "type": "string"
+                      },
+                      "ref": {
+                        "type": "string"
+                      },
+                      "repo": {
+                        "type": "string"
+                      },
+                      "setup": {
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "budget_usd": {
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              "connections": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "continuity": {
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "interval_s": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "mode": {
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "from_snapshot": {
+                "type": "string"
+              },
+              "image": {
+                "type": "string"
+              },
+              "lifecycle": {
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "idle_timeout_s": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "max_lifetime_s": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "on_idle": {
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "network_permissions": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "outcome": {
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "complete_by": {
+                        "type": "string"
+                      },
+                      "max_cost_usd": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "policy": {
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "data_regions": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": [
+                          "array",
+                          "null"
+                        ]
+                      },
+                      "egress_allow": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": [
+                          "array",
+                          "null"
+                        ]
+                      },
+                      "network": {
+                        "type": "string"
+                      },
+                      "secret_refs": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": [
+                          "array",
+                          "null"
+                        ]
+                      }
+                    },
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "profile": {
+                "type": "string"
+              },
+              "requirements": {
+                "additionalProperties": false,
+                "properties": {
+                  "compute_class": {
+                    "type": "string"
+                  },
+                  "dataset_bytes": {
+                    "type": "integer"
+                  },
+                  "disk_gb": {
+                    "type": "number"
+                  },
+                  "expected_runtime_hours": {
+                    "type": "number"
+                  },
+                  "gpu": {
+                    "type": "string"
+                  },
+                  "gpu_count": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "gpu_interconnect": {
+                    "type": "string"
+                  },
+                  "model": {
+                    "type": "string"
+                  },
+                  "notes": {
+                    "type": "string"
+                  },
+                  "optimization": {
+                    "type": "string"
+                  },
+                  "peak_memory_gb": {
+                    "type": "number"
+                  },
+                  "vcpus": {
+                    "type": "number"
+                  }
+                },
+                "type": "object"
+              },
+              "reservation": {
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "cron": {
+                        "type": "string"
+                      },
+                      "max_concurrent": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "max_idle_s": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "min_ready": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "release": {
+                        "type": "string"
+                      },
+                      "wake_slo_ms": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "secrets": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "service": {
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "command": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          }
+                        ]
+                      },
+                      "health_path": {
+                        "type": "string"
+                      },
+                      "port": {
+                        "type": "integer"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "setup": {
+                "type": "string"
+              },
+              "source": {
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "asset_id": {
+                        "type": "string"
+                      },
+                      "cache": {
+                        "type": "boolean"
+                      },
+                      "image": {
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "stuck_after_s": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "template": {
+                "type": "string"
+              },
+              "wake": {
+                "type": "string"
+              },
+              "workspace": {
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "mount": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "budget_usd"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "sandbox",
+          "idempotency_key"
+        ],
+        "type": "object"
+      },
+      "OperationSandboxesListArguments": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "maxLength": 256,
+            "type": "string"
+          },
+          "limit": {
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "name": {
+            "maxLength": 256,
+            "type": "string"
+          },
+          "status": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "OperationSandboxesGetArguments": {
+        "additionalProperties": false,
+        "properties": {
+          "sandbox_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sandbox_id"
+        ],
+        "type": "object"
+      },
+      "OperationSandboxesExecArguments": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "additionalProperties": false,
+            "description": "Customer sandbox exec request, including command and optional cwd, env and timeout.",
+            "properties": {
+              "cols": {
+                "type": "integer"
+              },
+              "command": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                ]
+              },
+              "cwd": {
+                "type": "string"
+              },
+              "env": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "rows": {
+                "type": "integer"
+              },
+              "stdin": {
+                "type": "boolean"
+              },
+              "timeout_s": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "tty": {
+                "type": "boolean"
+              }
+            },
+            "type": "object"
+          },
+          "idempotency_key": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[!-~]{1,200}$",
+            "type": "string"
+          },
+          "sandbox_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sandbox_id",
+          "command",
+          "idempotency_key"
+        ],
+        "type": "object"
+      },
+      "OperationSandboxesExecGetArguments": {
+        "additionalProperties": false,
+        "properties": {
+          "exec_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          },
+          "sandbox_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sandbox_id",
+          "exec_id"
+        ],
+        "type": "object"
+      },
+      "OperationSandboxesExecOutputArguments": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "exec_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          },
+          "limit": {
+            "maximum": 16,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "sandbox_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sandbox_id",
+          "exec_id"
+        ],
+        "type": "object"
+      },
+      "OperationSandboxesExecCancelArguments": {
+        "additionalProperties": false,
+        "properties": {
+          "exec_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[!-~]{1,200}$",
+            "type": "string"
+          },
+          "sandbox_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sandbox_id",
+          "exec_id",
+          "idempotency_key"
+        ],
+        "type": "object"
+      },
+      "OperationSandboxesFilesArguments": {
+        "additionalProperties": false,
+        "properties": {
+          "file": {
+            "additionalProperties": false,
+            "description": "File helper request with operation, relative path and the existing bounded chunk fields.",
+            "properties": {
+              "create_parents": {
+                "type": "boolean"
+              },
+              "data": {
+                "type": "string"
+              },
+              "expected_sha256": {
+                "type": "string"
+              },
+              "limit": {
+                "type": "integer"
+              },
+              "offset": {
+                "type": "integer"
+              },
+              "operation": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "idempotency_key": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[!-~]{1,200}$",
+            "type": "string"
+          },
+          "sandbox_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sandbox_id",
+          "file",
+          "idempotency_key"
+        ],
+        "type": "object"
+      },
+      "OperationSandboxesSleepArguments": {
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[!-~]{1,200}$",
+            "type": "string"
+          },
+          "sandbox_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sandbox_id",
+          "idempotency_key"
+        ],
+        "type": "object"
+      },
+      "OperationSandboxesWakeArguments": {
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[!-~]{1,200}$",
+            "type": "string"
+          },
+          "sandbox_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sandbox_id",
+          "idempotency_key"
+        ],
+        "type": "object"
+      },
+      "OperationSandboxesTerminateArguments": {
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[!-~]{1,200}$",
+            "type": "string"
+          },
+          "sandbox_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sandbox_id",
+          "idempotency_key"
+        ],
+        "type": "object"
+      },
+      "OperationAgentsCreateArguments": {
+        "additionalProperties": false,
+        "properties": {
+          "agent": {
+            "additionalProperties": false,
+            "description": "Customer managed-agent definition with name, entrypoint, verified source and worker settings.",
+            "properties": {
+              "bootstrap": {
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "dotfiles": {
+                        "type": "string"
+                      },
+                      "ref": {
+                        "type": "string"
+                      },
+                      "repo": {
+                        "type": "string"
+                      },
+                      "setup": {
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "budget_usd": {
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              "entrypoint": {
+                "type": "string"
+              },
+              "max_workers": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "min_workers": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "network_permissions": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "policy": {
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "data_regions": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": [
+                          "array",
+                          "null"
+                        ]
+                      },
+                      "egress_allow": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": [
+                          "array",
+                          "null"
+                        ]
+                      },
+                      "network": {
+                        "type": "string"
+                      },
+                      "secret_refs": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": [
+                          "array",
+                          "null"
+                        ]
+                      }
+                    },
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "requirements": {
+                "additionalProperties": false,
+                "properties": {
+                  "compute_class": {
+                    "type": "string"
+                  },
+                  "dataset_bytes": {
+                    "type": "integer"
+                  },
+                  "disk_gb": {
+                    "type": "number"
+                  },
+                  "expected_runtime_hours": {
+                    "type": "number"
+                  },
+                  "gpu": {
+                    "type": "string"
+                  },
+                  "gpu_count": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "gpu_interconnect": {
+                    "type": "string"
+                  },
+                  "model": {
+                    "type": "string"
+                  },
+                  "notes": {
+                    "type": "string"
+                  },
+                  "optimization": {
+                    "type": "string"
+                  },
+                  "peak_memory_gb": {
+                    "type": "number"
+                  },
+                  "vcpus": {
+                    "type": "number"
+                  }
+                },
+                "type": "object"
+              },
+              "secrets": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "setup": {
+                "type": "string"
+              },
+              "source": {
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "asset_id": {
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "template": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "budget_usd"
+            ],
+            "type": "object"
+          },
+          "idempotency_key": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[!-~]{1,200}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent",
+          "idempotency_key"
+        ],
+        "type": "object"
+      },
+      "OperationAgentsUpdateArguments": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[!-~]{1,200}$",
+            "type": "string"
+          },
+          "update": {
+            "additionalProperties": false,
+            "description": "Customer update request containing expected_revision and definition.",
+            "properties": {
+              "definition": {
+                "additionalProperties": false,
+                "description": "The complete new deployment definition.",
+                "properties": {
+                  "bootstrap": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "dotfiles": {
+                            "type": "string"
+                          },
+                          "ref": {
+                            "type": "string"
+                          },
+                          "repo": {
+                            "type": "string"
+                          },
+                          "setup": {
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "budget_usd": {
+                    "exclusiveMinimum": 0,
+                    "type": "number"
+                  },
+                  "entrypoint": {
+                    "type": "string"
+                  },
+                  "max_workers": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "min_workers": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "network_permissions": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
+                  "policy": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "data_regions": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": [
+                              "array",
+                              "null"
+                            ]
+                          },
+                          "egress_allow": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": [
+                              "array",
+                              "null"
+                            ]
+                          },
+                          "network": {
+                            "type": "string"
+                          },
+                          "secret_refs": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": [
+                              "array",
+                              "null"
+                            ]
+                          }
+                        },
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "requirements": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "compute_class": {
+                        "type": "string"
+                      },
+                      "dataset_bytes": {
+                        "type": "integer"
+                      },
+                      "disk_gb": {
+                        "type": "number"
+                      },
+                      "expected_runtime_hours": {
+                        "type": "number"
+                      },
+                      "gpu": {
+                        "type": "string"
+                      },
+                      "gpu_count": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "gpu_interconnect": {
+                        "type": "string"
+                      },
+                      "model": {
+                        "type": "string"
+                      },
+                      "notes": {
+                        "type": "string"
+                      },
+                      "optimization": {
+                        "type": "string"
+                      },
+                      "peak_memory_gb": {
+                        "type": "number"
+                      },
+                      "vcpus": {
+                        "type": "number"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "secrets": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
+                  "setup": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "asset_id": {
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "template": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "budget_usd"
+                ],
+                "type": "object"
+              },
+              "expected_revision": {
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "expected_revision",
+              "definition"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "agent_id",
+          "update",
+          "idempotency_key"
+        ],
+        "type": "object"
+      },
+      "OperationAgentsListArguments": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "maxLength": 256,
+            "type": "string"
+          },
+          "limit": {
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "OperationAgentsGetArguments": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent_id"
+        ],
+        "type": "object"
+      },
+      "OperationAgentsSubmitArguments": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[!-~]{1,200}$",
+            "type": "string"
+          },
+          "run": {
+            "additionalProperties": false,
+            "description": "Run submission with input, optional session and deadline.",
+            "properties": {
+              "deadline": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "input": {},
+              "session": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "agent_id",
+          "run",
+          "idempotency_key"
+        ],
+        "type": "object"
+      },
+      "OperationAgentsRunsArguments": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "maxLength": 256,
+            "type": "string"
+          },
+          "agent_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          },
+          "limit": {
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "agent_id"
+        ],
+        "type": "object"
+      },
+      "OperationAgentsRunGetArguments": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          },
+          "run_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent_id",
+          "run_id"
+        ],
+        "type": "object"
+      },
+      "OperationAgentsRunStepsArguments": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "maxLength": 256,
+            "type": "string"
+          },
+          "agent_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          },
+          "limit": {
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "run_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent_id",
+          "run_id"
+        ],
+        "type": "object"
+      },
+      "OperationAgentsSignalArguments": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[!-~]{1,200}$",
+            "type": "string"
+          },
+          "run_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          },
+          "signal": {
+            "additionalProperties": false,
+            "description": "Signal request with name and optional input.",
+            "properties": {
+              "input": {},
+              "name": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "agent_id",
+          "run_id",
+          "signal",
+          "idempotency_key"
+        ],
+        "type": "object"
+      },
+      "OperationAgentsPauseArguments": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[!-~]{1,200}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent_id",
+          "idempotency_key"
+        ],
+        "type": "object"
+      },
+      "OperationAgentsResumeArguments": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[!-~]{1,200}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent_id",
+          "idempotency_key"
+        ],
+        "type": "object"
+      },
+      "OperationAgentsRunRetryArguments": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[!-~]{1,200}$",
+            "type": "string"
+          },
+          "run_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent_id",
+          "run_id",
+          "idempotency_key"
+        ],
+        "type": "object"
+      },
+      "OperationAgentsRunCancelArguments": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[!-~]{1,200}$",
+            "type": "string"
+          },
+          "run_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent_id",
+          "run_id",
+          "idempotency_key"
+        ],
+        "type": "object"
+      },
+      "SandboxStartup": {
+        "type": "object",
+        "x-go-source": "internal/sandbox/startup.go",
+        "x-go-type": "Startup",
+        "properties": {
+          "stage": {
+            "type": "string"
+          },
+          "acquisition_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "image_preparation_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "project_download_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "project_materialization_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "checkpoint_download_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "checkpoint_restore_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "setup_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "driver_start_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "image_cache_reads": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "image_cache_hits": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "project_prefetched": {
+            "type": "boolean"
+          },
+          "checkpoint_prefetched": {
+            "type": "boolean"
+          },
+          "warm_claimed": {
+            "type": "boolean"
+          },
+          "warm_miss_reason": {
+            "type": "string"
+          }
+        },
+        "description": "Measured startup stages. Missing durations are unobserved. Overlapping durations must not be added into elapsed latency."
       }
     },
     "securitySchemes": {
@@ -9251,7 +10913,7 @@
         "tags": [
           "Assets"
         ],
-        "description": "Send raw file bytes, not multipart form data. The server packages a file or extracts a supported archive. Read max_import_bytes from GET /v1/assets first. Imports and uploads have no idempotency contract. After a timeout, inspect the asset list before repeating the request.",
+        "description": "Send raw file bytes, not multipart form data. The server packages a file or extracts a supported archive. Read max_import_bytes and upload_idempotency from GET /v1/assets first. When upload_idempotency is true, send a stable Idempotency-Key and X-Nodus-SHA256 for verified replay of the same bytes and name. An in-progress, failed or deleted keyed upload returns an actionable conflict without creating a replacement. Unkeyed uploads retain their existing behavior. After an uncertain unkeyed response, inspect the asset list before repeating the request.",
         "parameters": [
           {
             "name": "name",
@@ -9262,6 +10924,28 @@
               "default": "dataset"
             },
             "description": "Filename, including its archive extension when uploading an archive."
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "pattern": "^[!-~]+$"
+            },
+            "description": "Optional stable upload identity. Requires X-Nodus-SHA256. Replaying identical bytes and name returns the same ready asset."
+          },
+          {
+            "name": "X-Nodus-SHA256",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "description": "SHA-256 of the exact request bytes. Required with Idempotency-Key. Different bytes or name cannot reuse an upload key."
           }
         ],
         "requestBody": {
@@ -15297,11 +16981,11 @@
     "/v1/operations/{version}/{operation}": {
       "post": {
         "operationId": "invokeOperation",
-        "summary": "Invoke a versioned workload or draft operation",
+        "summary": "Invoke a versioned workload, sandbox, managed-agent or draft operation",
         "tags": [
           "Operations"
         ],
-        "description": "Workload operations use the same handlers as the direct routes. The authenticated credential determines team and member access. Submit requires an explicit positive outcome.max_cost_usd and a stable idempotency_key in the JSON arguments. Retry identical arguments after an uncertain response. Validation starts no compute and does not guarantee admission. Logs return text. Workload operations preserve their direct-route JSON response shape. Run drafts require a member-attributed credential and are isolated by team and member. Updates require expected_revision and a partial patch. Omitted fields remain unchanged and null removes a field. An immediate identical retry returns its saved revision. A conflicting edit returns HTTP 409 with run_draft_conflict. Draft operations do not submit workloads or authorize spending. Unsupported operations or versions return 404.",
+        "description": "Workload operations use the same handlers as the direct routes. The authenticated credential determines team and member access. Submit requires an explicit positive outcome.max_cost_usd and a stable idempotency_key in the JSON arguments. Retry identical arguments after an uncertain response. Validation starts no compute and does not guarantee admission. Logs return text. Workload operations preserve their direct-route JSON response shape. Run drafts require a member-attributed credential and are isolated by team and member. Updates require expected_revision and a partial patch. Omitted fields remain unchanged and null removes a field. An immediate identical retry returns its saved revision. A conflicting edit returns HTTP 409 with run_draft_conflict. Draft operations do not submit workloads or authorize spending. Unsupported operations or versions return 404. Sandbox and managed-agent operations use the same owning handlers as their direct routes and return their existing receipts. Creation requires an explicit positive budget_usd. All mutations in these families require caller-stable idempotency keys. Live file reads run a helper and can wake paid compute. Observation tools never wait for execution completion.",
         "parameters": [
           {
             "name": "version",
@@ -15331,7 +17015,33 @@
                 "run_draft.get",
                 "workloads.submit",
                 "workloads.cancel",
-                "run_draft.update"
+                "run_draft.update",
+                "sandboxes.capabilities",
+                "sandboxes.templates",
+                "sandboxes.create",
+                "sandboxes.list",
+                "sandboxes.get",
+                "sandboxes.exec",
+                "sandboxes.exec_get",
+                "sandboxes.exec_output",
+                "sandboxes.exec_cancel",
+                "sandboxes.files",
+                "sandboxes.sleep",
+                "sandboxes.wake",
+                "sandboxes.terminate",
+                "agents.create",
+                "agents.update",
+                "agents.list",
+                "agents.get",
+                "agents.submit",
+                "agents.runs",
+                "agents.run_get",
+                "agents.run_steps",
+                "agents.signal",
+                "agents.pause",
+                "agents.resume",
+                "agents.run_retry",
+                "agents.run_cancel"
               ]
             },
             "description": "Canonical operation identifier from the catalog."
@@ -15426,6 +17136,148 @@
                     },
                     {
                       "$ref": "#/components/schemas/RunDraft"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "available",
+                        "default_template",
+                        "templates"
+                      ],
+                      "properties": {
+                        "available": {
+                          "type": "boolean"
+                        },
+                        "default_template": {
+                          "type": "string"
+                        },
+                        "templates": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        },
+                        "reason": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "sandboxes",
+                        "next_cursor"
+                      ],
+                      "properties": {
+                        "sandboxes": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Sandbox"
+                          }
+                        },
+                        "next_cursor": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/Sandbox"
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "id"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/SandboxExec"
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "id"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/SandboxOutputPage"
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "agents": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/ManagedAgent"
+                          }
+                        },
+                        "next_after": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "agents",
+                        "next_after"
+                      ]
+                    },
+                    {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/ManagedAgent"
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "id"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "runs": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/ManagedAgentRun"
+                          }
+                        },
+                        "next_after": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "runs",
+                        "next_after"
+                      ]
+                    },
+                    {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/ManagedAgentRun"
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "id"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/AgentStepPage"
                     }
                   ]
                 }
@@ -15456,6 +17308,58 @@
                       },
                       "required": [
                         "status"
+                      ]
+                    },
+                    {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/Sandbox"
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "id"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/SandboxExec"
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "id"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/ManagedAgent"
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "id"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/ManagedAgentRun"
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "id"
+                          ]
+                        }
                       ]
                     }
                   ]
@@ -15490,7 +17394,29 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "type": "object",
+                  "required": [
+                    "available",
+                    "default_template",
+                    "templates"
+                  ],
+                  "properties": {
+                    "available": {
+                      "type": "boolean"
+                    },
+                    "default_template": {
+                      "type": "string"
+                    },
+                    "templates": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  }
                 }
               }
             }
@@ -15523,7 +17449,29 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "type": "object",
+                  "required": [
+                    "available",
+                    "default_template",
+                    "templates"
+                  ],
+                  "properties": {
+                    "available": {
+                      "type": "boolean"
+                    },
+                    "default_template": {
+                      "type": "string"
+                    },
+                    "templates": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  }
                 }
               }
             }
