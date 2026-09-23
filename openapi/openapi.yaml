@@ -378,7 +378,8 @@
             "type": "string"
           },
           "kind": {
-            "type": "string"
+            "type": "string",
+            "description": "Includes workspace_source for a generated workspace project revision. These copies use their separate included source pool."
           },
           "name": {
             "type": "string"
@@ -423,6 +424,9 @@
           "error": {
             "type": "string",
             "description": "Value-free terminal query export error. Failed assets remain observable after cleanup, with zero stored bytes once their reservation is released."
+          },
+          "workspace_source": {
+            "$ref": "#/components/schemas/WorkspaceSourceAlias"
           }
         },
         "x-go-source": "internal/store/assets.go",
@@ -525,11 +529,15 @@
             "type": "integer"
           },
           "stored_bytes": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Ordinary asset bytes, excluding generated workspace source copies."
           },
           "billing_enabled": {
             "type": "boolean",
             "const": false
+          },
+          "workspace_source_storage": {
+            "$ref": "#/components/schemas/WorkspaceSourceStorage"
           }
         },
         "required": [
@@ -1038,6 +1046,11 @@
             "default": 0,
             "description": "Settled subscription charges in an account meter. Zero in workload meters."
           },
+          "storage_settled_usd": {
+            "type": "number",
+            "default": 0,
+            "description": "Settled saved-file charges earned in this UTC billing month in an account meter. Already included in settled_usd. Zero in workload and workspace compute-session meters."
+          },
           "compute_accruing_usd": {
             "type": "number",
             "default": 0,
@@ -1466,6 +1479,11 @@
           "created_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "First observed tool readiness for the current direct workspace compute session. Absent while starting and on legacy sessions without this timestamp. This is separate from creation time and changes with a replacement session."
           },
           "updated_at": {
             "type": "string",
@@ -3205,6 +3223,834 @@
         "x-go-source": "internal/models/models.go",
         "x-go-type": "WorkloadSource"
       },
+      "ResearchWorkspaceConfiguration": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "environment",
+          "gpu",
+          "gpu_count",
+          "gpu_memory_gb",
+          "max_hours",
+          "size_gb"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_.-]+$",
+            "description": "Unique workspace name within the authenticated account. The names . and .. are not accepted."
+          },
+          "environment": {
+            "type": "string",
+            "enum": ["pytorch-cuda"],
+            "description": "Operator-qualified PyTorch and CUDA image with the selected development tool. Customers cannot override its image digest."
+          },
+          "editor": {
+            "type": "string",
+            "enum": ["", "vscode", "jupyter", "ssh"],
+            "description": "Development-tool preference retained for compatibility with existing configurations. Direct sessions offer browser VS Code and SSH on the same compute. Use the response connections flags to determine current access. On legacy sessions, omission or an empty value preserves both browser tools, and ssh requires ssh_authorized_key."
+          },
+          "repository": {
+            "type": "string",
+            "description": "Optional connected GitHub repository as owner/name, including authorized private repositories. URLs and credentials are not accepted. Repository access is checked when admitting a new session."
+          },
+          "ref": {
+            "type": "string",
+            "description": "Optional repository branch or ref. Requires repository. Omit to use its default branch."
+          },
+          "gpu": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "Required GPU model, not a supplier SKU. Launch requires an exact qualified configuration and eligible capacity."
+          },
+          "gpu_count": {
+            "type": "integer",
+            "enum": [1, 2, 4, 8],
+            "description": "Exact GPU count on one machine. These accepted request values do not establish hardware qualification or current availability."
+          },
+          "gpu_memory_gb": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1024,
+            "description": "Minimum required memory per GPU in GB, not the sum across devices."
+          },
+          "budget_usd": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Optional spending limit for each compute session in USD. When capabilities.account_funded_sessions is true, omission or zero uses account funding without a per-session cap. Older deployments require a positive limit. Existing positive limits remain effective. Positive amounts below one microdollar and amounts outside signed 64-bit microdollar accounting are rejected. Fractional microdollars are truncated. Account credit, account spending controls and maximum duration still apply. Retained project storage is reported separately."
+          },
+          "max_hours": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 168,
+            "description": "Maximum session lifetime in hours. Closing a browser does not stop compute."
+          },
+          "size_gb": {
+            "type": "number",
+            "minimum": 0.00000095367431640625,
+            "maximum": 10,
+            "description": "Project capacity within capabilities.storage_limit_bytes. With storage_policy_version included-10gb-v1 or r2-standard-10gb-account-v1, send exactly 10 for the 10,000,000,000-byte per-workspace capacity. The account policy shares its free allowance across workspaces. Other deployments use GiB and their displayed capacity limit."
+          },
+          "ssh_authorized_key": {
+            "type": "string",
+            "maxLength": 8192,
+            "description": "Optional plain SSH public keys, one per line, up to 20. Private keys, certificates and authorized_keys options are rejected. Account SSH keys can also provide access to direct sessions."
+          }
+        },
+        "x-go-source": "internal/researchworkspace/config.go",
+        "x-go-type": "Config"
+      },
+      "ResearchWorkspaceCapabilities": {
+        "type": "object",
+        "required": [
+          "available",
+          "account_funded_sessions",
+          "storage_limit_bytes",
+          "environments",
+          "gpu_counts",
+          "editors",
+          "browser_available",
+          "workload_submission",
+          "workload_source_limit_bytes"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "description": "Whether workspace configuration and browser access are enabled on this deployment. Not a guarantee of qualified hardware, live capacity or successful admission."
+          },
+          "account_funded_sessions": {
+            "type": "boolean",
+            "description": "Whether new sessions may omit budget_usd or set it to zero to use account funding without a per-session spending cap. Account credit, spending controls and maximum duration still apply. Older servers may omit this capability, which clients must treat as false."
+          },
+          "storage_limit_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 10000000000,
+            "description": "Configured project capacity limit in bytes."
+          },
+          "storage_policy_version": {
+            "type": "string",
+            "description": "The value r2-standard-10gb-account-v1 shares a free decimal 10 GB allowance across the account, with storage-only overage at the server-reported rate. The older included-10gb-v1 policy retains its per-workspace allowance. Both retain a 10 GB per-workspace operational limit. Empty or absent retains existing storage behavior."
+          },
+          "environments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "name",
+                "description"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "enum": [
+                    "pytorch-cuda"
+                  ]
+                },
+                "name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "gpu_counts": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "enum": [
+                1,
+                2,
+                4,
+                8
+              ]
+            },
+            "description": "Accepted single-machine request counts. This is not a per-model qualification or availability inventory."
+          },
+          "qualified_gpu_configurations": {
+            "type": "array",
+            "description": "Canonical GPU model and count pairs qualified for the deployment's exact active image and runtime artifacts. An empty array means no configuration is currently qualified. This is not live capacity or a price quote. Older servers may omit this field. Existing saved configurations remain readable even when absent from this list.",
+            "items": {
+              "type": "object",
+              "required": ["gpu", "gpu_count"],
+              "properties": {
+                "gpu": {"type": "string", "description": "Qualified canonical GPU model."},
+                "gpu_count": {"type": "integer", "enum": [1, 2, 4, 8]}
+              },
+              "additionalProperties": false
+            }
+          },
+          "editors": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "vscode",
+                "jupyter",
+                "ssh"
+              ]
+            },
+            "description": "Supported development tool choices for a new workspace."
+          },
+          "browser_available": {
+            "type": "boolean",
+            "description": "Whether browser connection infrastructure is currently available. Individual connections still require current session and tool readiness."
+          },
+          "workload_submission": {
+            "type": "boolean",
+            "description": "Whether this deployment supports submitting an independent workload from a saved or running workspace."
+          },
+          "workload_source_limit_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Maximum saved-project payload bytes supported by workspace source preparation. The full-capacity path supports 10,000,000,000 bytes with separate bounded archive metadata. Ordinary asset import limits are unchanged."
+          }
+        }
+      },
+      "WorkspaceWorkloadRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["command"],
+        "properties": {
+          "command": {"type": "string", "minLength": 1, "maxLength": 8192, "description": "Command run from the captured project directory through the environment shell. Whitespace-only commands, NUL characters and commands longer than 8192 UTF-8 bytes are rejected."},
+          "budget_usd": {"type": "number", "minimum": 0, "description": "Optional independent workload spending limit in USD. Omission or zero uses account funding without a workload cap. Positive limits below one microdollar are rejected. Account spending controls still apply. This does not change any existing workspace session limit."},
+          "gpu": {"type": "string", "maxLength": 64, "description": "Optional GPU model override. Omit or send an empty string to inherit the workspace configuration."},
+          "gpu_count": {"type": "integer", "enum": [0, 1, 2, 4, 8], "description": "Exact GPUs on one machine. Omitted or zero inherits the workspace configuration."},
+          "gpu_memory_gb": {"type": "number", "minimum": 0, "maximum": 1024, "description": "Memory per GPU in GB. Omitted or zero inherits the workspace configuration."}
+        },
+        "x-go-source": "internal/api/workspace_workloads.go",
+        "x-go-type": "workspaceWorkloadRequest"
+      },
+      "WorkspaceArchiveSegment": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sha256", "offset", "bytes"],
+        "properties": {
+          "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "offset": {"type": "integer", "format": "int64", "minimum": 0, "multipleOf": 512},
+          "bytes": {"type": "integer", "format": "int64", "minimum": 512, "maximum": 67108864, "multipleOf": 512}
+        },
+        "description": "One contiguous segment of the canonical archive. Offsets begin at zero with no gaps or overlap, and lengths sum to archive_bytes.",
+        "x-go-source": "internal/researcharchive/manifest.go",
+        "x-go-type": "Segment"
+      },
+      "WorkspaceArchiveInventory": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sha256", "payload_bytes", "entries"],
+        "properties": {
+          "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$", "description": "Versioned inventory digest derived from ordered paths, file bytes and metadata. The server verifies it against the uploaded archive."},
+          "payload_bytes": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 10000000000},
+          "entries": {"type": "integer", "minimum": 1, "maximum": 100000}
+        },
+        "x-go-source": "internal/researcharchive/manifest.go",
+        "x-go-type": "inventoryWire"
+      },
+      "WorkspaceArchiveManifest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["version", "archive_sha256", "archive_bytes", "inventory", "segments"],
+        "properties": {
+          "version": {"type": "integer", "const": 3},
+          "archive_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "archive_bytes": {"type": "integer", "format": "int64", "minimum": 1024, "maximum": 10536870912, "multipleOf": 512},
+          "inventory": {"$ref": "#/components/schemas/WorkspaceArchiveInventory"},
+          "segments": {"type": "array", "minItems": 1, "maxItems": 100160, "items": {"$ref": "#/components/schemas/WorkspaceArchiveSegment"}}
+        },
+        "description": "Version 3 canonical workspace archive commitment, limited to 16 MiB of manifest JSON. Requires a qualified archive writer. Arbitrary tar, zip or compressed bytes are not accepted. The archive permits ordered regular files, directories and confined symbolic links, with at most 10 GB of payload and 512 MiB of archive metadata. Verification checks the complete archive and inventory before replacing saved files.",
+        "x-go-source": "internal/researcharchive/manifest.go",
+        "x-go-type": "manifestWire"
+      },
+      "WorkspaceTransferRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["idempotency_key", "manifest"],
+        "properties": {
+          "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 128, "description": "Caller-retained key without leading or trailing whitespace. Retain the same manifest and replacement revision when retrying."},
+          "manifest": {"$ref": "#/components/schemas/WorkspaceArchiveManifest"},
+          "replace_revision": {"type": "integer", "format": "int64", "minimum": 0, "description": "Observed storage_revision required to replace previously saved files. A changed revision conflicts instead of overwriting newer files."}
+        }
+      },
+      "WorkspacePricePreview": {
+        "type": "object",
+        "required": ["hourly_usd", "currency", "gpu_count", "observed_at", "expires_at", "estimate_only"],
+        "properties": {
+          "hourly_usd": {"type": "number", "exclusiveMinimum": 0, "description": "Estimated USD per hour for the entire machine. Do not multiply by gpu_count."},
+          "currency": {"type": "string", "const": "USD"},
+          "gpu_count": {"type": "integer", "enum": [1, 2, 4, 8]},
+          "observed_at": {"type": "string", "format": "date-time"},
+          "expires_at": {"type": "string", "format": "date-time", "description": "Refresh the estimate after this timestamp."},
+          "estimate_only": {"type": "boolean", "const": true}
+        },
+        "description": "Read-only current price estimate for an exact workspace configuration. Does not allocate compute, reserve capacity or lock a price. Admission refreshes price and availability within the customer's spending controls.",
+        "x-go-source": "internal/sandboxproducer/preview.go",
+        "x-go-type": "PricePreview"
+      },
+      "WorkspaceTransfer": {
+        "type": "object",
+        "required": ["id", "workspace_id", "state", "base_revision", "manifest_sha256", "manifest_bytes", "uploaded_segments"],
+        "properties": {
+          "id": {"type": "string", "format": "uuid"},
+          "workspace_id": {"type": "string"},
+          "failure_code": {"type": "string", "description": "Recorded verification failure when present. Inspect state before retrying or beginning a replacement transfer."},
+          "state": {"type": "string", "enum": ["uploading", "queued", "verifying", "committed", "abandoned"]},
+          "base_revision": {"type": "integer", "format": "int64", "minimum": 0},
+          "manifest_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "manifest_bytes": {"type": "integer", "format": "int64", "minimum": 1, "maximum": 16777216},
+          "uploaded_segments": {"type": "array", "items": {"type": "integer", "minimum": 0}, "description": "Zero-based indexes already verified for this transfer. Empty when no segment is present."}
+        },
+        "x-go-source": "internal/store/research_workspace_transfers.go",
+        "x-go-type": "ResearchTransfer"
+      },
+      "WorkspaceWorkload": {
+        "type": "object",
+        "required": ["id", "status", "created_at", "source_revision"],
+        "properties": {
+          "id": {"type": "string"},
+          "status": {"type": "string"},
+          "created_at": {"type": "string", "format": "date-time"},
+          "source_revision": {"type": "string", "description": "Digest identifying the immutable saved project revision used for this workload."}
+        },
+        "x-go-source": "internal/store/workspace_workloads.go",
+        "x-go-type": "WorkspaceWorkload"
+      },
+      "WorkspaceSourceStorage": {
+        "type": "object",
+        "required": [
+          "included_bytes",
+          "retained_bytes",
+          "reserved_bytes",
+          "available_bytes",
+          "billing_enabled"
+        ],
+        "properties": {
+          "included_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Included source retention limit. Currently 21,073,741,824 bytes, sufficient for two maximum workspace archives including bounded metadata."
+          },
+          "retained_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "reserved_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "available_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "billing_enabled": {
+            "type": "boolean",
+            "const": false
+          },
+          "cleanup_pending_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Bytes awaiting confirmed cleanup of uncertain source writes. Already included in reserved_bytes, not additional quota usage. A local observation timeout does not release them."
+          }
+        },
+        "description": "Included account storage for generated workload source copies. This pool is separate from billed saved-workspace storage and ordinary asset import limits. Identical captured revisions reuse a physical copy. Reserved bytes can remain until pending writes or deletion are settled."
+      },
+      "WorkspaceSourceAlias": {
+        "type": "object",
+        "required": [
+          "source_id",
+          "workspace_id",
+          "source_revision",
+          "exporter_version",
+          "state",
+          "removable",
+          "shared_alias_count"
+        ],
+        "properties": {
+          "source_id": {
+            "type": "string"
+          },
+          "workspace_id": {
+            "type": "string"
+          },
+          "source_revision": {
+            "type": "string"
+          },
+          "exporter_version": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "removable": {
+            "type": "boolean",
+            "description": "Whether this alias can currently be removed. Active workloads protect their source."
+          },
+          "shared_alias_count": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "References sharing this physical source copy. Deleting one alias need not release bytes."
+          }
+        }
+      },
+      "WorkspacePendingSubmission": {
+        "type": "object",
+        "required": [
+          "id",
+          "workspace_id",
+          "idempotency_key",
+          "request",
+          "state",
+          "created_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "workspace_id": {
+            "type": "string"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "request": {
+            "$ref": "#/components/schemas/WorkspaceWorkloadRequest"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "saving",
+              "exporting",
+              "cleanup_pending",
+              "ready",
+              "failed"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "deadline_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "description": "An authenticated recoverable submission. Resume only after an explicit customer action by sending this exact request and idempotency key to the same workspace. Reading this record does not admit a workload. Commands can contain sensitive values and must not be persisted in browser storage or analytics. cleanup_pending means the saved project is safe while a queued source waits for storage cleanup. Resume with the same request and key after cleanup. This state does not confirm workload admission."
+      },
+      "WorkspaceWorkloadList": {
+        "type": "object",
+        "required": [
+          "workloads"
+        ],
+        "properties": {
+          "workloads": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceWorkload"
+            }
+          },
+          "pending_submissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkspacePendingSubmission"
+            }
+          },
+          "source_storage": {
+            "$ref": "#/components/schemas/WorkspaceSourceStorage"
+          }
+        }
+      },
+      "ResearchWorkspaceMeter": {
+        "type": "object",
+        "description": "Lifetime charges for the current compute session, including platform fees and excluding retained workspace storage. Settled and unposted accrued amounts are consistent as of the same time. Values are for the whole machine and must not be multiplied by gpu_count.",
+        "required": ["settled_usd", "accruing_usd", "accruing_rate_usd_hour", "total_now_usd", "as_of", "compute_settled_usd", "platform_fee_settled_usd", "subscription_settled_usd", "compute_accruing_usd", "platform_fee_accruing_usd"],
+        "properties": {
+          "settled_usd": {"type": "number", "description": "Posted compute and platform charges across this session's entire lifetime, including prior billing months."},
+          "accruing_usd": {"type": "number", "description": "Unposted compute and platform charges through as_of."},
+          "accruing_rate_usd_hour": {"type": "number", "description": "Current whole-node hourly charge rate. Zero when no charge is growing."},
+          "total_now_usd": {"type": "number", "description": "settled_usd plus accruing_usd at as_of."},
+          "as_of": {"type": "string", "format": "date-time"},
+          "compute_settled_usd": {"type": "number"},
+          "platform_fee_settled_usd": {"type": "number"},
+          "subscription_settled_usd": {"type": "number", "description": "Zero for workspace compute sessions."},
+          "storage_settled_usd": {"type": "number", "default": 0, "description": "Zero for workspace compute sessions. Saved-file charges belong to the account meter."},
+          "compute_accruing_usd": {"type": "number"},
+          "platform_fee_accruing_usd": {"type": "number"}
+        },
+        "x-go-source": "internal/store/meter.go",
+        "x-go-type": "Meter"
+      },
+      "ResearchWorkspaceAccountStorage": {
+        "type": "object",
+        "required": [
+          "policy_version",
+          "included_bytes",
+          "retained_bytes",
+          "billable_bytes",
+          "rate_usd_gb_month",
+          "charged_usd",
+          "status",
+          "as_of"
+        ],
+        "properties": {
+          "policy_version": {
+            "type": "string",
+            "description": "Version of the account's saved-file storage policy."
+          },
+          "included_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Shared free allowance across eligible workspaces. The account policy includes 10,000,000,000 bytes."
+          },
+          "retained_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Combined verified logical saved-file payload, excluding metadata, requests and retained recovery copies."
+          },
+          "billable_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Saved payload above the account allowance."
+          },
+          "rate_usd_gb_month": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Server-reported USD rate per decimal GB-month. The account policy uses 0.015 and includes requests."
+          },
+          "charged_usd": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Lifetime posted account saved-file charges, separate from compute."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "inactive",
+              "included",
+              "funded",
+              "funding_required"
+            ]
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "description": "Account-wide saved-file usage and posted charges. Account-policy overage is prorated continuously by logical payload bytes and time over a fixed 30-day month. This uses the R2 Standard unit rate without reproducing its daily-peak invoice. Unfunded retention is not backcharged. File export and deletion remain available with stopped compute.",
+        "x-go-source": "internal/store/research_account_storage.go",
+        "x-go-type": "ResearchAccountStorageSummary"
+      },
+      "ResearchWorkspaceFileRevision": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "storage_revision"
+        ],
+        "properties": {
+          "storage_revision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Observed saved-file revision, required to guard the selected export or deletion."
+          }
+        }
+      },
+      "ResearchWorkspaceExportSegment": {
+        "type": "object",
+        "required": [
+          "index",
+          "sha256",
+          "offset",
+          "bytes",
+          "url",
+          "download_path"
+        ],
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 512,
+            "maximum": 67108864
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Short-lived signed HTTPS object URL. Do not forward Nodus authentication or cookies to this URL."
+          },
+          "download_path": {
+            "type": "string",
+            "description": "Authenticated API-relative path for downloading this segment without cross-origin browser requests."
+          }
+        },
+        "x-go-source": "internal/api/research_workspace_files.go",
+        "x-go-type": "ResearchWorkspaceExportSegment"
+      },
+      "ResearchWorkspaceFileExport": {
+        "type": "object",
+        "required": [
+          "id",
+          "workspace_id",
+          "storage_revision",
+          "format",
+          "expires_at",
+          "urls_expire_at",
+          "manifest",
+          "segments"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workspace_id": {
+            "type": "string"
+          },
+          "storage_revision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "format": {
+            "type": "string",
+            "const": "research-archive-v3"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Fixed expiry of the retained export revision, 24 hours after admission."
+          },
+          "urls_expire_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Earliest signed URL expiry on this page, at most 15 minutes. Read the page again for fresh URLs."
+          },
+          "manifest": {
+            "$ref": "#/components/schemas/WorkspaceArchiveManifest"
+          },
+          "segments": {
+            "type": "array",
+            "maxItems": 256,
+            "items": {
+              "$ref": "#/components/schemas/ResearchWorkspaceExportSegment"
+            }
+          },
+          "next_offset": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Read the next page at this offset. Omitted on the final page."
+          }
+        },
+        "x-go-source": "internal/api/research_workspace_files.go",
+        "x-go-type": "ResearchWorkspaceFileExport"
+      },
+      "ResearchWorkspaceFileDeletion": {
+        "type": "object",
+        "required": [
+          "workspace_id",
+          "storage_revision",
+          "deleted"
+        ],
+        "properties": {
+          "workspace_id": {
+            "type": "string"
+          },
+          "storage_revision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "deleted": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "x-go-source": "internal/store/research_workspace_files.go",
+        "x-go-type": "ResearchWorkspaceFileDeletion"
+      },
+      "ResearchWorkspaceStorage": {
+        "type": "object",
+        "required": ["rate_usd_gib_month", "price_version", "retained_bytes", "charged_usd", "as_of"],
+        "properties": {
+          "rate_usd_gib_month": {"type": "number", "description": "Approved retained-storage rate in USD per GiB-month, separate from compute. Zero when storage billing is disabled."},
+          "price_version": {"type": "string", "description": "Approved storage price version, or an empty string when billing is disabled."},
+          "retained_bytes": {"type": "integer", "format": "int64", "description": "Total retained storage for this workspace, including data needed to restore saved files. May exceed the latest save's stored_bytes."},
+          "charged_usd": {"type": "number", "description": "Lifetime posted storage charges for this workspace, not a compute-session charge."},
+          "as_of": {"type": "string", "format": "date-time"}
+        },
+        "x-go-source": "internal/store/research_workspaces.go",
+        "x-go-type": "ResearchWorkspaceStorage"
+      },
+      "WorkspacePendingUpload": {
+        "type": "object",
+        "description": "An unfinished customer folder upload. Use its ID with the existing transfer status, segment, finalize and discard routes. Available from any authenticated browser for this account. Reselecting files requires the same manifest commitment. Runtime saves are excluded.",
+        "required": ["id", "workspace_id", "state", "base_revision", "manifest_sha256", "manifest_bytes"],
+        "properties": {
+          "id": {"type": "string", "format": "uuid"},
+          "workspace_id": {"type": "string"},
+          "state": {"type": "string", "enum": ["uploading", "queued", "verifying"]},
+          "base_revision": {"type": "integer", "minimum": 0},
+          "manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "manifest_bytes": {"type": "integer", "minimum": 1, "maximum": 16777216}
+        }
+      },
+      "ResearchWorkspace": {
+        "description": "A durable named project and its saved configuration, with a replaceable compute session. Only saved files under /workspace are restored, not process memory.",
+        "allOf": [
+          {"$ref": "#/components/schemas/WorkspaceRecord"},
+          {
+            "type": "object",
+            "required": ["holder_id", "saved_at", "stored_bytes", "last_error", "saving_for_termination", "configuration", "configuration_revision", "pending_upload", "storage_revision", "storage_policy_version", "session", "meter", "state", "status_message", "connections", "storage"],
+            "properties": {
+              "configuration": {"$ref": "#/components/schemas/ResearchWorkspaceConfiguration"},
+              "pending_upload": {"oneOf": [{"$ref": "#/components/schemas/WorkspacePendingUpload"}, {"type": "null"}]},
+              "configuration_revision": {"type": "string", "pattern": "^[0-9a-f]{64}$", "description": "Saved configuration identity. Send this observed value when editing settings. Independent from the saved-file revision."},
+              "storage_revision": {"type": "integer", "format": "int64", "minimum": 0, "description": "Current saved-file revision used to guard a stopped-workspace replacement."},
+              "storage_policy_version": {"type": "string", "description": "Storage policy recorded for this workspace. Transfer endpoints require a compatible versioned storage policy on the workspace and deployment."},
+              "session": {
+                "oneOf": [{"$ref": "#/components/schemas/Sandbox"}, {"type": "null"}],
+                "description": "Current associated compute session, or null before one is available. Use session.id in the stop request."
+              },
+              "meter": {
+                "oneOf": [{"$ref": "#/components/schemas/ResearchWorkspaceMeter"}, {"type": "null"}],
+                "description": "Current session's lifetime compute charges, or null without a session."
+              },
+              "state": {
+                "type": "string",
+                "enum": ["stopped", "creating", "ready", "running", "idle", "suspended", "resuming", "recovering", "stopping", "failed", "freezing", "frozen"],
+                "description": "Workspace lifecycle view. stopping includes a pending final save or unconfirmed compute release. Tool access also requires its connections flag."
+              },
+              "status_message": {"type": "string"},
+              "connections": {
+                "type": "object",
+                "required": ["editor", "notebook", "ssh"],
+                "properties": {
+                  "editor": {"type": "boolean"},
+                  "notebook": {"type": "boolean"},
+                  "ssh": {"type": "boolean"}
+                },
+                "description": "Current tool readiness for the authorized compute session. Compute may continue to accrue charges while these flags are false."
+              },
+              "storage": {"$ref": "#/components/schemas/ResearchWorkspaceStorage"}
+            }
+          }
+        ]
+      },
+      "ResearchWorkspaceList": {
+        "type": "object",
+        "required": ["workspaces"],
+        "properties": {
+          "workspaces": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {"$ref": "#/components/schemas/ResearchWorkspace"}
+          }
+        }
+      },
+      "ResearchWorkspaceStopRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["session_id"],
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Original session.id to stop, owned by this account and workspace. Retain this exact value with the Idempotency-Key when retrying. A retry never selects a newer replacement session."
+          }
+        }
+      },
+      "ResearchWorkspaceConnectionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["tool"],
+        "properties": {
+          "tool": {"type": "string", "enum": ["editor", "notebook", "ssh"]}
+        }
+      },
+      "ResearchWorkspaceBrowserConnection": {
+        "type": "object",
+        "required": ["url"],
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "HTTPS tool URL containing a one-time grant in its fragment. Open within one minute. Redemption creates a host-only secure browser session lasting at most one hour, subject to ongoing authorization. Treat this URL as a secret. Request another connection if it expires or has already been used."
+          }
+        }
+      },
+      "ResearchWorkspaceConnectionRetryRequest": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["tool"],
+        "description": "Select one browser tool. Unknown fields are ignored. The complete JSON body must not exceed 512 bytes.",
+        "properties": {
+          "tool": {"type": "string", "enum": ["editor", "notebook"]}
+        }
+      },
+      "ResearchWorkspaceConnectionRetry": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["status"],
+        "properties": {
+          "status": {"type": "string", "const": "retry_scheduled"}
+        }
+      },
+      "ResearchWorkspaceSSHConnection": {
+        "type": "object",
+        "required": ["host", "ssh_config", "gateway_fingerprint", "gateway_known_hosts"],
+        "properties": {
+          "host": {"type": "string", "description": "SSH configuration alias to open in a local SSH client or VS Code Remote SSH."},
+          "ssh_config": {"type": "string", "description": "OpenSSH configuration using the workspace gateway as ProxyJump. Requires the private key corresponding to the saved public key. Do not disable host-key checking."},
+          "gateway_fingerprint": {"type": "string", "description": "SHA256 fingerprint of the deployment's stable SSH gateway host key."},
+          "gateway_known_hosts": {"type": "string", "description": "OpenSSH known_hosts entry for the gateway, to install before connecting. The guest has a separate project-persisted host key and first-use confirmation."}
+        },
+        "x-go-source": "internal/workspacessh/client.go",
+        "x-go-type": "ConnectionConfig"
+      },
+      "WorkspaceWebSocketSSHConnection": {
+        "type": "object",
+        "required": ["host", "ssh_config", "transport", "workspace_id", "session_id", "generation"],
+        "properties": {
+          "host": {"type": "string", "description": "OpenSSH configuration alias to open from a terminal or VS Code Remote SSH."},
+          "ssh_config": {"type": "string", "description": "OpenSSH configuration using nodus workspaces ssh-proxy as ProxyCommand. The command reads the existing Nodus sign-in and contains no credential. The matching SSH private key is still required. Confirm the project host key on first use."},
+          "transport": {"type": "string", "const": "websocket"},
+          "workspace_id": {"type": "string"},
+          "session_id": {"type": "string"},
+          "generation": {"type": "integer", "minimum": 1}
+        },
+        "x-go-source": "internal/api/workspace_ssh_stream.go",
+        "x-go-type": "workspaceWebSocketSSHConnection"
+      },
       "WorkspaceCreateRequest": {
         "type": "object",
         "additionalProperties": false,
@@ -3272,7 +4118,9 @@
             "type": "string",
             "enum": [
               "disabled_no_approved_storage_rate",
-              "metered_subject_to_account_limits"
+              "metered_subject_to_account_limits",
+              "included_workspace_storage",
+              "account_workspace_storage"
             ]
           }
         }
@@ -6677,6 +7525,9 @@
           "evaluation_tasks_max": {
             "type": "integer"
           },
+          "comparison_tasks_min": {
+            "type": "integer"
+          },
           "training_steps_min": {
             "type": "integer"
           },
@@ -6687,6 +7538,7 @@
         "required": [
           "evaluation_tasks_min",
           "evaluation_tasks_max",
+          "comparison_tasks_min",
           "training_steps_min",
           "training_steps_max"
         ],
@@ -6716,6 +7568,9 @@
             "type": "string"
           },
           "taskset": {
+            "type": "string"
+          },
+          "held_out_measures": {
             "type": "string"
           },
           "modes": {
@@ -6755,6 +7610,7 @@
           "model",
           "model_revision",
           "taskset",
+          "held_out_measures",
           "modes",
           "available",
           "defaults",
@@ -7819,7 +8675,7 @@
   "info": {
     "title": "Nodus Infrastructure Execution API",
     "version": "1.1.0",
-    "description": "Provider-neutral infrastructure execution for AI workloads. This contract describes customer API-key workload, sandbox, asset, and webhook operations. Console sign-in, operator, runner, and supplier protocols are outside its scope. Obtain a key using nodus login or the console. Use the deployment API origin as the base URL. No paid workload is executed by viewing this contract."
+    "description": "Provider-neutral infrastructure execution for AI workloads. This contract describes customer API-key workload, sandbox, research workspace, asset, and webhook operations. Console sign-in, operator, runner, and supplier protocols are outside its scope. Obtain a key using nodus login or the console. Use the deployment API origin as the base URL. No paid workload is executed by viewing this contract."
   },
   "openapi": "3.1.0",
   "paths": {
@@ -7830,7 +8686,7 @@
         "tags": [
           "Assets"
         ],
-        "description": "Returns the latest 500 nondeleted assets, newest first. Imports and uploads complete synchronously. Limits describe this deployment and may change.",
+        "description": "Returns the latest 500 nondeleted assets, newest first. Generated workspace_source aliases expose current removability and shared-source references. workspace_source_storage reports their separate included account pool. Ordinary import limits and quota do not include these generated copies. Deleting an alias releases source storage only after the final reference is removed and exact cleanup is confirmed. Limits describe this deployment and may change.",
         "responses": {
           "200": {
             "description": "Asset list and storage limits",
@@ -10858,6 +11714,939 @@
         "description": "Ordered by stage ID and then generation. Nodus catalog identifiers and resource facts only."
       }
     },
+    "/v1/research-workspaces/storage": {
+      "get": {
+        "operationId": "getResearchWorkspaceAccountStorage",
+        "summary": "Read the shared account saved-file allowance and charges",
+        "tags": [
+          "Research workspaces"
+        ],
+        "description": "Requires account authentication. Reports combined saved-file usage and the account storage policy, independent of compute-session charges.",
+        "responses": {
+          "200": {
+            "description": "Account saved-file usage and billing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchWorkspaceAccountStorage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, rate limits and temporary storage failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/research-workspaces/{id}/files/export": {
+      "post": {
+        "operationId": "createResearchWorkspaceFileExport",
+        "summary": "Prepare a pinned export of stopped saved files",
+        "tags": [
+          "Research workspaces"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "id"
+          }
+        ],
+        "description": "Requires stopped compute, no active transfer and the observed current revision. Repeating the same live revision reuses its fixed 24-hour export. Does not start compute or require credits. Concatenate segments in manifest order and verify their hashes and the complete archive before publishing the local file. Saved files use version 3 storage.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchWorkspaceFileRevision"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "First page of a pinned saved-file export",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchWorkspaceFileExport"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "404 for an unavailable owned workspace or export, 409 for stale revision, active compute, pending transfer, empty files or legacy format, 410 for expired export, 429 for too many retained export revisions, and 503 for temporary storage failures. Authentication and rate limits apply. No credit balance is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/research-workspaces/{id}/files/exports/{export}": {
+      "get": {
+        "operationId": "getResearchWorkspaceFileExport",
+        "summary": "Read an export page and refresh signed download URLs",
+        "tags": [
+          "Research workspaces"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "id"
+          },
+          {
+            "name": "export",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "export"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100160
+            },
+            "description": "Segment index from next_offset, zero when omitted."
+          }
+        ],
+        "description": "Each page has at most 256 segment URLs. Existing exports remain readable after current saved files are deleted or compute resumes, until the fixed export expiry. This does not extend that expiry.",
+        "responses": {
+          "200": {
+            "description": "Pinned export page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchWorkspaceFileExport"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "404 for an unavailable owned workspace or export, 409 for stale revision, active compute, pending transfer, empty files or legacy format, 410 for expired export, 429 for too many retained export revisions, and 503 for temporary storage failures. Authentication and rate limits apply. No credit balance is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/research-workspaces/{id}/files/exports/{export}/segments/{segment}": {
+      "get": {
+        "operationId": "downloadResearchWorkspaceFileSegment",
+        "summary": "Stream one pinned saved-file segment through the authenticated API",
+        "tags": [
+          "Research workspaces"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "id"
+          },
+          {
+            "name": "export",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "export"
+          },
+          {
+            "name": "segment",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "segment"
+          }
+        ],
+        "description": "Requires account authentication and a live owned export. Streams at most 64 MiB, with a 50-second server deadline. Verify Content-Length and X-Nodus-SHA256 against the manifest. A disconnected stream is incomplete and must be downloaded again.",
+        "responses": {
+          "200": {
+            "description": "Exact saved-file segment",
+            "headers": {
+              "Content-Length": {
+                "schema": {
+                  "type": "integer",
+                  "maximum": 67108864
+                }
+              },
+              "X-Nodus-SHA256": {
+                "schema": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                }
+              }
+            },
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "404 for an unavailable owned workspace or export, 409 for stale revision, active compute, pending transfer, empty files or legacy format, 410 for expired export, 429 for too many retained export revisions, and 503 for temporary storage failures. Authentication and rate limits apply. No credit balance is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/research-workspaces/{id}/files": {
+      "delete": {
+        "operationId": "deleteResearchWorkspaceFiles",
+        "summary": "Delete the observed stopped saved-file revision",
+        "tags": [
+          "Research workspaces"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "id"
+          }
+        ],
+        "description": "Requires stopped compute, no active transfer and an unchanged observed revision. Removes current saved files while preserving workspace configuration. Existing export pins expire separately. Available independently of compute admission and credit balance. Refresh after an uncertain response before choosing a new deletion intent.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchWorkspaceFileRevision"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved files deleted and revision advanced",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchWorkspaceFileDeletion"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "404 for an unavailable owned workspace or export, 409 for stale revision, active compute, pending transfer, empty files or legacy format, 410 for expired export, 429 for too many retained export revisions, and 503 for temporary storage failures. Authentication and rate limits apply. No credit balance is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/research-workspaces/capabilities": {
+      "get": {
+        "operationId": "getResearchWorkspaceCapabilities",
+        "summary": "Read workspace environment and storage limits",
+        "tags": ["Research workspaces"],
+        "description": "Requires a Bearer API key or console session. Reports deployment configuration and accepted request counts, not qualified GPU inventory, live capacity or a price quote.",
+        "responses": {
+          "200": {
+            "description": "Workspace configuration capabilities",
+            "content": {
+              "application/json": {"schema": {"$ref": "#/components/schemas/ResearchWorkspaceCapabilities"}}
+            }
+          },
+          "default": {
+            "description": "Authentication, rate limits and transient failures apply.",
+            "content": {
+              "application/json": {"schema": {"$ref": "#/components/schemas/SandboxError"}}
+            }
+          }
+        }
+      }
+    },
+    "/v1/research-workspaces": {
+      "post": {
+        "operationId": "createResearchWorkspace",
+        "summary": "Create a saved GPU research workspace",
+        "tags": ["Research workspaces"],
+        "description": "Saves a unique named project and its environment configuration without starting compute. Requires a Bearer API key or console session. Duplicate names are rejected. This operation does not require an Idempotency-Key and is not an idempotent create. Use start to admit a compute session.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {"schema": {"$ref": "#/components/schemas/ResearchWorkspaceConfiguration"}}
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Saved workspace created, with compute stopped",
+            "content": {
+              "application/json": {"schema": {"$ref": "#/components/schemas/ResearchWorkspace"}}
+            }
+          },
+          "default": {
+            "description": "400 for invalid configuration, duplicate name or exceeded storage limits. 503 workspace_unavailable when disabled. Authentication, quotas, rate limits and transient failures also apply.",
+            "content": {
+              "application/json": {"schema": {"$ref": "#/components/schemas/SandboxError"}}
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "listResearchWorkspaces",
+        "summary": "List saved research workspaces",
+        "tags": ["Research workspaces"],
+        "description": "Returns the latest 100 workspaces owned by the authenticated account, newest first. Includes compute-session costs, separate retained-storage costs and tool readiness. No pagination cursor is currently exposed.",
+        "responses": {
+          "200": {
+            "description": "Workspace list",
+            "content": {
+              "application/json": {"schema": {"$ref": "#/components/schemas/ResearchWorkspaceList"}}
+            }
+          },
+          "default": {
+            "description": "Authentication, rate limits and transient failures apply.",
+            "content": {
+              "application/json": {"schema": {"$ref": "#/components/schemas/SandboxError"}}
+            }
+          }
+        }
+      }
+    },
+    "/v1/research-workspaces/quote": {
+      "post": {
+        "operationId": "quoteWorkspacePrice",
+        "summary": "Preview the whole-machine hourly price",
+        "tags": ["Research workspaces"],
+        "description": "Read-only estimate for the supplied configuration, including exact GPU count and per-device memory. Send the same configuration used for workspace creation. A successful estimate does not reserve capacity, lock the price or start compute. Refresh expired estimates before starting. Launch checks price and capacity again against session and account spending controls.",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ResearchWorkspaceConfiguration"}}}},
+        "responses": {
+          "200": {"description": "Current exact-configuration estimate", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/WorkspacePricePreview"}}}},
+          "503": {"description": "quote_unavailable when a current eligible price cannot be confirmed. No compute is allocated.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SandboxError"}}}},
+          "default": {"description": "400 for invalid configuration. Authentication, rate limits and transient failures apply.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SandboxError"}}}}
+        }
+      }
+    },
+    "/v1/research-workspaces/{id}": {
+      "patch": {
+        "operationId": "updateResearchWorkspaceConfiguration",
+        "summary": "Change settings for the next workspace session",
+        "tags": ["Research workspaces"],
+        "description": "Requires stopped compute with confirmed release and no active file transfer. Send the complete configuration and its observed configuration_revision. Allows editor, SSH public key, GPU resources, session budget and duration changes. Name, environment, project capacity and repository bootstrap remain fixed. Saved files and previous workloads are preserved. An exact retry of already applied settings succeeds. Conflicting changes require reloading and reviewing the current configuration.",
+        "parameters": [
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}, "description": "Saved workspace identifier."}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {
+            "type": "object", "required": ["configuration_revision", "configuration"],
+            "properties": {
+              "configuration_revision": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+              "configuration": {"$ref": "#/components/schemas/ResearchWorkspaceConfiguration"}
+            }
+          }}}
+        },
+        "responses": {
+          "200": {"description": "Current workspace with saved settings", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ResearchWorkspace"}}}},
+          "default": {"description": "400 for invalid settings or revision. 404 for another account or missing workspace. 409 workspace_configuration_changed requires review of current settings. 409 workspace_configuration_busy requires compute and transfers to finish. Authentication and rate limits apply.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SandboxError"}}}}
+        }
+      },
+      "get": {
+        "operationId": "getResearchWorkspace",
+        "summary": "Read workspace state, costs and tool readiness",
+        "tags": ["Research workspaces"],
+        "parameters": [
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}, "description": "Saved workspace identifier."}
+        ],
+        "responses": {
+          "200": {
+            "description": "Current workspace view",
+            "content": {
+              "application/json": {"schema": {"$ref": "#/components/schemas/ResearchWorkspace"}}
+            }
+          },
+          "default": {
+            "description": "404 if this account does not own the workspace. Authentication, rate limits and transient failures also apply.",
+            "content": {
+              "application/json": {"schema": {"$ref": "#/components/schemas/SandboxError"}}
+            }
+          }
+        }
+      }
+    },
+    "/v1/research-workspaces/{id}/transfers": {
+      "post": {
+        "operationId": "beginWorkspaceTransfer",
+        "summary": "Begin a stopped-workspace file replacement",
+        "tags": [
+          "Research workspaces"
+        ],
+        "description": "Available only when included-10gb-v1 or r2-standard-10gb-account-v1 is explicitly active for the deployment and workspace. Compute must be stopped. Requires a nonempty canonical version 3 archive manifest, not a generic archive upload. Retain idempotency_key, manifest and replace_revision together across retries. Previously saved files require the current storage_revision as replace_revision. Beginning a transfer does not change saved files. The SDK folder uploader prepares this canonical manifest and uploads bounded segments.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Workspace identifier owned by this account."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceTransferRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Transfer created or original intent replayed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceTransfer"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "400 for malformed input. 404 workspace_transfer_not_found for a missing or inaccessible transfer. 409 workspace_storage_inactive when the policy is disabled, or workspace_transfer_conflict when state, revision or retry identity changed. 413 workspace_storage_capacity when capacity is exhausted. 503 workspace_transfer_unavailable or workspace_storage_unavailable for transient failures. Authentication and rate limits apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/research-workspaces/{id}/transfers/{transfer}": {
+      "get": {
+        "operationId": "getWorkspaceTransfer",
+        "summary": "Read upload and verification progress",
+        "tags": [
+          "Research workspaces"
+        ],
+        "description": "Read state and uploaded_segments before resuming an interrupted upload. A committed transfer has replaced the guarded saved-file revision. Queued or verifying does not establish a successful save. Requires stopped compute and the active workspace storage policy.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Workspace identifier owned by this account."
+          },
+          {
+            "name": "transfer",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Transfer identifier returned by begin."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current transfer state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceTransfer"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "400 for malformed input. 404 workspace_transfer_not_found for a missing or inaccessible transfer. 409 workspace_storage_inactive when the policy is disabled, or workspace_transfer_conflict when state, revision or retry identity changed. 413 workspace_storage_capacity when capacity is exhausted. 503 workspace_transfer_unavailable or workspace_storage_unavailable for transient failures. Authentication and rate limits apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "abandonWorkspaceTransfer",
+        "summary": "Abandon a pending file replacement",
+        "tags": [
+          "Research workspaces"
+        ],
+        "description": "Abandons the transfer and schedules cleanup of its owned upload data. Existing saved files remain intact. A successful response does not claim that uncertain writes or their cleanup have completed.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Workspace identifier owned by this account."
+          },
+          {
+            "name": "transfer",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Transfer identifier returned by begin."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Transfer abandoned"
+          },
+          "default": {
+            "description": "400 for malformed input. 404 workspace_transfer_not_found for a missing or inaccessible transfer. 409 workspace_storage_inactive when the policy is disabled, or workspace_transfer_conflict when state, revision or retry identity changed. 413 workspace_storage_capacity when capacity is exhausted. 503 workspace_transfer_unavailable or workspace_storage_unavailable for transient failures. Authentication and rate limits apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/research-workspaces/{id}/transfers/{transfer}/segments/{segment}": {
+      "put": {
+        "operationId": "uploadWorkspaceTransferSegment",
+        "summary": "Upload one declared archive segment",
+        "tags": [
+          "Research workspaces"
+        ],
+        "description": "Send the exact bytes identified by this zero-based segment index in the manifest. Content-Length is required and must match the declared segment. Content-Type must be exactly application/octet-stream. Chunked transfer encoding is not accepted. Segments are checked against their declared size and SHA256. Retry with the same transfer and segment after an uncertain reply.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Workspace identifier owned by this account."
+          },
+          {
+            "name": "transfer",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Transfer identifier returned by begin."
+          },
+          {
+            "name": "segment",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Zero-based manifest segment index."
+          },
+          {
+            "name": "Content-Length",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 512,
+              "maximum": 67108864,
+              "multipleOf": 512
+            },
+            "description": "Exact segment byte length."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary",
+                "description": "Exact declared canonical archive segment, at most 64 MiB."
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Segment accepted and verified"
+          },
+          "default": {
+            "description": "400 for malformed input. 404 workspace_transfer_not_found for a missing or inaccessible transfer. 409 workspace_storage_inactive when the policy is disabled, or workspace_transfer_conflict when state, revision or retry identity changed. 413 workspace_storage_capacity when capacity is exhausted. 503 workspace_transfer_unavailable or workspace_storage_unavailable for transient failures. Authentication and rate limits apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/research-workspaces/{id}/transfers/{transfer}/finalize": {
+      "post": {
+        "operationId": "finalizeWorkspaceTransfer",
+        "summary": "Queue verification of uploaded project files",
+        "tags": [
+          "Research workspaces"
+        ],
+        "description": "Send an empty JSON object after every segment has been uploaded. A 202 response means verification is queued or still running. Poll the transfer until state is committed or abandoned. Repeating finalize returns 200 only once the transfer is committed. Verification checks the archive, inventory and unchanged replacement revision before publishing saved files.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Workspace identifier owned by this account."
+          },
+          {
+            "name": "transfer",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Transfer identifier returned by begin."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Files committed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceTransfer"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Verification pending",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceTransfer"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "400 for malformed input. 404 workspace_transfer_not_found for a missing or inaccessible transfer. 409 workspace_storage_inactive when the policy is disabled, or workspace_transfer_conflict when state, revision or retry identity changed. 413 workspace_storage_capacity when capacity is exhausted. 503 workspace_transfer_unavailable or workspace_storage_unavailable for transient failures. Authentication and rate limits apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/research-workspaces/{id}/workloads": {
+      "post": {
+        "operationId": "submitWorkspaceWorkload",
+        "summary": "Submit an independent workload from this project",
+        "tags": ["Research workspaces"],
+        "description": "Captures current project files from ready compute, or pins the last successful saved revision while stopped. The command uses that immutable project revision and the workspace environment image. Optional GPU overrides apply only to the submitted workload. Running workspace capture returns 409 workspace_save_pending until saving finishes. Source preparation returns 409 workspace_source_pending until its verified copy is ready. Saving has a 45-minute deadline. Each source preparation attempt has a 45-minute deadline, with up to three automatic attempts. Cleanup waits may extend total preparation. Console and SDK waiting pause local observation after 95 minutes by default while retaining the submission intent. Reuse the exact body and Idempotency-Key to check progress or retry an uncertain reply. Identical captured revisions reuse a source copy within the included account source pool. Exports exclude .nodus and .git. Regular files, empty directories and safe relative symbolic links within the project are preserved. Unsafe links and unsupported file types are rejected before admission. A 202 response means ordinary workload admission succeeded. It does not establish execution or completion. Later edits and stopping workspace compute do not stop an admitted workload. Both incur charges while running.",
+        "parameters": [
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}, "description": "Workspace identifier owned by this account."},
+          {"name": "Idempotency-Key", "in": "header", "required": true, "schema": {"type": "string", "minLength": 1}, "description": "Stable key for this logical submission and its captured source revision. Reuse the same body and key after saving is pending or the reply is uncertain."}
+        ],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/WorkspaceWorkloadRequest"}}}},
+        "responses": {
+          "202": {
+            "description": "Independent workload admitted or replayed",
+            "headers": {"Idempotent-Replayed": {"description": "true when workload admission replays the original result.", "schema": {"type": "string"}}},
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SubmitResult"}}}
+          },
+          "409": {
+            "description": "workspace_save_pending and workspace_source_pending request the same key and body again after Retry-After. workspace_source_quota requires freeing included source space through Assets and using a new submission key. workspace_capture_failed requires correcting the save failure and beginning a new submission. workspace_source_rejected requires correcting the project source and using a new submission key. workspace_source_failed requires resolving the reported preparation failure and using a new submission key after cleanup. workspace_source_removed means its reference was deleted and a new submission must prepare a new copy. workspace_no_saved_files requires adding project files. workspace_source_unavailable reports a source preparation failure. idempotency_conflict indicates a changed body for an existing key. Other state conflicts can also occur.",
+            "headers": {"Retry-After": {"description": "Seconds until the next progress check when workspace_save_pending or workspace_source_pending is returned.", "schema": {"type": "string"}}},
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+          },
+          "default": {
+            "description": "400 for invalid command, budget or GPU configuration. 402 for payment, credit or spending limits. 404 for a workspace outside this account. 503 when submission is unavailable. Ordinary workload admission checks, authentication, rate limits and transient failures also apply.",
+            "content": {"application/json": {"schema": {"oneOf": [{"$ref": "#/components/schemas/Error"}, {"$ref": "#/components/schemas/SandboxError"}]}}}
+          }
+        }
+      },
+      "get": {
+        "operationId": "listWorkspaceWorkloads",
+        "summary": "List workloads submitted from this workspace",
+        "tags": ["Research workspaces"],
+        "description": "Returns up to 100 admitted workloads, newest first, with the captured source revision. Recoverable pending_submissions preserve their exact original request and retry key for explicit resume after reconnecting. Old submissions without a stored request descriptor may be absent from pending_submissions. source_storage reports the separate included source pool. Use the ordinary workload endpoints for logs, results, costs and cancellation.",
+        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}, "description": "Workspace identifier owned by this account."}],
+        "responses": {
+          "200": {"description": "Admitted workspace workloads", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/WorkspaceWorkloadList"}}}},
+          "default": {"description": "404 for a workspace outside this account. Authentication, rate limits and transient failures also apply.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      }
+    },
+    "/v1/research-workspaces/{id}/start": {
+      "post": {
+        "operationId": "startResearchWorkspace",
+        "summary": "Start compute or reconnect to the current session",
+        "tags": ["Research workspaces"],
+        "description": "Uses the saved configuration and an operator-qualified immutable environment. Reconnects to an eligible existing named session or admits a replacement after the previous writer releases the project. No request body is required. 202 means accepted, not ready or guaranteed capacity. Read connections before opening tools. A restart restores saved files only, not process memory.",
+        "parameters": [
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}, "description": "Saved workspace identifier."},
+          {"name": "Idempotency-Key", "in": "header", "required": true, "schema": {"type": "string", "minLength": 1}, "description": "Stable key for this logical start. Reuse it after an uncertain response. Use a new key for a new start after stopping a previous session."}
+        ],
+        "responses": {
+          "202": {
+            "description": "Start accepted or replayed",
+            "headers": {
+              "Idempotent-Replayed": {"description": "true when the original start is replayed.", "schema": {"type": "string"}}
+            },
+            "content": {
+              "application/json": {"schema": {"$ref": "#/components/schemas/ResearchWorkspace"}}
+            }
+          },
+          "default": {
+            "description": "400 for a missing retry key or invalid saved configuration. 402 for payment, credit or spending limits. 404 for a workspace not owned by this account. 409 for an existing writer, saving, state or idempotency conflict. 503 when admission or workspace compute is unavailable. Authentication, quotas, repository authorization, rate limits and transient failures also apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [{"$ref": "#/components/schemas/SandboxError"}, {"$ref": "#/components/schemas/Error"}]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/research-workspaces/{id}/schedule": {
+      "post": {
+        "operationId": "scheduleResearchWorkspace",
+        "summary": "Schedule workspace readiness",
+        "tags": ["Research workspaces"],
+        "description": "Begins preparation 15 minutes before ready_by. Customer compute metering begins when readiness is observed. stop_at is optional.",
+        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}, {"name": "Idempotency-Key", "in": "header", "required": true, "schema": {"type": "string", "minLength": 1}}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "required": ["ready_by"], "properties": {"ready_by": {"type": "string", "format": "date-time"}, "stop_at": {"type": "string", "format": "date-time"}}}}}},
+        "responses": {"201": {"description": "Wake plan created", "content": {"application/json": {"schema": {"type": "object"}}}}, "default": {"description": "Invalid schedule, active schedule, authentication or transient failure.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}
+      },
+      "delete": {
+        "operationId": "cancelResearchWorkspaceSchedule",
+        "summary": "Cancel workspace readiness schedule",
+        "tags": ["Research workspaces"],
+        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}, {"name": "Idempotency-Key", "in": "header", "required": true, "schema": {"type": "string", "minLength": 1}}],
+        "responses": {"200": {"description": "Schedule cancelled", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ResearchWorkspace"}}}}}
+      }
+    },
+    "/v1/research-workspaces/{id}/stop": {
+      "post": {
+        "operationId": "stopResearchWorkspace",
+        "summary": "Save project files and stop the specified compute session",
+        "tags": ["Research workspaces"],
+        "description": "Stops the original session_id, not whichever replacement session exists when a retry arrives. Preserve both session_id and Idempotency-Key for every retry. A new stop targeting a replacement requires a new pair. Returns the current workspace view, which may refer to a newer session during a delayed replay. Poll state and saving_for_termination to observe final-save and compute-release progress. A 200 response alone does not confirm supplier resource release. Retained storage is not deleted.",
+        "parameters": [
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}, "description": "Saved workspace identifier."},
+          {"name": "Idempotency-Key", "in": "header", "required": true, "schema": {"type": "string", "minLength": 1}, "description": "Stable retry key paired with the original session_id in the request body."}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {"schema": {"$ref": "#/components/schemas/ResearchWorkspaceStopRequest"}}
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Stop handled or replayed without a pending final save. Inspect workspace state for compute-release progress.",
+            "headers": {
+              "Idempotent-Replayed": {"description": "true when the original stop is replayed.", "schema": {"type": "string"}}
+            },
+            "content": {
+              "application/json": {"schema": {"$ref": "#/components/schemas/ResearchWorkspace"}}
+            }
+          },
+          "202": {
+            "description": "Final project save remains pending before compute release",
+            "headers": {
+              "Idempotent-Replayed": {"description": "true when the original stop is replayed.", "schema": {"type": "string"}}
+            },
+            "content": {
+              "application/json": {"schema": {"$ref": "#/components/schemas/ResearchWorkspace"}}
+            }
+          },
+          "default": {
+            "description": "400 for a missing retry key, missing body or invalid session_id. 404 for a workspace or session outside this account, or a session belonging to another workspace. 409 for a state or idempotency conflict. Authentication, rate limits and transient failures also apply.",
+            "content": {
+              "application/json": {"schema": {"$ref": "#/components/schemas/SandboxError"}}
+            }
+          }
+        }
+      }
+    },
+    "/v1/research-workspaces/{id}/connections": {
+      "post": {
+        "operationId": "connectResearchWorkspace",
+        "summary": "Open a ready browser tool or get desktop SSH configuration",
+        "tags": ["Research workspaces"],
+        "description": "Requires a current authorized compute session with reachable, healthy tools. editor and notebook return a one-time HTTPS URL. ssh requires a saved SSH public key and returns OpenSSH configuration, using either the authenticated HTTPS proxy command or a direct gateway with a known_hosts entry. Browser tools use isolated per-tool origins, not the API or console origin. Account credentials never reach the guest. Revocation, session replacement or expired authorization closes access, including active browser streams. Closing a client does not stop compute.",
+        "parameters": [
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}, "description": "Saved workspace identifier."}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {"schema": {"$ref": "#/components/schemas/ResearchWorkspaceConnectionRequest"}}
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "One-time browser connection URL or desktop SSH configuration, depending on tool",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [{"$ref": "#/components/schemas/ResearchWorkspaceBrowserConnection"}, {"$ref": "#/components/schemas/ResearchWorkspaceSSHConnection"}, {"$ref": "#/components/schemas/WorkspaceWebSocketSSHConnection"}]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "400 for an invalid tool. 404 for a workspace not owned by this account. 409 workspace_not_ready until the session and tools are ready. 503 if browser access or SSH configuration is unavailable. Authentication, rate limits and transient failures also apply.",
+            "content": {
+              "application/json": {"schema": {"$ref": "#/components/schemas/SandboxError"}}
+            }
+          }
+        }
+      }
+    },
+    "/v1/research-workspaces/{id}/ssh-stream": {
+      "get": {
+        "operationId": "streamWorkspaceSSH",
+        "summary": "Connect an authenticated SSH stream to the current workspace session",
+        "tags": ["Research workspaces"],
+        "description": "Upgrades an authenticated request to a WebSocket using nodus-workspace-ssh-v1. Binary messages carry the SSH byte stream. Use the session and generation from a fresh SSH connection response. Query strings, Origin and Cookie headers are rejected. Authorization must contain one current Bearer credential. Nodus checks workspace ownership and the pinned session before connecting and while forwarding. The guest still authenticates the customer's SSH public key. Either side closing or authorization expiry closes the stream. The CLI proxy opens this endpoint without a browser or credential in its command line.",
+        "parameters": [
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "X-Nodus-Workspace-Session", "in": "header", "required": true, "schema": {"type": "string"}, "description": "Pinned compute session identifier from the SSH connection response."},
+          {"name": "X-Nodus-Workspace-Generation", "in": "header", "required": true, "schema": {"type": "string", "pattern": "^[1-9][0-9]*$"}, "description": "Exact positive decimal session generation from the SSH connection response."},
+          {"name": "Sec-WebSocket-Protocol", "in": "header", "required": true, "schema": {"type": "string", "const": "nodus-workspace-ssh-v1"}}
+        ],
+        "responses": {
+          "101": {"description": "Authenticated binary SSH stream. The standard WebSocket handshake headers apply."},
+          "default": {"description": "400 invalid_ssh_connection for an invalid handshake identity. 409 workspace_not_ready for a stale or unavailable session. 503 ssh_unavailable when the stream or guest is unavailable. Authentication and rate limits also apply.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SandboxError"}}}}
+        }
+      }
+    },
+    "/v1/research-workspaces/{id}/connections/retry": {
+      "post": {
+        "operationId": "retryResearchWorkspaceConnection",
+        "summary": "Retry one browser connection without restarting compute",
+        "tags": ["Research workspaces"],
+        "description": "Explicitly schedules a safe retry for the selected tool on the current workspace session. It does not issue a connection URL, start compute or guarantee that the tool is ready. An uncertain remote operation cannot be retried until its outcome is reconciled. After acceptance, read the workspace again and use its connection readiness before opening the tool. A rejected retry does not prevent stopping compute. Available only when the deployment enables connection retry.",
+        "parameters": [
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}, "description": "Research workspace identifier owned by this account."}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {"schema": {"$ref": "#/components/schemas/ResearchWorkspaceConnectionRetryRequest"}}
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Retry scheduled. This is not a ready connection or browser grant.",
+            "headers": {
+              "Cache-Control": {"schema": {"type": "string", "const": "no-store"}}
+            },
+            "content": {
+              "application/json": {"schema": {"$ref": "#/components/schemas/ResearchWorkspaceConnectionRetry"}}
+            }
+          },
+          "default": {
+            "description": "400 invalid_tool, invalid_json or invalid_body for invalid input. 404 not_found for an unavailable owned workspace. 409 connection_not_retryable when a safe retry cannot be scheduled. 503 connection_unavailable when disabled or gateway authority is unavailable. 500 connection_retry_failed for an unexpected internal failure. Authentication and rate limits also apply.",
+            "content": {
+              "application/json": {"schema": {"$ref": "#/components/schemas/SandboxError"}}
+            }
+          }
+        }
+      }
+    },
     "/v1/workspaces": {
       "post": {
         "operationId": "createWorkspace",
@@ -13294,6 +15083,10 @@
     {
       "name": "Workspaces",
       "description": "Named file persistence with one live sandbox writer."
+    },
+    {
+      "name": "Research workspaces",
+      "description": "Saved GPU research projects with replaceable compute, browser VS Code, JupyterLab and desktop SSH. Availability requires an enabled deployment and qualified runtime configuration."
     },
     {
       "name": "Pools"
