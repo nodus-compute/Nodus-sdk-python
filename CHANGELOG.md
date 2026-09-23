@@ -6,6 +6,7 @@
 - Add managed agent deployment, durable run submission, checkpoint status, signals and controls through the SDK and CLI. Applications still serialize and load their recovery state.
 - Add sandbox and managed agent MCP operations with explicit budgets, stable mutation keys and separate observation tools.
 - Support secure local transfers on Windows NTFS through the universal wheel. Reject reparse points, unsafe paths and conflicting download names.
+- Preserve immutable project asset identity when creation is retried from a new client after a lost upload or create response.
 - Keep installed-wheel CLI verification in the same isolated environment as the tested package.
 
 ## 0.6.0

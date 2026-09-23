@@ -107,7 +107,7 @@ def docs_api(monkeypatch):
                                    "export": {"id": "export_docs", "connection_id": "conn_docs", "asset_id": "asset_docs", "query_hash": "a" * 64,
                                               "format": "parquet", "row_count": 10, "bytes": 256, "created_at": "2026-09-19T00:00:00Z"}})
             if path == "/v1/assets":
-                return self.reply({"assets": [], "max_import_bytes": 1048576})
+                return self.reply({"assets": [], "upload_idempotency": True, "max_import_bytes": 1048576})
             if path == "/v1/workloads":
                 return self.reply({"workloads": [row]})
             if path == "/v1/workloads/wl_docs":

@@ -62,7 +62,7 @@ def test_project_upload_is_bounded_and_excludes_dependencies_and_credentials(tmp
         if request.url.path == "/v1/sandboxes/capabilities":
             return httpx.Response(200, json={"available": True, "max_project_bytes": 100000})
         if request.url.path == "/v1/assets":
-            return httpx.Response(200, json={"max_import_bytes": 100000, "assets": []})
+            return httpx.Response(200, json={"upload_idempotency": True, "max_import_bytes": 100000, "assets": []})
         if request.url.path == "/v1/assets/upload":
             with tarfile.open(fileobj=io.BytesIO(request.content), mode="r:gz") as archive:
                 assert archive.getnames() == ["main.py"]
@@ -163,7 +163,7 @@ def test_project_retry_reuses_immutable_upload_with_same_client(tmp_path):
         if request.url.path == "/v1/sandboxes/capabilities":
             return httpx.Response(200, json={"available": True, "max_project_bytes": 100000})
         if request.url.path == "/v1/assets":
-            return httpx.Response(200, json={"max_import_bytes": 100000})
+            return httpx.Response(200, json={"upload_idempotency": True, "max_import_bytes": 100000})
         if request.url.path == "/v1/assets/upload":
             uploads.append(request.content)
             return httpx.Response(201, json={"id": "asset_" + str(len(uploads)), "state": "ready"})
@@ -186,7 +186,7 @@ def test_project_retry_reaches_saved_receipt_after_admission_gate_closes(tmp_pat
         if request.url.path == "/v1/sandboxes/capabilities":
             return httpx.Response(200, json={"available": not attempts, "max_project_bytes": 100000})
         if request.url.path == "/v1/assets":
-            return httpx.Response(200, json={"max_import_bytes": 100000})
+            return httpx.Response(200, json={"upload_idempotency": True, "max_import_bytes": 100000})
         if request.url.path == "/v1/assets/upload":
             assert not attempts
             return httpx.Response(201, json={"id": "asset_project", "state": "ready"})
@@ -500,7 +500,7 @@ def test_project_archive_remains_bound_when_an_ancestor_is_swapped(tmp_path, mon
         if request.url.path == "/v1/sandboxes/capabilities":
             return httpx.Response(200, json={"available": True, "max_project_bytes": 100000})
         if request.url.path == "/v1/assets":
-            return httpx.Response(200, json={"max_import_bytes": 100000})
+            return httpx.Response(200, json={"upload_idempotency": True, "max_import_bytes": 100000})
         if request.url.path == "/v1/assets/upload":
             with tarfile.open(fileobj=io.BytesIO(request.content), mode="r:gz") as archive:
                 assert archive.extractfile("main.py").read() == b"public"
@@ -529,3 +529,67 @@ def test_managed_revision_history_policy_and_explicit_retry_match_server_wire():
         assert agent.revisions()["revisions"][0] == revision
         assert agent.revision(1) == revision
         assert ManagedRun(client, {"id": "run_one", "agent_id": "ag_one"}).retry(idempotency_key="retry-1").status == "queued"
+
+
+@requires_local_files
+@pytest.mark.parametrize('asynchronous', [False, True])
+@pytest.mark.parametrize('resource', ['sandboxes', 'agents'])
+@pytest.mark.parametrize('lost_response', ['upload', 'create'])
+def test_project_retry_from_fresh_client_replays_one_asset(tmp_path, asynchronous, resource, lost_response):
+    """Losing either receipt must preserve the upload and compute request identity."""
+    (tmp_path / 'main.py').write_bytes(b'print(1)\n')
+    uploads, attempts, lost = {}, [], False
+    identifier = 'sb_one' if resource == 'sandboxes' else 'ag_one'
+
+    def handle(request):
+        nonlocal lost
+        if request.url.path == '/v1/sandboxes/capabilities':
+            return httpx.Response(200, json={'available': True, 'max_project_bytes': 100000})
+        if request.url.path == '/v1/assets':
+            return httpx.Response(200, json={'max_import_bytes': 100000, 'upload_idempotency': True})
+        if request.url.path == '/v1/assets/upload':
+            key = request.headers.get('Idempotency-Key') or 'anonymous-' + str(len(uploads))
+            previous = uploads.get(key)
+            if previous and previous[1] != request.content:
+                return httpx.Response(409, json={'error': 'idempotency_conflict'})
+            if previous is None:
+                previous = uploads[key] = ('asset_' + str(len(uploads)), request.content)
+            if not lost and lost_response == 'upload':
+                lost = True
+                raise httpx.ReadTimeout('upload receipt lost', request=request)
+            return httpx.Response(201, json={'id': previous[0], 'state': 'ready'})
+        assert request.url.path == '/v1/' + resource
+        assert request.headers['Idempotency-Key'] == 'same-create'
+        body = json.loads(request.content)
+        if attempts and attempts[0] != body:
+            return httpx.Response(409, json={'error': 'idempotency_conflict'})
+        attempts.append(body)
+        if not lost and lost_response == 'create':
+            lost = True
+            raise httpx.ReadTimeout('create receipt lost', request=request)
+        return httpx.Response(202, json={'id': identifier})
+
+    options = {'project': tmp_path, 'budget': 5, 'idempotency_key': 'same-create'}
+    if resource == 'agents':
+        options['name'] = 'worker'
+
+    def create():
+        if asynchronous:
+            async def run():
+                async with nodus.AsyncClient(api_key='test', base_url='https://nodus.invalid', max_retries=0) as client:
+                    await client._http.aclose()
+                    client._http = httpx.AsyncClient(base_url='https://nodus.invalid', transport=httpx.MockTransport(handle))
+                    return await getattr(client, resource).create(**options)
+            return asyncio.run(run())
+        with client_for(handle) as client:
+            return getattr(client, resource).create(**options)
+
+    with pytest.raises(nodus.APITimeoutError):
+        create()
+    assert create().id == identifier
+    assert len(uploads) == 1
+    assert attempts[-1]['source']['asset_id'] == next(iter(uploads.values()))[0]
+    (tmp_path / 'main.py').write_bytes(b'changed project\n')
+    with pytest.raises(nodus.IdempotencyConflictError):
+        create()
+    assert len(uploads) == 1

@@ -3,6 +3,7 @@
 from contextlib import contextmanager
 import gzip
 import hashlib
+import json
 import os
 from pathlib import Path
 import stat
@@ -196,13 +197,22 @@ def _cached(client, path, key):
     return cache, digest, previous[1] if previous else None
 
 
+def _upload_key(key):
+    if key is None:
+        return None
+    # Namespace the durable asset receipt by creation kind and caller key.
+    # Do not include file contents, which must conflict for a reused key.
+    encoded = json.dumps(key, separators=(",", ":")).encode("utf-8")
+    return "project-" + hashlib.sha256(encoded).hexdigest()
+
+
 def upload_project(client, project, key=None):
     limit = project_limit(client._request("GET", "/v1/sandboxes/capabilities"))
     with archive_project(project, limit) as path:
         cache, digest, existing = _cached(client, path, key) if key else ({}, "", None)
         if existing:
             return existing
-        asset = client.assets.upload(path)
+        asset = client.assets.upload(path, idempotency_key=_upload_key(key))
     if asset.state != "ready":
         raise APIError("Project asset is not ready")
     if key:
@@ -216,7 +226,7 @@ async def upload_project_async(client, project, key=None):
         cache, digest, existing = _cached(client, path, key) if key else ({}, "", None)
         if existing:
             return existing
-        asset = await client.assets.upload(path)
+        asset = await client.assets.upload(path, idempotency_key=_upload_key(key))
     if asset.state != "ready":
         raise APIError("Project asset is not ready")
     if key:
