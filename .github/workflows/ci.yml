@@ -27,6 +27,15 @@ jobs:
       - name: Verify native bootstrap and repeat installation
         shell: bash
         run: python scripts/verify-agent-install.py --wheel dist/*.whl
+      - name: Verify Windows transfers from the installed wheel
+        if: runner.os == 'Windows'
+        shell: bash
+        run: python scripts/verify-release.py --wheel dist/*.whl --local-transfers --report "$RUNNER_TEMP/windows-transfers.json"
+      - uses: actions/upload-artifact@v4
+        if: always() && runner.os == 'Windows'
+        with:
+          name: windows-transfer-verification
+          path: ${{ runner.temp }}/windows-transfers.json
 
   plugins:
     runs-on: ubuntu-latest

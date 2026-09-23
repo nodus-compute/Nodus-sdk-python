@@ -989,6 +989,12 @@ class Client(_Transport):
         return Workspaces(self)
 
     @property
+    def agents(self):
+        """Deploy managed agents and submit durable work."""
+        from ._managed_agents import ManagedAgents
+        return ManagedAgents(self)
+
+    @property
     def sandboxes(self) -> Sandboxes:
         """Create and reconnect to durable agent execution environments."""
         return Sandboxes(self)
@@ -1445,6 +1451,12 @@ class AsyncClient(_Transport):
     def workspaces(self) -> AsyncWorkspaces:
         """Manage named persistent workspace metadata."""
         return AsyncWorkspaces(self)
+
+    @property
+    def agents(self):
+        """Deploy managed agents and submit durable work asynchronously."""
+        from ._managed_agents import AsyncManagedAgents
+        return AsyncManagedAgents(self)
 
     @property
     def sandboxes(self) -> AsyncSandboxes:

@@ -44,6 +44,7 @@ def step(*, name: str, version: str, effect: str = 'external', dedupe_seconds: i
                 raise ValidationError('Call steps from nodus.agent.resume')
             if not session.guard.acquire(blocking=False):
                 raise ValidationError('Nested and parallel steps are not supported')
+            executed = False
             try:
                 encoded = _agent.encode({'args': args, 'kwargs': kwargs})
                 for _ in range(3):
@@ -71,9 +72,13 @@ def step(*, name: str, version: str, effect: str = 'external', dedupe_seconds: i
                     scoped = {**session.scope, 'step_id': step_id, 'claim_token': token}
                     context_token = _agent._step_context.set(StepContext(external))
                     try:
+                        executed = True
                         result = function(*args, **kwargs)
                     except BaseException as error:
                         session.rpc.call('unknown', {**scoped, 'request_id': uuid.uuid4().hex, 'code': 'outcome_unknown'})
+                        if session.recovery_policy:
+                            session.failed.set()
+                            raise StepOutcomeUnknown('Step state must be restored before another attempt') from None
                         if effect != 'external' and isinstance(error, Exception):
                             continue
                         raise StepOutcomeUnknown('The external step outcome is unknown') from None
@@ -89,11 +94,16 @@ def step(*, name: str, version: str, effect: str = 'external', dedupe_seconds: i
                         session.rpc.call('unknown', {**scoped, 'request_id': uuid.uuid4().hex, 'code': 'outcome_unknown'})
                         raise StepOutcomeUnknown('Step result cannot be recorded within the journal limits') from None
                     session.healthy()
-                    done = session.rpc.call('complete', {**scoped, 'request_id': uuid.uuid4().hex, 'result': result_bytes})
+                    checkpoint = session.checkpoint('step', step_id, step_id=step_id, claim_token=token)
+                    done = session.rpc.call('complete', {**scoped, 'request_id': uuid.uuid4().hex, 'result': result_bytes, **checkpoint})
                     if done.get('decision') != 'replay' or done.get('step_id') != step_id or done.get('result') != result_bytes:
                         raise StepOutcomeUnknown('Step completion was not durably acknowledged')
                     return _agent.decode(done['result'])
                 raise StepOutcomeUnknown('Step attempt limit reached')
+            except BaseException:
+                if executed and session.recovery_policy:
+                    session.failed.set()
+                raise
             finally:
                 session.guard.release()
         return invoke

@@ -30,9 +30,11 @@ def main() -> int:
     source.add_argument('--wheel', type=Path)
     source.add_argument('--version', help='published PyPI version to verify')
     parser.add_argument('--report', type=Path, help='save the verification result as JSON')
+    parser.add_argument('--local-transfers', action='store_true', help='verify local project packaging, file transfers and native filesystem protections')
     args = parser.parse_args()
     target = str(args.wheel.resolve()) + "[mcp,dev]" if args.wheel else f'nodus-compute[mcp,dev]=={args.version.removeprefix("v")}'
-    report = {'artifact': target, 'status': 'failed', 'stage': 'setup'}
+    tests = ['tests/test_windows_transfers.py', 'tests/test_managed_experience.py'] if args.local_transfers else ['tests']
+    report = {'artifact': target, 'status': 'failed', 'stage': 'setup', 'platform': sys.platform, 'selection': tests}
     result = 1
     try:
         with tempfile.TemporaryDirectory(prefix='nodus-verification-') as directory:
@@ -43,6 +45,8 @@ def main() -> int:
             environment = work / 'venv'
             subprocess.run([sys.executable, '-m', 'venv', str(environment)], check=True, env=env)
             python = environment / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
+            env['PATH'] = str(python.parent) + os.pathsep + env.get('PATH', '')
+            env['VIRTUAL_ENV'] = str(environment)
             report['stage'] = 'install'
             for attempt in range(6 if args.version else 1):
                 installed = subprocess.run([str(python), '-m', 'pip', 'install', '--no-cache-dir',
@@ -70,7 +74,7 @@ def main() -> int:
             report.update(json.loads(metadata))
             Path(report['module']).resolve().relative_to(environment.resolve())
             junit = work / 'results.xml'
-            tested = subprocess.run([str(python), '-m', 'pytest', '-q', 'tests',
+            tested = subprocess.run([str(python), '-m', 'pytest', '-q', *tests,
                                      f'--junitxml={junit}'], cwd=suite, env=env)
             if junit.exists():
                 suites = ET.parse(junit).getroot().findall('testsuite')

@@ -46,7 +46,7 @@ async def test_saved_login_and_all_tool_contracts(api):
     server, requests, responses = api
     async with create_connected_server_and_client_session(server) as session:
         tools = {tool.name: tool for tool in (await session.list_tools()).tools}
-        assert set(tools) == {"submit_workload", "list_workloads", "get_workload",
+        assert set(tools) >= {"submit_workload", "list_workloads", "get_workload",
                               "cancel_workload", "get_workload_events", "get_workload_logs",
                               "list_workload_outputs", "validate_workload", "download_workload_output"}
         assert tools["cancel_workload"].inputSchema["required"] == ["workload_id"]
@@ -224,7 +224,7 @@ async def test_installed_executables_complete_real_mcp_session(executable, nodus
             async with ClientSession(reader, writer) as session:
                 result = await session.initialize()
                 assert result.serverInfo.name == "nodus"
-                assert len((await session.list_tools()).tools) == 9
+                assert {"list_workloads", "create_sandbox", "submit_agent_run", "upload_project"} <= {tool.name for tool in (await session.list_tools()).tools}
                 listed = await session.call_tool("list_workloads", {})
                 assert not listed.isError
                 assert json.loads(listed.content[0].text) == {"workloads": [], "next_offset": None}
@@ -321,3 +321,243 @@ async def test_download_keeps_resolved_credential_and_origin_together(api, nodus
     assert changed
     assert [(request.url.host, request.headers["authorization"]) for request in requests] == [
         ("api.example.test", "Bearer saved-test-key")]
+
+
+@pytest.mark.asyncio
+async def test_sandbox_and_agent_tools_return_acceptance_without_polling(api):
+    server, requests, responses = api
+    async with create_connected_server_and_client_session(server) as session:
+        tools = {tool.name: tool for tool in (await session.list_tools()).tools}
+        assert "create_sandbox" in tools and "create_agent" in tools
+        assert tools["sandbox_files"].annotations.readOnlyHint is False
+        assert tools["download_sandbox_file"].annotations.destructiveHint is True
+        assert tools["get_sandbox"].annotations.readOnlyHint is True
+        assert tools["get_agent_run"].annotations.readOnlyHint is True
+        sandbox = {"template": "nodus:agent-tools-v1", "budget_usd": 5}
+        agent = {"name": "worker", "entrypoint": "agent:main", "budget_usd": 20}
+        operations = [
+            ("create_sandbox", {"sandbox": sandbox}, "/v1/sandboxes", sandbox, {"id": "sb_one", "status": "pending"}),
+            ("submit_sandbox_command", {"sandbox_id": "sb_one", "command": {"command": ["python", "example.py"]}},
+             "/v1/sandboxes/sb_one/exec", {"command": ["python", "example.py"]}, {"id": "exec_one", "state": "queued"}),
+            ("sandbox_files", {"sandbox_id": "sb_one", "file": {"operation": "read", "path": "result.txt"}},
+             "/v1/sandboxes/sb_one/files", {"operation": "read", "path": "result.txt"}, {"id": "exec_files", "state": "queued"}),
+            ("create_agent", {"agent": agent}, "/v1/agents", agent, {"id": "agent_one", "revision": 1}),
+            ("submit_agent_run", {"agent_id": "agent_one", "run": {"input": {"task": "reports"}, "session": "reports"}},
+             "/v1/agents/agent_one/runs", {"input": {"task": "reports"}, "session": "reports"}, {"id": "run_one", "status": "queued"}),
+        ]
+        for tool, arguments, path, body, receipt in operations:
+            key = tool + "-same-intent"
+            responses.append(httpx.Response(202, json=receipt))
+            before = len(requests)
+            result = await session.call_tool(tool, {**arguments, "idempotency_key": key})
+            assert not result.isError, result
+            assert json.loads(result.content[0].text) == receipt
+            assert len(requests) == before + 1
+            assert requests[-1].url.path == path
+            assert requests[-1].headers["Idempotency-Key"] == key
+            assert json.loads(requests[-1].content) == body
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tool,arguments,method,path,query", [
+    ("get_sandbox_capabilities", {}, "GET", "/v1/sandboxes/capabilities", {}),
+    ("list_sandbox_templates", {}, "GET", "/v1/sandbox-templates", {}),
+    ("list_sandboxes", {"name": "work", "status": "ready", "cursor": "next", "limit": 3}, "GET", "/v1/sandboxes", {"name": "work", "status": "ready", "cursor": "next", "limit": "3"}),
+    ("get_sandbox", {"sandbox_id": "sb_one"}, "GET", "/v1/sandboxes/sb_one", {}),
+    ("get_sandbox_command", {"sandbox_id": "sb_one", "exec_id": "exec_one"}, "GET", "/v1/sandboxes/sb_one/execs/exec_one", {}),
+    ("get_sandbox_command_output", {"sandbox_id": "sb_one", "exec_id": "exec_one", "after": 3, "limit": 2}, "GET", "/v1/sandboxes/sb_one/execs/exec_one/stream", {"after": "3", "limit": "2"}),
+    ("list_agents", {"limit": 2, "after": "agent_one"}, "GET", "/v1/agents", {"limit": "2", "after": "agent_one"}),
+    ("get_agent", {"agent_id": "agent_one"}, "GET", "/v1/agents/agent_one", {}),
+    ("list_agent_runs", {"agent_id": "agent_one", "after": "run_one", "limit": 5}, "GET", "/v1/agents/agent_one/runs", {"after": "run_one", "limit": "5"}),
+    ("get_agent_run", {"agent_id": "agent_one", "run_id": "run_one"}, "GET", "/v1/agents/agent_one/runs/run_one", {}),
+    ("get_agent_run_steps", {"agent_id": "agent_one", "run_id": "run_one", "after": "step_one", "limit": 5}, "GET", "/v1/agents/agent_one/runs/run_one/steps", {"after": "step_one", "limit": "5"}),
+])
+async def test_sandbox_and_agent_observation_never_wakes_compute(api, tool, arguments, method, path, query):
+    server, requests, _ = api
+    async with create_connected_server_and_client_session(server) as session:
+        result = await session.call_tool(tool, arguments)
+        assert not result.isError, result
+        assert len(requests) == 1
+        assert requests[0].method == method and requests[0].url.path == path
+        assert dict(requests[0].url.params) == query
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tool,arguments,path", [
+    ("sleep_sandbox", {"sandbox_id": "sb_one"}, "/v1/sandboxes/sb_one/sleep"),
+    ("wake_sandbox", {"sandbox_id": "sb_one"}, "/v1/sandboxes/sb_one/wake"),
+    ("terminate_sandbox", {"sandbox_id": "sb_one"}, "/v1/sandboxes/sb_one/terminate"),
+    ("cancel_sandbox_command", {"sandbox_id": "sb_one", "exec_id": "exec_one"}, "/v1/sandboxes/sb_one/execs/exec_one/cancel"),
+    ("pause_agent", {"agent_id": "agent_one"}, "/v1/agents/agent_one/pause"),
+    ("resume_agent", {"agent_id": "agent_one"}, "/v1/agents/agent_one/resume"),
+    ("retry_agent_run", {"agent_id": "agent_one", "run_id": "run_one"}, "/v1/agents/agent_one/runs/run_one/retry"),
+    ("cancel_agent_run", {"agent_id": "agent_one", "run_id": "run_one"}, "/v1/agents/agent_one/runs/run_one/cancel"),
+])
+async def test_new_controls_require_stable_keys_and_never_wait_for_cleanup(api, tool, arguments, path):
+    server, requests, _ = api
+    async with create_connected_server_and_client_session(server) as session:
+        missing = await session.call_tool(tool, arguments)
+        assert missing.isError and not requests
+        result = await session.call_tool(tool, {**arguments, "idempotency_key": "customer-control"})
+        assert not result.isError, result
+        assert len(requests) == 1 and requests[0].url.path == path
+        assert requests[0].headers["Idempotency-Key"] == "customer-control"
+        assert json.loads(requests[0].content) == {}
+
+
+@pytest.mark.asyncio
+async def test_agent_update_and_signal_preserve_revision_and_input(api):
+    server, requests, _ = api
+    async with create_connected_server_and_client_session(server) as session:
+        definition = {"name": "worker", "entrypoint": "agent:main", "budget_usd": 20}
+        update = {"expected_revision": 3, "definition": definition}
+        result = await session.call_tool("update_agent", {"agent_id": "agent_one", "update": update, "idempotency_key": "revision-4"})
+        assert not result.isError, result
+        assert requests[-1].method == "PATCH" and json.loads(requests[-1].content) == update
+        signal = {"name": "reports", "input": {"approved": True}}
+        result = await session.call_tool("signal_agent_run", {"agent_id": "agent_one", "run_id": "run_one", "signal": signal, "idempotency_key": "event-1"})
+        assert not result.isError, result
+        assert requests[-1].url.path == "/v1/agents/agent_one/runs/run_one/signals"
+        assert json.loads(requests[-1].content) == signal
+
+
+@pytest.mark.asyncio
+async def test_new_tools_reject_missing_authority_before_network(api):
+    server, requests, _ = api
+    async with create_connected_server_and_client_session(server) as session:
+        for tool, payload in (("create_sandbox", "sandbox"), ("create_agent", "agent")):
+            for budget in (None, True, 0, -1, "20"):
+                result = await session.call_tool(tool, {payload: {"budget_usd": budget}, "idempotency_key": "explicit-intent"})
+                assert result.isError
+        for arguments in (
+            {"sandbox_id": "../secrets"},
+            {"sandbox_id": "sb_one", "exec_id": "../exec"},
+        ):
+            tool = "get_sandbox_command" if "exec_id" in arguments else "get_sandbox"
+            assert (await session.call_tool(tool, arguments)).isError
+        assert requests == []
+
+
+@pytest.mark.asyncio
+async def test_local_project_tool_packages_exclusions_and_binds_upload_identity(api, tmp_path):
+    import hashlib
+    import io
+    import tarfile
+    server, requests, responses = api
+    (tmp_path / "agent.py").write_bytes(b"print('exact bytes')\n")
+    (tmp_path / ".env").write_text("SECRET=do-not-upload")
+    asset_digest = "a" * 64
+    async with create_connected_server_and_client_session(server) as session:
+        for _ in range(2):
+            responses.extend([
+                httpx.Response(200, json={"max_project_bytes": 100000}),
+                httpx.Response(200, json={"max_import_bytes": 100000, "upload_idempotency": True}),
+                httpx.Response(201, json={"id": "asset_project", "state": "ready", "sha256": asset_digest, "stored_bytes": 10240}),
+            ])
+            result = await session.call_tool("upload_project", {"project": str(tmp_path), "idempotency_key": "project-one"})
+            assert not result.isError, result
+            uploaded = json.loads(result.content[0].text)
+            assert uploaded["asset_id"] == "asset_project" and uploaded["sha256"] == asset_digest
+        uploads = [r for r in requests if r.method == "POST"]
+        assert len(uploads) == 2
+        assert uploads[0].content == uploads[1].content
+        for upload in uploads:
+            assert upload.url.path == "/v1/assets/upload"
+            assert upload.headers["Idempotency-Key"] == "project-one"
+            assert upload.headers["X-Nodus-SHA256"] == hashlib.sha256(upload.content).hexdigest()
+            with tarfile.open(fileobj=io.BytesIO(upload.content), mode="r:gz") as archive:
+                assert archive.getnames() == ["agent.py"]
+                assert archive.extractfile("agent.py").read() == b"print('exact bytes')\n"
+        assert not any(r.url.path == "/v1/sandboxes" for r in requests)
+
+
+@pytest.mark.asyncio
+async def test_local_download_verifies_bytes_and_retains_read_keys_across_retries(api, tmp_path):
+    import base64
+    import hashlib
+    server, requests, responses = api
+    output = bytes(range(256)) * 1200
+    digest = hashlib.sha256(output).hexdigest()
+    async with create_connected_server_and_client_session(server) as session:
+        for target in (tmp_path / "one.bin", tmp_path / "two.bin"):
+            operations = [{"operation": "stat", "path": "out.bin", "type": "file", "size_bytes": len(output)}]
+            for offset in range(0, len(output), 262144):
+                chunk = output[offset:offset + 262144]
+                operations.append({"operation": "read", "path": "out.bin", "data": base64.b64encode(chunk).decode(),
+                                   "size_bytes": len(output), "sha256": digest, "offset": offset,
+                                   "next_offset": offset + len(chunk), "eof": offset + len(chunk) == len(output)})
+            for index, body in enumerate(operations):
+                responses.extend([
+                    httpx.Response(202, json={"id": "exec_" + str(index), "sandbox_id": "sb_one", "state": "completed", "exit_code": 0}),
+                    httpx.Response(200, json={"frames": [{"sequence": 1, "stream": "stdout", "data": base64.b64encode(json.dumps(body).encode()).decode()}],
+                                             "next_sequence": 1, "last_sequence": 1, "done": True, "complete": True}),
+                ])
+            result = await session.call_tool("download_sandbox_file", {"sandbox_id": "sb_one", "path": "out.bin", "destination": str(target), "idempotency_key": "download-one"})
+            assert not result.isError, result
+            assert target.read_bytes() == output
+            assert json.loads(result.content[0].text)["verified"] is True
+        posts = [r for r in requests if r.method == "POST"]
+        assert len(posts) == 6
+        assert [r.headers["Idempotency-Key"] for r in posts[:3]] == [r.headers["Idempotency-Key"] for r in posts[3:]]
+        assert len({r.headers["Idempotency-Key"] for r in posts}) == 3
+
+
+@pytest.mark.asyncio
+async def test_local_discovery_matches_bundled_public_operation_contract(api):
+    from importlib.resources import files
+    server, requests, _ = api
+    manifest = json.loads(files("nodus").joinpath("_operation_manifest.json").read_text())
+    async with create_connected_server_and_client_session(server) as session:
+        tools = {tool.name: tool for tool in (await session.list_tools()).tools}
+        for operation in manifest["operations"]:
+            if "local_mcp" not in operation["transports"]:
+                continue
+            tool = tools[operation["name"]]
+            assert tool.inputSchema == operation["inputSchema"]
+            assert tool.annotations.model_dump(exclude_none=True) == operation["annotations"]
+        result = await session.call_tool("get_operation_manifest", {})
+        assert not result.isError, result
+        catalog = json.loads(result.content[0].text)
+        assert catalog["version"] == "v1"
+        names = {row["name"] for row in catalog["operations"]}
+        assert {"create_agent", "sandbox_files", "upload_project", "download_sandbox_file"} <= names
+        assert "get_workload_output" not in names
+        assert requests == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("changes", [{"tenant_id": "other-team"}, {"idempotency_key": "x" * 201}])
+async def test_local_invocation_enforces_the_advertised_contract(api, changes):
+    server, requests, _ = api
+    async with create_connected_server_and_client_session(server) as session:
+        result = await session.call_tool("create_sandbox", {"sandbox": {"budget_usd": 5},
+                                         "idempotency_key": "same-intent", **changes})
+        assert result.isError
+        assert not requests
+
+
+@pytest.mark.asyncio
+async def test_legacy_workload_optional_nulls_keep_the_local_contract(api):
+    server, requests, _ = api
+    async with create_connected_server_and_client_session(server) as session:
+        result = await session.call_tool("list_workloads", {"scope": None, "limit": None, "offset": None})
+        assert not result.isError, result
+        assert dict(requests[-1].url.params) == {}
+        tools = {tool.name: tool for tool in (await session.list_tools()).tools}
+        manifest = json.loads((await session.call_tool("get_operation_manifest", {})).content[0].text)
+        workload = next(row for row in manifest["operations"] if row["name"] == "list_workloads")
+        assert workload["inputSchema"] == tools["list_workloads"].inputSchema
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tool,arguments", [
+    ("create_sandbox", {"sandbox": {"budget_usd": 1, "BUDGET_USD": 50}}),
+    ("create_agent", {"agent": {"name": "worker", "entrypoint": "agent:main", "budget_usd": 1, "BUDGET_USD": 50}}),
+    ("update_agent", {"agent_id": "agent_one", "update": {"expected_revision": 1, "definition": {"name": "worker", "entrypoint": "agent:main", "budget_usd": 1, "BUDGET_USD": 50}}}),
+])
+async def test_case_aliased_budgets_cannot_raise_authorized_spending(api, tool, arguments):
+    server, requests, _ = api
+    async with create_connected_server_and_client_session(server) as session:
+        result = await session.call_tool(tool, {**arguments, "idempotency_key": "authorized-one-dollar"})
+        assert result.isError
+        assert requests == []

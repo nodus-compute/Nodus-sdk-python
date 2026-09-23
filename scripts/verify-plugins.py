@@ -21,6 +21,14 @@ from mcp.client.stdio import stdio_client
 TOOLS = {
     "submit_workload", "list_workloads", "get_workload", "cancel_workload",
     "get_workload_events", "get_workload_logs", "list_workload_outputs", "validate_workload", "download_workload_output",
+    "get_operation_manifest", "get_sandbox_capabilities", "list_sandbox_templates",
+    "create_sandbox", "list_sandboxes", "get_sandbox", "submit_sandbox_command",
+    "get_sandbox_command", "get_sandbox_command_output", "cancel_sandbox_command",
+    "sandbox_files", "sleep_sandbox", "wake_sandbox", "terminate_sandbox",
+    "create_agent", "update_agent", "list_agents", "get_agent", "submit_agent_run",
+    "list_agent_runs", "get_agent_run", "get_agent_run_steps", "signal_agent_run",
+    "pause_agent", "resume_agent", "retry_agent_run", "cancel_agent_run",
+    "upload_project", "upload_sandbox_file", "download_sandbox_file",
 }
 
 
@@ -80,6 +88,11 @@ async def verify(plugin: Path, wheel: Path | None = None) -> None:
                         assert initialized.serverInfo.name == "nodus"
                         names = {tool.name for tool in (await session.list_tools()).tools}
                         assert names == TOOLS, names
+                        discovery = await session.call_tool("get_operation_manifest", {})
+                        assert not discovery.isError, discovery
+                        manifest = json.loads(discovery.content[0].text)
+                        assert manifest["version"] == "v1"
+                        assert {item["name"] for item in manifest["operations"]} == names - {"get_operation_manifest"}
                         for _ in range(2):
                             result = await session.call_tool("list_workloads", {"limit": 1})
                             assert not result.isError, result
@@ -88,7 +101,7 @@ async def verify(plugin: Path, wheel: Path | None = None) -> None:
                     ("/v1/workloads?limit=1", "Bearer plugin-test-key")
                 ] * 2, requests
                 assert len({request[2] for request in requests}) == 1, requests
-                print(f"{client}: nine tools, saved login, two reads, one TCP connection")
+                print(f"{client}: {len(names)} tools, versioned discovery, saved login, two reads, one TCP connection")
     finally:
         server.shutdown()
         server.server_close()

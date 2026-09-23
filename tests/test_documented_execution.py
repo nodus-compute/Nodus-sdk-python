@@ -31,6 +31,7 @@ DIGEST = hashlib.sha256(DATA).hexdigest()
 def docs_api(monkeypatch):
     calls = []
     submissions = []
+    file_output = {}
     row = {"id": "wl_docs", "status": "completed", "revision": 2,
            "spend_usd": 0.01, "meter": {"total_now_usd": 0.01},
            "route": {"sku": "nodus:test", "region": "test-region", "expected_cost_usd": 0.01}}
@@ -75,6 +76,13 @@ def docs_api(monkeypatch):
             calls.append(("GET", path))
             if self.headers.get("Authorization") != "Bearer nk_docs":
                 return self.reply({"error": "unauthorized"}, 401)
+            if path == "/v1/sandboxes/capabilities":
+                return self.reply({"available": True, "default_template": "nodus:agent-tools-v1", "templates": [
+                    {"id": "nodus:agent-tools-v1", "available": True, "max_project_bytes": 1048576}]})
+            if path.endswith("/execs/sx_files/stream"):
+                return self.reply({"frames": [{"sequence": 1, "stream": "stdout", "offset": 0,
+                    "data": base64.b64encode(json.dumps(file_output).encode()).decode()}],
+                    "next_sequence": 1, "last_sequence": 1, "final_sequence": 1, "state": "completed", "done": True, "complete": True})
             if path == "/v1/pools/pool_docs/proposals":
                 query = parse_qs(urlsplit(self.path).query)
                 if query != {"limit": ["25"], "state": ["pending"]}:
@@ -99,7 +107,7 @@ def docs_api(monkeypatch):
                                    "export": {"id": "export_docs", "connection_id": "conn_docs", "asset_id": "asset_docs", "query_hash": "a" * 64,
                                               "format": "parquet", "row_count": 10, "bytes": 256, "created_at": "2026-09-19T00:00:00Z"}})
             if path == "/v1/assets":
-                return self.reply({"assets": [], "max_import_bytes": 1048576})
+                return self.reply({"assets": [], "upload_idempotency": True, "max_import_bytes": 1048576})
             if path == "/v1/workloads":
                 return self.reply({"workloads": [row]})
             if path == "/v1/workloads/wl_docs":
@@ -194,6 +202,29 @@ def docs_api(monkeypatch):
                 return self.reply({"api_key": "nk_docs", "base_url": address, "tenant": "docs-test"})
             if self.headers.get("Authorization") != "Bearer nk_docs":
                 return self.reply({"error": "unauthorized"}, 401)
+            if path == "/v1/agents":
+                assert payload["budget_usd"] == 20 and payload["entrypoint"] == "agent:main"
+                if "bootstrap" in payload:
+                    assert payload["bootstrap"] == {"repo": "your-org/private-agent", "ref": "main"}
+                    assert payload["network_permissions"] == ["github"] and "source" not in payload
+                else:
+                    assert payload["source"] == {"asset_id": "asset_docs"}
+                return self.reply({"id": "ag_docs", "name": payload["name"], "status": "active", "budget_usd": 20,
+                                   "current_revision": 1, "url": "https://console.nodus-compute.ai/?view=agent-deployments&agent=ag_docs"}, 202)
+            if path == "/v1/agents/ag_docs/runs":
+                assert payload["input"] == {"values": [1, 2, 3]}
+                return self.reply({"id": "run_docs", "agent_id": "ag_docs", "status": "queued", "input": payload["input"]}, 202)
+            if path == "/v1/sandboxes/sb_docs/files":
+                file_output.clear()
+                file_output.update(operation=payload["operation"], path=payload["path"])
+                if payload["operation"] == "stat":
+                    file_output.update(type="file", size_bytes=len(DATA))
+                elif payload["operation"] == "read":
+                    file_output.update(data=base64.b64encode(DATA).decode(), offset=0, next_offset=len(DATA),
+                                       size_bytes=len(DATA), sha256=DIGEST, eof=True)
+                return self.reply({**execution, "id": "sx_files", "state": "completed", "exit_code": 0}, 202)
+            if path == "/v1/sandboxes/sb_docs/sleep":
+                return self.reply({**sandbox, "state": "suspended"}, 202)
             if path == "/v1/connections":
                 assert payload == {"name": "lab-db", "kind": "neon", "secret": "LAB_DB", "scope": "read", "region": "us-east-1", "live_mode": False}
                 return self.reply(connection, 201)
@@ -278,7 +309,14 @@ def test_python_documentation_executes(path, number, body, docs_api, tmp_path, m
             state["run_id"] = "invoice:42"
             state["input"] = {"invoice_id": 42}
             namespace["send_to_invoice_service"] = lambda invoice_id: "synthetic-remote-7"
-        exec(compile(body.replace('"YOUR_WORKLOAD_ID"', '"wl_docs"'), str(path), "exec"), namespace)
+        program = compile(body.replace('"YOUR_WORKLOAD_ID"', '"wl_docs"'), str(path), "exec")
+        local_project_example = (path.name, number) in {("agent-sandboxes.md", 0), ("managed-agents.md", 1)}
+        descriptor_support = os.name == "nt" or (hasattr(os, "fwalk") and hasattr(os, "O_NOFOLLOW") and os.open in os.supports_dir_fd)
+        if local_project_example and not descriptor_support:
+            with pytest.raises(nodus.ValidationError, match="POSIX filesystem"):
+                exec(program, namespace)
+        else:
+            exec(program, namespace)
     # Compile embedded Python argv too, without pretending it ran on a GPU.
     for payload in docs_api[2]:
         sources = [payload.get("source", {})] + [s.get("source", {}) for s in payload.get("stages", [])]
@@ -310,6 +348,8 @@ def test_complete_example_programs(script, args, docs_api, tmp_path):
     ["events", "wl_docs"], ["logs", "wl_docs"],
     ["artifacts", "wl_docs"], ["explain", "wl_docs"], ["ledger", "wl_docs"],
     ["download", "wl_docs"], ["workload", "outputs", "wl_docs"], ["workload", "outputs", "wl_docs", "--reload", "results", "--stage", "main"], ["cancel", "wl_docs"], ["assets"], ["upload", "hello.py"],
+    ["sandbox", "new", "--name", "research-agent", "--github-repo", "your-org/private-agent", "--github-ref", "main", "--budget", "5"],
+    ["agent", "deploy", "worker", "--github-repo", "your-org/private-agent", "--github-ref", "main", "--budget", "20"],
 ])
 def test_installed_terminal_commands(args, docs_api, tmp_path):
     from nodus._workload_file import write_workload_file

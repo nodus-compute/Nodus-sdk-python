@@ -95,9 +95,10 @@ def test_configured_agent_discovers_tools_despite_python_overrides(
     async def check():
         return await asyncio.wait_for(discover(), timeout=20)
 
-    assert asyncio.run(check()) == {
+    assert asyncio.run(check()) >= {
         "submit_workload", "list_workloads", "get_workload", "get_workload_events",
         "get_workload_logs", "list_workload_outputs", "cancel_workload",
         "validate_workload", "download_workload_output",
+        "create_sandbox", "submit_agent_run", "upload_project",
     }
     assert not marker.exists()

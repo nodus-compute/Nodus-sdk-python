@@ -136,6 +136,121 @@ def test_sandbox_cli_accepts_name_only_reattach():
     assert "sandbox" in cli.build_parser().format_help()
 
 
+def test_managed_sandbox_cli_creation_and_controls(monkeypatch, capsys):
+    calls = []
+    def handler(request):
+        calls.append((request.url.path, json.loads(request.content) if request.content else None))
+        return httpx.Response(202, json=SANDBOX)
+    monkeypatch.setattr(cli, "Client", client_factory(handler))
+    assert cli.main(["sandbox", "new", "--budget", "5"]) == 0
+    assert cli.main(["sandbox", "sleep", "sb_agent", "--idempotency-key", "sleep-1"]) == 0
+    assert cli.main(["sandbox", "wake", "sb_agent", "--idempotency-key", "wake-1"]) == 0
+    assert cli.main(["sandbox", "detail", "sb_agent"]) == 0
+    assert calls[0][1]["template"] == "nodus:agent-tools-v1"
+    assert calls[0][1]["outcome"]["max_cost_usd"] == 5
+    assert any(path.endswith("/sleep") for path, _ in calls)
+    assert "sb_agent" in capsys.readouterr().out
+
+
+def test_sandbox_file_cli_accepts_customer_transfer_commands():
+    parser = cli.build_parser()
+    assert parser.parse_args(["sandbox", "new", "--project", ".", "--budget", "5"]).project == "."
+    assert parser.parse_args(["sandbox", "files", "download", "sb_agent", "results", "./results"]).destination == "./results"
+    assert parser.parse_args(["sandbox", "files", "upload", "sb_agent", "./local", "project"]).source == "./local"
+    assert parser.parse_args(["sandbox", "files", "read", "sb_agent", "result.txt"]).path == "result.txt"
+
+
+@pytest.mark.parametrize("command, resource", [
+    (["sandbox", "new", "--name", "repo-session"], "sandboxes"),
+    (["agent", "deploy", "repo-agent"], "agents"),
+])
+@pytest.mark.parametrize("ref", [None, "feature/agent-tools"])
+def test_github_cli_preserves_connected_source_budget_and_retry_receipt(command, resource, ref, monkeypatch, capsys):
+    calls = []
+    bootstrap = {"repo": "private-org/agent", "setup": "python -m pip install -r requirements.txt"}
+    if ref:
+        bootstrap["ref"] = ref
+
+    def handler(request):
+        assert request.method == "POST" and request.url.path == "/v1/" + resource
+        assert request.headers["Idempotency-Key"] == "same-repo-admission"
+        body = json.loads(request.content)
+        calls.append(body)
+        assert body["bootstrap"] == bootstrap
+        assert body["network_permissions"] == ["python_packages", "github"]
+        assert "source" not in body and "setup" not in body
+        if resource == "sandboxes":
+            assert body["name"] == "repo-session"
+            assert body["template"] == "nodus:agent-tools-v1"
+            assert body["outcome"]["max_cost_usd"] == 5
+        else:
+            assert body["name"] == "repo-agent" and body["budget_usd"] == 5
+            assert body["entrypoint"] == "agent:main"
+        if len(calls) == 1:
+            return httpx.Response(202, json={"state": "creating"})
+        return httpx.Response(202, json=SANDBOX if resource == "sandboxes" else {"id": "ag_repo", "status": "active"})
+
+    monkeypatch.setattr(cli, "Client", client_factory(handler))
+    arguments = [*command, "--github-repo", "private-org/agent", "--budget", "5",
+                 "--setup", bootstrap["setup"], "--network-permission", "python_packages",
+                 "--idempotency-key", "same-repo-admission"]
+    if ref:
+        arguments.extend(["--github-ref", ref])
+    assert cli.main(arguments) == 2
+    assert "same-repo-admission" in capsys.readouterr().err
+    assert cli.main(arguments) == 0
+    output = capsys.readouterr().out
+    assert ("sb_agent" if resource == "sandboxes" else "ag_repo") in output
+    assert len(calls) == 2 and calls[0] == calls[1]
+
+
+@pytest.mark.parametrize("command", [["sandbox", "new"], ["agent", "deploy", "repo-agent"]])
+@pytest.mark.parametrize("sources", [
+    ["--github-repo", "org/repo", "--project", "."],
+    ["--github-repo", "org/repo", "--source-asset-id", "asset_project"],
+    ["--project", ".", "--source-asset-id", "asset_project"],
+])
+def test_github_cli_rejects_conflicting_sources(command, sources, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "Client", lambda **kwargs: pytest.fail("conflicting sources reached a client"))
+    with pytest.raises(SystemExit) as error:
+        cli.main([*command, *sources, "--budget", "5"])
+    assert error.value.code == 2
+    assert "not allowed with argument" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("command", [["sandbox", "new"], ["agent", "deploy", "repo-agent"]])
+def test_github_cli_requires_repository_for_ref_before_creating_a_client(command, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "Client", lambda **kwargs: pytest.fail("ref without repo reached a client"))
+    assert cli.main([*command, "--github-ref", "main", "--budget", "5"]) == 2
+    assert "--github-ref requires --github-repo" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("command", [["sandbox", "new"], ["agent", "deploy", "repo-agent"]])
+@pytest.mark.parametrize("repository", ["https://token-private@github.com/org/repo", "org/../repo", "org/repo.git"])
+def test_github_cli_rejects_urls_without_echoing_credentials(command, repository, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "Client", lambda **kwargs: pytest.fail("invalid repository reached a client"))
+    with pytest.raises(SystemExit) as error:
+        cli.main([*command, "--github-repo", repository, "--budget", "5"])
+    assert error.value.code == 2
+    output = capsys.readouterr().err
+    assert "owner/name" in output and repository not in output
+
+
+def test_sandbox_cli_reuses_uploaded_source_without_reading_local_files(monkeypatch, capsys):
+    calls = []
+    def handler(request):
+        assert request.method == "POST" and request.url.path == "/v1/sandboxes"
+        body = json.loads(request.content)
+        calls.append(body)
+        assert body["source"] == {"asset_id": "asset_project"}
+        assert body["template"] == "nodus:agent-tools-v1"
+        assert body["outcome"]["max_cost_usd"] == 5
+        return httpx.Response(202, json=SANDBOX)
+    monkeypatch.setattr(cli, "Client", client_factory(handler))
+    assert cli.main(["sandbox", "new", "--name", "repo-session", "--source-asset-id", "asset_project", "--budget", "5"]) == 0
+    assert capsys.readouterr().out.strip() == "sb_agent" and len(calls) == 1
+
+
 def test_sandbox_cli_rejects_nonpositive_and_nonfinite_budgets():
     parser = cli.build_parser()
     for value in ("0", "-1", "nan", "inf"):

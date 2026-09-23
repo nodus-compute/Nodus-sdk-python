@@ -1,6 +1,6 @@
 {
   "name": "nodus",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Run GPU workloads with Nodus, monitor progress, read logs and inspect results.",
   "author": {
     "name": "Nodus, Inc."
