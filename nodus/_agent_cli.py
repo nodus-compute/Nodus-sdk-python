@@ -52,6 +52,7 @@ def add_parser(commands, positive_cost, page_limit):
             operation.add_argument("--reason", required=True)
             operation.add_argument("--evidence-digest", required=True)
             operation.add_argument("--result", help="verified result as JSON for a completed decision")
+            operation.add_argument("--checkpoint-id", help="verified application state to retain with a completed result")
 
 
 def _input(args):
@@ -106,7 +107,7 @@ def run(args, client_factory):
                         result = json.loads(args.result) if args.result is not None else None
                         output = workload.resolve(step_id=args.step_id, expected_revision=args.expected_revision,
                             decision=args.decision, reason=args.reason, evidence_digest=args.evidence_digest,
-                            result=result, idempotency_key=key)
+                            result=result, checkpoint_id=args.checkpoint_id, idempotency_key=key)
         except NodusError as error:
             if isinstance(error.body, dict) and error.body.get("idempotency_key"):
                 print("Retry the unchanged operation with --idempotency-key " + json.dumps(key), file=sys.stderr)

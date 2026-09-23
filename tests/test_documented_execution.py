@@ -311,7 +311,7 @@ def test_python_documentation_executes(path, number, body, docs_api, tmp_path, m
             namespace["send_to_invoice_service"] = lambda invoice_id: "synthetic-remote-7"
         program = compile(body.replace('"YOUR_WORKLOAD_ID"', '"wl_docs"'), str(path), "exec")
         local_project_example = (path.name, number) in {("agent-sandboxes.md", 0), ("managed-agents.md", 1)}
-        descriptor_support = hasattr(os, "fwalk") and hasattr(os, "O_NOFOLLOW") and os.open in os.supports_dir_fd
+        descriptor_support = os.name == "nt" or (hasattr(os, "fwalk") and hasattr(os, "O_NOFOLLOW") and os.open in os.supports_dir_fd)
         if local_project_example and not descriptor_support:
             with pytest.raises(nodus.ValidationError, match="POSIX filesystem"):
                 exec(program, namespace)

@@ -3,14 +3,14 @@
 import base64
 import hashlib
 import json
-import os
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
 import re
 import stat
 import uuid
 
 from .errors import NodusError, ValidationError
-from ._projects import no_symlinks, secure_directory as _directory
+from ._projects import no_symlinks
+from ._local_files import fingerprint, open_directory
 from ._sandboxes import SandboxExec, AsyncSandboxExec, _mutation_receipt, _valid_id
 
 
@@ -150,37 +150,27 @@ class _Files:
         return result
 
     def _upload(self, source, path, key):
-        parent = _directory(source.parent)
-        try:
+        with open_directory(source.parent) as parent:
             return (yield from self._upload_at(parent, source.name, path, key))
-        finally:
-            os.close(parent)
 
     def _upload_at(self, parent, leaf, path, key):
-        info = os.stat(leaf, dir_fd=parent, follow_symlinks=False)
+        info = parent.stat(leaf)
         if stat.S_ISDIR(info.st_mode):
-            directory = os.open(leaf, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
-            try:
-                with os.scandir(directory) as entries:
-                    names = sorted(entry.name for entry in entries)
-                for name in names:
+            with parent.child(leaf) as directory:
+                for name in directory.validate_names(directory.names()):
                     child = _path(path + "/" + name)
                     yield from self._upload_at(directory, name, child, (key + "/" + name) if key else None)
-            finally:
-                os.close(directory)
             return {"path": path}
         if not stat.S_ISREG(info.st_mode) or info.st_size > 512 << 20:
             raise ValidationError("Upload requires regular files within the 512 MiB file limit")
-        descriptor = os.open(leaf, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
-        with os.fdopen(descriptor, "rb") as source:
-            before = os.fstat(source.fileno())
-            fingerprint = lambda value: (value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns, value.st_ctime_ns)
+        with parent.open_read(leaf) as source:
+            before = source.info()
             if fingerprint(info) != fingerprint(before):
                 raise ValidationError("Local file changed before upload")
             digest, offset, expected = hashlib.sha256(), 0, None
             while True:
                 chunk = source.read(min(32768, before.st_size - offset))
-                if fingerprint(os.fstat(source.fileno())) != fingerprint(before):
+                if fingerprint(source.info()) != fingerprint(before):
                     raise ValidationError("Local file changed during upload")
                 if not chunk and offset < before.st_size:
                     raise ValidationError("Local file became incomplete during upload")
@@ -195,7 +185,7 @@ class _Files:
                 expected = digest.hexdigest()
                 if result.get("size_bytes") != offset or _hash(result.get("sha256")) != expected:
                     raise NodusError("Uploaded bytes do not match the acknowledged file")
-                if fingerprint(os.fstat(source.fileno())) != fingerprint(before):
+                if fingerprint(source.info()) != fingerprint(before):
                     raise ValidationError("Local file changed during upload")
                 if offset == before.st_size:
                     return result
@@ -210,35 +200,18 @@ class _Files:
                 raise NodusError("Download requires a regular file or directory")
             recursive = metadata["type"] == "directory"
         if recursive:
-            directory = _directory(target, create=True)
-            os.close(directory)
-            rows = yield from self._list(path)
-            for row in rows:
-                remote = row["name"] if path == "." else path + "/" + row["name"]
-                yield from self._download(remote, target / row["name"], row["type"] == "directory")
+            with open_directory(target, create=True) as directory:
+                rows = yield from self._list(path)
+                directory.validate_names([row["name"] for row in rows])
+                for row in rows:
+                    remote = row["name"] if path == "." else path + "/" + row["name"]
+                    yield from self._download(remote, target / row["name"], row["type"] == "directory")
             return target
-        parent = _directory(target.parent, create=True)
-        temporary = ".nodus-download-" + uuid.uuid4().hex
-        try:
-            descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=parent)
-            with os.fdopen(descriptor, "wb") as output:
+        with open_directory(target.parent, create=True) as parent:
+            parent.validate_names([target.name])
+            with parent.stage() as output:
                 yield from self._read(path, output)
-            no_symlinks(target)
-            held, current = os.fstat(parent), target.parent.stat()
-            if (held.st_dev, held.st_ino) != (current.st_dev, current.st_ino):
-                raise ValidationError("Download directory changed during transfer")
-            try:
-                if not stat.S_ISREG(os.stat(target.name, dir_fd=parent, follow_symlinks=False).st_mode):
-                    raise ValidationError("Download destination must be a regular file")
-            except FileNotFoundError:
-                pass
-            os.replace(temporary, target.name, src_dir_fd=parent, dst_dir_fd=parent)
-        finally:
-            try:
-                os.unlink(temporary, dir_fd=parent)
-            except FileNotFoundError:
-                pass
-            os.close(parent)
+                output.commit(target.name)
         return target
 
 

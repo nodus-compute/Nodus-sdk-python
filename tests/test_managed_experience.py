@@ -18,6 +18,7 @@ import nodus
 
 POSIX_FILES = hasattr(os, "fwalk") and hasattr(os, "O_NOFOLLOW") and os.open in os.supports_dir_fd
 requires_posix_files = pytest.mark.skipif(not POSIX_FILES, reason="Secure local file operations require POSIX descriptor APIs")
+requires_local_files = pytest.mark.skipif(not POSIX_FILES and os.name != "nt", reason="Secure local files require POSIX or native Windows NTFS support")
 
 
 def client_for(handler):
@@ -49,7 +50,7 @@ def test_managed_creation_refuses_missing_or_invalid_budget_before_http(budget):
             client.sandboxes.create(budget=budget)
 
 
-@requires_posix_files
+@requires_local_files
 def test_project_upload_is_bounded_and_excludes_dependencies_and_credentials(tmp_path):
     (tmp_path / "main.py").write_bytes(b"print('ready')\n")
     (tmp_path / ".env").write_text("SECRET=hidden")
@@ -90,6 +91,7 @@ def test_project_symlink_cannot_upload_file_outside_project(tmp_path):
 
 
 @pytest.mark.parametrize("operation", ["project", "upload", "download"])
+@pytest.mark.skipif(os.name == "nt", reason="Windows uses native handles instead of POSIX descriptors")
 def test_missing_descriptor_support_refuses_local_files_without_changing_them(tmp_path, monkeypatch, operation):
     monkeypatch.delattr(os, "O_NOFOLLOW", raising=False)
     original = tmp_path / "data.txt"
@@ -153,7 +155,7 @@ def test_file_paths_reject_escape_before_http(path):
             nodus.Sandbox(client, "sb_one").files.read(path)
 
 
-@requires_posix_files
+@requires_local_files
 def test_project_retry_reuses_immutable_upload_with_same_client(tmp_path):
     (tmp_path / "main.py").write_text("print(1)")
     uploads, attempts = [], []
@@ -176,7 +178,7 @@ def test_project_retry_reuses_immutable_upload_with_same_client(tmp_path):
     assert len(uploads) == 1 and attempts[0] == attempts[1]
 
 
-@requires_posix_files
+@requires_local_files
 def test_project_retry_reaches_saved_receipt_after_admission_gate_closes(tmp_path):
     (tmp_path / "main.py").write_text("print(1)")
     attempts = []
@@ -269,7 +271,7 @@ def file_handler(content, *, corrupt=False):
     return handle, seen
 
 
-@requires_posix_files
+@requires_local_files
 def test_download_discovers_type_checks_chunks_and_replaces_only_verified_file(tmp_path):
     data = bytes(range(256)) * 2048
     handler, seen = file_handler(data)
@@ -281,7 +283,7 @@ def test_download_discovers_type_checks_chunks_and_replaces_only_verified_file(t
     assert [body["offset"] for body in seen[1:]] == [0, 262144]
 
 
-@requires_posix_files
+@requires_local_files
 def test_corrupt_download_keeps_existing_local_output(tmp_path):
     handler, _ = file_handler(b"corrupt", corrupt=True)
     target = tmp_path / "output.bin"
@@ -290,6 +292,48 @@ def test_corrupt_download_keeps_existing_local_output(tmp_path):
         nodus.Sandbox(client, "sb_one").files.download("output.bin", target)
     assert target.read_bytes() == b"original"
     assert not list(tmp_path.glob(".nodus-download-*"))
+
+
+@requires_local_files
+def test_cli_download_preserves_binary_bytes_through_public_sdk(tmp_path, monkeypatch, capsys):
+    from nodus import cli
+    data = bytes(range(256)) * 2048
+    files, _ = file_handler(data)
+    def handle(request):
+        if request.method == "GET" and request.url.path == "/v1/sandboxes/sb_one":
+            return httpx.Response(200, json={"id": "sb_one", "state": "ready"})
+        return files(request)
+    monkeypatch.setattr(cli, "Client", lambda **kwargs: client_for(handle))
+    destination = tmp_path / "résultats 日本語.bin"
+    assert cli.main(["sandbox", "files", "download", "sb_one", "output.bin", str(destination)]) == 0
+    assert destination.read_bytes() == data
+    assert str(destination) in capsys.readouterr().out
+
+
+@requires_local_files
+def test_folder_upload_preserves_nested_binary_files_and_chunk_hashes(tmp_path):
+    expected = {"project/nested/data.bin": bytes(range(256)) * 300, "project/empty.txt": b""}
+    (tmp_path / "nested").mkdir()
+    (tmp_path / "nested/data.bin").write_bytes(expected["project/nested/data.bin"])
+    (tmp_path / "empty.txt").write_bytes(b"")
+    uploaded, response = {}, None
+    def handle(request):
+        nonlocal response
+        if request.method == "POST":
+            body = json.loads(request.content)
+            assert body["operation"] == "write"
+            accumulated = uploaded.setdefault(body["path"], bytearray())
+            assert body["offset"] == len(accumulated)
+            if accumulated:
+                assert body["expected_sha256"] == hashlib.sha256(accumulated).hexdigest()
+            accumulated.extend(base64.b64decode(body["data"]))
+            response = {"operation": "write", "path": body["path"], "size_bytes": len(accumulated), "sha256": hashlib.sha256(accumulated).hexdigest()}
+            return httpx.Response(202, json={"id": "exec_one", "sandbox_id": "sb_one", "state": "completed", "exit_code": 0})
+        return httpx.Response(200, json={"frames": [{"sequence": 1, "stream": "stdout", "data": base64.b64encode(json.dumps(response).encode()).decode()}],
+                                        "next_sequence": 1, "last_sequence": 1, "done": True, "complete": True})
+    with client_for(handle) as client:
+        nodus.Sandbox(client, "sb_one").files.upload(tmp_path, "project", idempotency_key="folder-upload")
+    assert uploaded == expected
 
 
 @requires_posix_files

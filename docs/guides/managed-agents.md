@@ -120,21 +120,61 @@ with the effect contracts in [durable steps](../durable-steps.md).
 
 ## Recovery boundaries
 
-Completed step results replay from the journal. Application recovery files
-belong in `NODUS_CHECKPOINT_DIR`. Project files, recovery state and downloadable
-outputs serve different purposes. Rebuild dependencies on replacement compute.
-Neither file restoration nor replay restores arbitrary process memory.
+New deployments admitted with qualified application-state recovery use
+`checkpoint-v1`. Check `run.recovery_policy` to see the accepted policy. Existing
+deployments retain their recovery policy when updated, and each run retains its
+accepted code revision.
+
+With `checkpoint-v1`, Nodus saves the files in `NODUS_CHECKPOINT_DIR` before
+recording a completed step, entering a durable wait, continuing as new or
+finishing the run. The step result and its verified state version commit
+together. On a replacement attempt, Nodus restores that exact committed state
+before starting the entrypoint. Completed steps replay their recorded results.
+Uncommitted changes in the state folder are discarded before retrying.
+
+Your application must serialize its in-memory state into that folder and load
+those files on restart. Finish, flush and close every state writer before a step
+returns or the driver calls a durable wait or continuation. Join background
+writers first. Nodus checks for changed files during capture but does not freeze
+background processes or provide an atomic filesystem snapshot. If a save fails,
+let the driver exit so recovery can restore committed state before another
+attempt. An empty baseline does not claim saved progress, and an empty folder
+cannot replace an earlier useful recovery point.
+
+Inspect `run.checkpoint_id` and `run.last_checkpoint_at` for committed state.
+`run.checkpoint_status` and `run.checkpoint_error` describe the latest capture.
+The `ready` status means files are verified but the associated step or wait has
+not committed yet. Empty baselines have no `last_checkpoint_at`. The console
+shows the last useful save separately from pending saves and gives a next action
+when a capture fails. CLI run output includes the same fields.
+
+Project files, recovery state and downloadable outputs serve different purposes.
+Files outside `NODUS_CHECKPOINT_DIR` are not part of these state commits. Rebuild
+dependencies on replacement compute. Revisions without `checkpoint-v1` retain
+explicit file recovery, with file saves separate from step completion. Neither
+file restoration nor replay restores arbitrary process memory.
 
 JSON inputs and results are bounded. Inside the managed driver,
 `nodus.agent.put_blob(data)` commits up to 32 MiB of bytes and returns an immutable
 reference suitable for a step result. `nodus.agent.get_blob(reference)` checks
 the complete content hash and length before returning bytes. Blobs are scoped
 to the logical run and remain usable across worker replacement and continuations.
-Run and account storage limits still apply. These operations do not provide
-filesystem atomicity or save arbitrary process memory.
-Unknown external effects remain blocked for explicit resolution rather than
-being silently repeated. Inspect `run.steps()` and verify the remote effect,
-then use `run.resolve()` with the observed step revision, decision, reason and
-evidence digest. The CLI provides `nodus agent steps` and `nodus agent resolve`
-with the same evidence requirements. Finite tests do not guarantee completion
-of every run.
+Run and account storage limits still apply. Blob operations commit independently.
+Record their verified references in step results when they are needed for replay.
+
+Unknown external effects remain blocked for explicit resolution. File recovery
+cannot determine whether a remote API call succeeded when its response was lost.
+Inspect `run.steps()` and independently verify the remote effect, then use
+`run.resolve()` with the observed step revision, decision, reason and evidence
+digest. With `checkpoint-v1`, a `completed` decision also requires an explicit
+`checkpoint_id` whose files match the recorded result. Choose the run's current
+committed checkpoint or the verified candidate returned for that uncertain step.
+Step entries expose the candidate's `checkpoint_id` and `checkpoint_status`.
+Do not select an older checkpoint that would discard other completed progress.
+Omit `checkpoint_id` for `no_effect` or `cancelled` decisions, which retain the
+current committed state.
+
+The CLI provides `nodus agent steps` and `nodus agent resolve --checkpoint-id`
+with the same evidence requirements. The console requires an explicit saved-state
+selection and confirmation for completed effects. Finite tests do not guarantee
+completion of every run.

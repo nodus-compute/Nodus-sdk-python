@@ -27,6 +27,8 @@ def setup_command(value):
 
 
 def excluded(name):
+    if os.name == "nt":
+        name = name.casefold()
     return name in EXCLUDED or name.startswith(".env.") or name.endswith(".pyc")
 
 
@@ -42,6 +44,9 @@ def project_limit(capabilities):
 
 
 def no_symlinks(path):
+    if os.name == "nt":
+        from ._windows_paths import normalized_path
+        return Path(normalized_path(path))
     path = Path(os.path.abspath(path))
     for ancestor in (path, *path.parents):
         if ancestor.is_symlink():
@@ -84,6 +89,10 @@ def _held_directory(path):
 
 @contextmanager
 def archive_project(project, limit):
+    if os.name == "nt":
+        with _archive_windows_project(project, limit) as target:
+            yield target
+        return
     if not hasattr(os, "fwalk") or not hasattr(os, "O_NOFOLLOW"):
         raise ValidationError("Secure project uploads require a POSIX filesystem")
     root = no_symlinks(project)
@@ -123,6 +132,50 @@ def archive_project(project, limit):
                             after = os.fstat(source.fileno())
                             if (actual.st_size, actual.st_mtime_ns, actual.st_ctime_ns) != (after.st_size, after.st_mtime_ns, after.st_ctime_ns):
                                 raise ValidationError("Project changed while packaging")
+        if target.stat().st_size > limit:
+            raise ValidationError("Project archive exceeds the server upload limit")
+        yield target
+
+
+def _windows_project_files(directory, prefix=""):
+    directories = []
+    for name in directory.validate_names(directory.names()):
+        if excluded(name):
+            continue
+        information = directory.stat(name)
+        if stat.S_ISDIR(information.st_mode):
+            directories.append(name)
+        elif stat.S_ISREG(information.st_mode):
+            yield prefix + name, directory, name, information
+        else:
+            raise ValidationError("Project contains a symlink or special file")
+    for name in directories:
+        with directory.child(name) as child:
+            yield from _windows_project_files(child, prefix + name + "/")
+
+
+@contextmanager
+def _archive_windows_project(project, limit):
+    from ._local_files import fingerprint, open_directory
+    with open_directory(no_symlinks(project)) as root, tempfile.TemporaryDirectory(prefix="nodus-project-") as temporary:
+        target = Path(temporary) / "project.tar.gz"
+        total = count = 0
+        with target.open("wb") as raw, gzip.GzipFile(fileobj=raw, mode="wb", mtime=0, filename="") as compressed:
+            with tarfile.open(fileobj=compressed, mode="w|") as archive:
+                for path, directory, name, before in _windows_project_files(root):
+                    total += before.st_size
+                    count += 1
+                    if total > limit or count > 10000:
+                        raise ValidationError("Project exceeds the server upload limit")
+                    with directory.open_read(name) as source:
+                        actual = source.info()
+                        if fingerprint(before) != fingerprint(actual):
+                            raise ValidationError("Project changed while packaging")
+                        entry = tarfile.TarInfo(path)
+                        entry.size, entry.mode = actual.st_size, 0o644
+                        archive.addfile(entry, source)
+                        if fingerprint(actual) != fingerprint(source.info()):
+                            raise ValidationError("Project changed while packaging")
         if target.stat().st_size > limit:
             raise ValidationError("Project archive exceeds the server upload limit")
         yield target

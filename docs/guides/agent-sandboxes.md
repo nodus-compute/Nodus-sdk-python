@@ -54,8 +54,14 @@ The $5 spending limit is explicit. Change it to your authorized amount. The
 SDK supplies no budget when you omit one, and managed creation refuses a missing
 budget. `project` uploads the local folder as an immutable archive. Known
 credential files, dependency folders, caches and recovery state are excluded from this managed
-upload. Symlinks and special files are rejected. Secure local project packaging
-and file transfers require a POSIX filesystem, including Linux and macOS.
+upload. Symlinks and special files are rejected. Local project packaging and file
+transfers use secure directory handles on Linux, macOS and local Windows NTFS
+drives. Windows support is a release candidate pending native qualification.
+Windows paths can contain spaces, Unicode and long names. Network drives, UNC
+paths, device paths, junctions and other reparse points are rejected. This can
+include OneDrive folders and placeholders. Copy these projects into an ordinary
+local NTFS folder before uploading. Windows uploads preserve file contents and
+use ordinary file permissions. They do not infer Unix executable permissions.
 
 Pass `setup="python -m pip install -r requirements.txt"` to rebuild Python
 dependencies before application commands. Package downloads need the matching
@@ -69,6 +75,11 @@ files. Directory transfer preserves file contents and rejects symlinks. Empty
 directories are not uploaded. Replacing a remote file requires its current
 `expected_sha256`. Keep the same explicit idempotency key and unchanged data
 when retrying writes or uploads.
+
+Windows downloads reject reserved names, alternate data streams, trailing dots
+or spaces, and names that differ only by case. Rename conflicting remote files
+before downloading the directory. If a local source file is open for writing,
+close that writer and retry the upload.
 
 `sandbox.sleep()` requests a verified project save and compute release.
 Observe `sandbox.refresh().state` for completion. `sandbox.wake()` resumes

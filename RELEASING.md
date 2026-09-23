@@ -71,6 +71,13 @@ The JSON report records the artifact version, test counts and failure stage.
 Run it from the matching release checkout, since newer tests may intentionally
 detect defects in older packages.
 
+Add `--local-transfers` to run the focused project packaging and file transfer
+checks against the installed artifact. Windows CI runs this selection from the
+universal wheel on local NTFS, including junction rejection, exact file bytes,
+concurrent-writer protection and interrupted download cleanup. The report names
+the operating system and test selection. Skipped native Windows checks on other
+operating systems do not qualify Windows support.
+
 After publication, a separate verification job installs the package from PyPI.
 If that job fails, inspect its report and rerun the failed job after fixing the
 cause. Do not rerun a successful upload or replace an existing PyPI version.

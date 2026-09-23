@@ -74,7 +74,8 @@ class _Handle:
     def __getattr__(self, name):
         fields = {"name", "status", "current_revision", "budget_usd", "cost_usd", "reserved_usd", "min_workers", "max_workers",
                   "workers", "created_at", "updated_at", "url", "agent_id", "revision", "session", "reason", "input", "result",
-                  "deadline", "next_wake_at", "sandbox_id", "exec_id", "attempt", "segment"}
+                  "deadline", "next_wake_at", "sandbox_id", "exec_id", "attempt", "segment",
+                  "recovery_policy", "checkpoint_id", "checkpoint_status", "checkpoint_error", "last_checkpoint_at"}
         if name not in fields:
             raise AttributeError(name)
         return self.raw.get(name)
@@ -229,10 +230,14 @@ class ManagedRun(_Handle):
             raise ValidationError("limit must be between 1 and 100")
         return self._client._request("GET", self._path() + "/steps", params={"after": _id(after) if after else "", "limit": limit})
 
-    def resolve(self, *, step_id, expected_revision, decision, reason, evidence_digest, result=None, idempotency_key=None):
+    def resolve(self, *, step_id, expected_revision, decision, reason, evidence_digest, result=None, checkpoint_id=None, idempotency_key=None):
         """Resolve an uncertain external effect using independently verified evidence."""
         from ._agent_runs import _resolve
         body = _resolve(step_id, expected_revision, decision, reason, evidence_digest, result)
+        if checkpoint_id is not None:
+            if decision != "completed":
+                raise ValidationError("Only a completed resolution can select application state")
+            body["checkpoint_id"] = _id(checkpoint_id)
         return self._client._request("POST", self._path() + "/resolve", json=body, idempotency_key=_key(idempotency_key))
 
     def signal(self, name, input=None, *, idempotency_key):
@@ -386,9 +391,13 @@ class AsyncManagedRun(ManagedRun):
             raise ValidationError("limit must be between 1 and 100")
         return await self._client._request("GET", self._path() + "/steps", params={"after": _id(after) if after else "", "limit": limit})
 
-    async def resolve(self, *, step_id, expected_revision, decision, reason, evidence_digest, result=None, idempotency_key=None):
+    async def resolve(self, *, step_id, expected_revision, decision, reason, evidence_digest, result=None, checkpoint_id=None, idempotency_key=None):
         from ._agent_runs import _resolve
         body = _resolve(step_id, expected_revision, decision, reason, evidence_digest, result)
+        if checkpoint_id is not None:
+            if decision != "completed":
+                raise ValidationError("Only a completed resolution can select application state")
+            body["checkpoint_id"] = _id(checkpoint_id)
         return await self._client._request("POST", self._path() + "/resolve", json=body, idempotency_key=_key(idempotency_key))
 
     async def signal(self, name, input=None, *, idempotency_key):

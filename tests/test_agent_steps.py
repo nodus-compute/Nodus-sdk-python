@@ -43,8 +43,28 @@ def journal_socket(tmp_path,monkeypatch):
             request=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
             action=self.path[1:]
             result={}
+            state.setdefault('requests', []).append((action, request))
             if action in ('session','renew'):
-                result={'run':{'run_id':state.get('run_id','cycle-42'),'name':'main','version':'1','image_digest':'sha256:'+'a'*64,'status':state['status'],'input':encode(state.get('input',{'invoice':42})),'result':state['result']},'session_token':'scoped-capability','epoch':1,'expires_at':(datetime.now(timezone.utc)+timedelta(minutes=1)).isoformat()}
+                result={'run':{'run_id':state.get('run_id','cycle-42'),'name':'main','version':'1','image_digest':'sha256:'+'a'*64,'status':state['status'],'input':encode(state.get('input',{'invoice':42})),'result':state['result']},'session_token':'scoped-capability','epoch':1,'expires_at':(datetime.now(timezone.utc)+timedelta(seconds=state.get('session_seconds', 60))).isoformat()}
+                if state.get('recovery_policy'):
+                    result['recovery_policy'] = state['recovery_policy']
+                    if state.get('checkpoint_id'):
+                        result['checkpoint_id'] = state['checkpoint_id']
+            elif action in ('checkpoint_begin', 'checkpoint_status'):
+                if action == 'checkpoint_begin':
+                    checkpoint_id = 'cp_' + request['operation'] + '_' + request['request_id']
+                    state.setdefault('checkpoint_requests', {})[checkpoint_id] = request
+                    result = {'checkpoint_id': checkpoint_id, 'status': 'pending'}
+                else:
+                    checkpoint_id = request['checkpoint_id']
+                    result = {'checkpoint_id': checkpoint_id, 'status': state.get('checkpoint_status', 'ready')}
+                    if state.get('pending_polls', 0) > 0:
+                        state['pending_polls'] -= 1
+                        result['status'] = 'pending'
+                    if result['status'] == 'ready' and state['checkpoint_requests'][checkpoint_id]['operation'] == 'baseline':
+                        result['status'] = 'committed'
+                    if result['status'] == 'failed':
+                        result['failure_code'] = 'agent_checkpoint_state_empty'
             elif action=='claim':
                 step_id=request['step_id']
                 definition=json.dumps({k:request[k] for k in ['name','version','effect','encoding','input']},sort_keys=True)
@@ -73,8 +93,12 @@ def journal_socket(tmp_path,monkeypatch):
                     self.close_connection=True
                     return
                 result={'decision':'replay','step_id':request['step_id'],'result':request['result'],'external_key':'stable','revision':2}
+                if state.get('malformed_completion'):
+                    result['result'] = encode(None)
             elif action=='unknown':
                 db.execute('UPDATE journal SET status=? WHERE step=?',('unknown',request['step_id']));db.commit()
+                if state.get('reject_unknown'):
+                    self.send_response(500);self.end_headers();self.wfile.write(b'{"error":"unavailable"}');return
                 result={'decision':'unknown','step_id':request['step_id'],'revision':2}
             elif action=='finish':
                 state['status']='completed';state['result']=request['result']
@@ -396,3 +420,134 @@ def test_qualified_remote_deduplication_commits_one_effect_across_retry(journal_
     assert result=={'receipt':1}
     assert len(received)==2 and received[0]==received[1]
     assert state['effects'].execute('SELECT count(*) FROM effects').fetchone()[0]==1
+
+
+def test_checkpoint_enabled_driver_links_each_completed_boundary(journal_socket):
+    from nodus.agent_runtime import run
+    _, state = journal_socket
+    state['recovery_policy'] = 'checkpoint-v1'
+    calls = []
+    @nodus.step(name='save', version='1', effect='pure')
+    def save():
+        calls.append('saved')
+        return {'offset': 7}
+    def main(event):
+        return save(_step_id='page:7')
+    assert run(main, run_id='cycle-42', version='1') == {'offset': 7}
+    begins = [body for action, body in state['requests'] if action == 'checkpoint_begin']
+    assert [body['operation'] for body in begins] == ['baseline', 'step', 'finish']
+    assert begins[1]['step_id'] == 'page:7' and begins[1]['claim_token']
+    for action in ('complete', 'finish'):
+        body = next(body for recorded, body in state['requests'] if recorded == action)
+        checkpoint = state['checkpoint_requests'][body['checkpoint_id']]
+        assert checkpoint['operation'] == ('step' if action == 'complete' else action)
+    assert calls == ['saved']
+
+
+@pytest.mark.parametrize('action', ['wait', 'continue'])
+def test_checkpoint_enabled_controls_capture_before_yield(journal_socket, action):
+    from nodus.agent_runtime import run
+    _, state = journal_socket
+    state['recovery_policy'] = 'checkpoint-v1'
+    state['checkpoint_id'] = 'cp_initial'
+    state['control_response'] = {'decision': 'waiting' if action == 'wait' else 'continued'}
+    def main(event):
+        if action == 'wait':
+            nodus.agent.wait_for_event('approval', wait_id='approval:42')
+        else:
+            nodus.agent.continue_as_new({'offset': 7}, continuation_id='page:7')
+    assert run(main, run_id='cycle-42', version='1') is None
+    body = state['control_requests'][0][1]
+    checkpoint = state['checkpoint_requests'][body['checkpoint_id']]
+    assert checkpoint['operation'] == action
+    assert checkpoint['operation_id'] == ('approval:42' if action == 'wait' else 'page:7')
+
+
+def test_checkpoint_enabled_failed_step_exits_before_dirty_retry(journal_socket):
+    from nodus.agent_runtime import run
+    _, state = journal_socket
+    state['recovery_policy'] = 'checkpoint-v1'
+    state['checkpoint_id'] = 'cp_initial'
+    attempts = []
+    @nodus.step(name='save', version='1', effect='pure')
+    def save():
+        attempts.append('dirty state')
+        raise RuntimeError('capture must restore before retry')
+    def main(event):
+        return save(_step_id='page:7')
+    with pytest.raises(nodus.StepOutcomeUnknown):
+        run(main, run_id='cycle-42', version='1')
+    assert attempts == ['dirty state']
+    assert state['complete_requests'] == 0
+
+
+def test_checkpoint_failure_never_commits_step_result(journal_socket):
+    from nodus.agent_runtime import run
+    _, state = journal_socket
+    state['recovery_policy'] = 'checkpoint-v1'
+    state['checkpoint_id'] = 'cp_initial'
+    state['checkpoint_status'] = 'failed'
+    @nodus.step(name='save', version='1', effect='pure')
+    def save():
+        return {'offset': 7}
+    def main(event):
+        return save(_step_id='page:7')
+    with pytest.raises(nodus.StepOutcomeUnknown, match='agent_checkpoint_state_empty'):
+        run(main, run_id='cycle-42', version='1')
+    assert state['complete_requests'] == 0
+    assert state['status'] == 'active'
+
+
+def test_checkpoint_polling_allows_session_renewal(journal_socket):
+    from nodus.agent_runtime import run
+    _, state = journal_socket
+    state.update(recovery_policy='checkpoint-v1', checkpoint_id='cp_initial', session_seconds=.9, pending_polls=5)
+    def main(event):
+        return {'offset': 7}
+    assert run(main, run_id='cycle-42', version='1') == {'offset': 7}
+    assert any(action == 'renew' for action, _ in state['requests'])
+    polls = [body for action, body in state['requests'] if action == 'checkpoint_status']
+    assert len(polls) == 6
+    assert len({body['checkpoint_id'] for body in polls}) == 1
+
+
+def test_caught_checkpoint_failure_cannot_commit_dirty_later_state(journal_socket):
+    from nodus.agent_runtime import run
+    _, state = journal_socket
+    state.update(recovery_policy='checkpoint-v1', checkpoint_id='cp_initial', checkpoint_status='failed')
+    @nodus.step(name='save', version='1', effect='pure')
+    def save():
+        return {'offset': 7}
+    def main(event):
+        try:
+            save(_step_id='page:7')
+        except nodus.StepOutcomeUnknown:
+            return {'ignored': 'failed save'}
+    with pytest.raises(nodus.StepOutcomeUnknown):
+        run(main, run_id='cycle-42', version='1')
+    assert state['status'] == 'active'
+    assert not any(action == 'finish' for action, _ in state['requests'])
+
+
+@pytest.mark.parametrize('failure', ['invalid_result', 'unknown_response', 'complete_response'])
+def test_checkpoint_step_failure_poisons_session_before_caught_retry(journal_socket, failure):
+    from nodus.agent_runtime import run
+    _, state = journal_socket
+    state.update(recovery_policy='checkpoint-v1', checkpoint_id='cp_initial')
+    state.update(reject_unknown=failure == 'unknown_response', malformed_completion=failure == 'complete_response')
+    calls = []
+    @nodus.step(name='save', version='1', effect='pure')
+    def save():
+        calls.append('dirty state')
+        if failure == 'unknown_response':
+            raise RuntimeError('step failed')
+        return object() if failure == 'invalid_result' and len(calls) == 1 else {'offset': 7}
+    def main(event):
+        try:
+            save(_step_id='page:7')
+        except nodus.StepOutcomeUnknown:
+            return save(_step_id='page:7')
+    with pytest.raises(nodus.StepOutcomeUnknown):
+        run(main, run_id='cycle-42', version='1')
+    assert calls == ['dirty state']
+    assert state['complete_requests'] == (1 if failure == 'complete_response' else 0)

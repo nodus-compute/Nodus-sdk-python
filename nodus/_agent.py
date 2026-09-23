@@ -9,6 +9,7 @@ import json
 import os
 import re
 import threading
+import time
 import uuid
 from typing import Any
 
@@ -123,6 +124,12 @@ class _Session:
         token, epoch = receipt.get('session_token'), receipt.get('epoch')
         if not isinstance(token, str) or not token or type(epoch) is not int or epoch <= 0:
             raise StepOutcomeUnknown('Invalid session receipt')
+        self.recovery_policy = receipt.get('recovery_policy', '')
+        if self.recovery_policy not in ('', 'checkpoint-v1') or self.recovery_policy and not _managed.get():
+            raise StepOutcomeUnknown('Unsupported managed recovery policy')
+        self.checkpoint_id = receipt.get('checkpoint_id')
+        if self.checkpoint_id is not None and (not isinstance(self.checkpoint_id, str) or not _ID.fullmatch(self.checkpoint_id)):
+            raise StepOutcomeUnknown('Invalid checkpoint identity')
         self.rpc = rpc
         self.scope = {'run_id': run_id, 'session_token': token, 'epoch': epoch}
         self.guard = threading.Lock()
@@ -154,6 +161,40 @@ class _Session:
         if self.failed.is_set():
             raise StepOutcomeUnknown('Agent session authority could not be renewed')
 
+    def checkpoint(self, operation: str, operation_id: str, **values) -> dict[str, str]:
+        try:
+            return self._checkpoint(operation, operation_id, **values)
+        except BaseException:
+            self.failed.set()
+            raise
+
+    def _checkpoint(self, operation: str, operation_id: str, **values) -> dict[str, str]:
+        if not self.recovery_policy:
+            return {}
+        self.healthy()
+        receipt = self.rpc.call('checkpoint_begin', {**self.scope, 'request_id': uuid.uuid4().hex,
+                                'operation': operation, 'operation_id': operation_id, **values})
+        checkpoint_id = receipt.get('checkpoint_id')
+        if not isinstance(checkpoint_id, str) or not _ID.fullmatch(checkpoint_id):
+            raise StepOutcomeUnknown('Invalid checkpoint identity')
+        deadline = time.monotonic() + 45 * 60
+        while True:
+            self.healthy()
+            if receipt.get('checkpoint_id') != checkpoint_id:
+                raise StepOutcomeUnknown('Checkpoint acknowledgement changed identity')
+            status = receipt.get('status')
+            if status == 'committed' or status == 'ready' and operation != 'baseline':
+                return {'checkpoint_id': checkpoint_id}
+            if status == 'failed':
+                code = receipt.get('failure_code')
+                if not isinstance(code, str) or not _ID.fullmatch(code):
+                    code = 'agent_checkpoint_failed'
+                raise StepOutcomeUnknown('State checkpoint failed: ' + code)
+            if status not in ('pending', 'ready') or time.monotonic() >= deadline:
+                raise StepOutcomeUnknown('State checkpoint was not durably acknowledged')
+            self.stopped.wait(.25)
+            receipt = self.rpc.call('checkpoint_status', {**self.scope, 'checkpoint_id': checkpoint_id})
+
     def close(self):
         self.stopped.set()
         self.thread.join(31)
@@ -183,6 +224,8 @@ def resume(entrypoint, *, run_id: str, version: str, name: str | None = None):
         original = decode(run.get('input'))
         session = _Session(rpc, receipt, run_id)
         context_token = _current.set(session)
+        if session.recovery_policy and not session.checkpoint_id:
+            session.checkpoint('baseline', run_id)
         result = entrypoint(original)
         if inspect.isawaitable(result):
             if inspect.iscoroutine(result):
@@ -190,7 +233,8 @@ def resume(entrypoint, *, run_id: str, version: str, name: str | None = None):
             raise ValidationError('Agent entrypoint must return JSON synchronously')
         session.healthy()
         encoded = encode(result)
-        done = rpc.call('finish', {**session.scope, 'request_id': uuid.uuid4().hex, 'result': encoded})
+        checkpoint = session.checkpoint('finish', run_id)
+        done = rpc.call('finish', {**session.scope, 'request_id': uuid.uuid4().hex, 'result': encoded, **checkpoint})
         if done.get('status') != 'completed' or done.get('result') != encoded:
             raise StepOutcomeUnknown('Run completion was not durably acknowledged')
         return decode(done['result'])
@@ -215,7 +259,9 @@ def _control(action, body):
         raise ValidationError('The managed driver must execute serially')
     try:
         session.healthy()
-        return session.rpc.call(action, {**session.scope, 'request_id': uuid.uuid4().hex, **body})
+        operation_id = body['wait_id'] if action == 'wait' else body['continuation_id']
+        checkpoint = session.checkpoint(action, operation_id)
+        return session.rpc.call(action, {**session.scope, 'request_id': uuid.uuid4().hex, **body, **checkpoint})
     finally:
         session.guard.release()
 

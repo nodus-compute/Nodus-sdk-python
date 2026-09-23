@@ -274,6 +274,15 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
+          "checkpoint_id": {
+            "type": "string",
+            "description": "Verified ready or committed state captured for this step's fenced claim. A completed reconciliation must explicitly select matching state when checkpoint recovery is enabled."
+          },
+          "checkpoint_status": {
+            "type": "string",
+            "enum": ["ready", "committed"],
+            "description": "Publication status of the matching checkpoint candidate. Ready files are verified but do not yet replace committed recovery state."
+          },
           "step_id": {
             "type": "string",
             "pattern": "^[A-Za-z0-9:_.-]{1,128}$",
@@ -8856,6 +8865,29 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
+          "recovery_policy": {
+            "type": "string",
+            "enum": ["checkpoint-v1"],
+            "description": "Accepted application-state recovery policy. Omitted for revisions with explicit file recovery."
+          },
+          "checkpoint_id": {
+            "type": "string",
+            "description": "Current committed application-state checkpoint, including an empty baseline. This identity can differ from the latest capture reported by checkpoint_status."
+          },
+          "checkpoint_status": {
+            "type": "string",
+            "enum": ["pending", "ready", "committed", "failed"],
+            "description": "Latest capture status. Ready means uploaded files are verified but not yet committed with the journal boundary."
+          },
+          "checkpoint_error": {
+            "type": "string",
+            "description": "Failure code for the latest application-state capture. A failed capture does not replace committed recovery state."
+          },
+          "last_checkpoint_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Commit time of the current useful application-state checkpoint. Omitted for empty baselines and runs without saved state."
+          },
           "payload_expired": {"type": "boolean"},
           "id": {
             "type": "string"
