@@ -9,6 +9,7 @@ import json
 import os
 import re
 import threading
+import time
 import uuid
 from typing import Any
 
@@ -19,6 +20,7 @@ _ID = re.compile(r'^[A-Za-z0-9:_.-]{1,128}$')
 _MAX = 256 << 10
 _current = contextvars.ContextVar('nodus_agent_session', default=None)
 _step_context = contextvars.ContextVar('nodus_agent_step', default=None)
+_managed = contextvars.ContextVar('nodus_managed_driver', default=False)
 
 
 def _id(value: Any) -> str:
@@ -77,11 +79,17 @@ class _RPC:
             raise ValidationError('Run this agent inside a sandbox with its private agent socket')
         self.client = httpx.Client(transport=httpx.HTTPTransport(uds=path), base_url='http://agent.local',
                                    trust_env=False, follow_redirects=False, timeout=10)
+        self.lock = threading.Lock()
 
     def close(self):
         self.client.close()
 
     def call(self, action: str, body: dict[str, Any]) -> dict[str, Any]:
+        # The guest broker accepts one RPC at a time, including session renewal.
+        with self.lock:
+            return self._call(action, body)
+
+    def _call(self, action: str, body: dict[str, Any]) -> dict[str, Any]:
         for attempt in range(3):
             try:
                 response = self.client.post('/' + action, json=body)
@@ -116,6 +124,12 @@ class _Session:
         token, epoch = receipt.get('session_token'), receipt.get('epoch')
         if not isinstance(token, str) or not token or type(epoch) is not int or epoch <= 0:
             raise StepOutcomeUnknown('Invalid session receipt')
+        self.recovery_policy = receipt.get('recovery_policy', '')
+        if self.recovery_policy not in ('', 'checkpoint-v1') or self.recovery_policy and not _managed.get():
+            raise StepOutcomeUnknown('Unsupported managed recovery policy')
+        self.checkpoint_id = receipt.get('checkpoint_id')
+        if self.checkpoint_id is not None and (not isinstance(self.checkpoint_id, str) or not _ID.fullmatch(self.checkpoint_id)):
+            raise StepOutcomeUnknown('Invalid checkpoint identity')
         self.rpc = rpc
         self.scope = {'run_id': run_id, 'session_token': token, 'epoch': epoch}
         self.guard = threading.Lock()
@@ -147,6 +161,40 @@ class _Session:
         if self.failed.is_set():
             raise StepOutcomeUnknown('Agent session authority could not be renewed')
 
+    def checkpoint(self, operation: str, operation_id: str, **values) -> dict[str, str]:
+        try:
+            return self._checkpoint(operation, operation_id, **values)
+        except BaseException:
+            self.failed.set()
+            raise
+
+    def _checkpoint(self, operation: str, operation_id: str, **values) -> dict[str, str]:
+        if not self.recovery_policy:
+            return {}
+        self.healthy()
+        receipt = self.rpc.call('checkpoint_begin', {**self.scope, 'request_id': uuid.uuid4().hex,
+                                'operation': operation, 'operation_id': operation_id, **values})
+        checkpoint_id = receipt.get('checkpoint_id')
+        if not isinstance(checkpoint_id, str) or not _ID.fullmatch(checkpoint_id):
+            raise StepOutcomeUnknown('Invalid checkpoint identity')
+        deadline = time.monotonic() + 45 * 60
+        while True:
+            self.healthy()
+            if receipt.get('checkpoint_id') != checkpoint_id:
+                raise StepOutcomeUnknown('Checkpoint acknowledgement changed identity')
+            status = receipt.get('status')
+            if status == 'committed' or status == 'ready' and operation != 'baseline':
+                return {'checkpoint_id': checkpoint_id}
+            if status == 'failed':
+                code = receipt.get('failure_code')
+                if not isinstance(code, str) or not _ID.fullmatch(code):
+                    code = 'agent_checkpoint_failed'
+                raise StepOutcomeUnknown('State checkpoint failed: ' + code)
+            if status not in ('pending', 'ready') or time.monotonic() >= deadline:
+                raise StepOutcomeUnknown('State checkpoint was not durably acknowledged')
+            self.stopped.wait(.25)
+            receipt = self.rpc.call('checkpoint_status', {**self.scope, 'checkpoint_id': checkpoint_id})
+
     def close(self):
         self.stopped.set()
         self.thread.join(31)
@@ -176,6 +224,8 @@ def resume(entrypoint, *, run_id: str, version: str, name: str | None = None):
         original = decode(run.get('input'))
         session = _Session(rpc, receipt, run_id)
         context_token = _current.set(session)
+        if session.recovery_policy and not session.checkpoint_id:
+            session.checkpoint('baseline', run_id)
         result = entrypoint(original)
         if inspect.isawaitable(result):
             if inspect.iscoroutine(result):
@@ -183,7 +233,8 @@ def resume(entrypoint, *, run_id: str, version: str, name: str | None = None):
             raise ValidationError('Agent entrypoint must return JSON synchronously')
         session.healthy()
         encoded = encode(result)
-        done = rpc.call('finish', {**session.scope, 'request_id': uuid.uuid4().hex, 'result': encoded})
+        checkpoint = session.checkpoint('finish', run_id)
+        done = rpc.call('finish', {**session.scope, 'request_id': uuid.uuid4().hex, 'result': encoded, **checkpoint})
         if done.get('status') != 'completed' or done.get('result') != encoded:
             raise StepOutcomeUnknown('Run completion was not durably acknowledged')
         return decode(done['result'])
@@ -194,3 +245,64 @@ def resume(entrypoint, *, run_id: str, version: str, name: str | None = None):
             session.close()
         else:
             rpc.close()
+
+
+class _YieldExecution(BaseException):
+    """End an acknowledged wait or continuation without completing the run."""
+
+
+def _control(action, body):
+    session = _current.get()
+    if not _managed.get() or session is None or _step_context.get() is not None:
+        raise ValidationError('Durable waits require a managed driver outside a step')
+    if not session.guard.acquire(blocking=False):
+        raise ValidationError('The managed driver must execute serially')
+    try:
+        session.healthy()
+        operation_id = body['wait_id'] if action == 'wait' else body['continuation_id']
+        checkpoint = session.checkpoint(action, operation_id)
+        return session.rpc.call(action, {**session.scope, 'request_id': uuid.uuid4().hex, **body, **checkpoint})
+    finally:
+        session.guard.release()
+
+
+def wait_for_event(name: str, *, wait_id: str):
+    """Release compute until the named event is durably available for replay."""
+    receipt = _control('wait', {'wait_id': _id(wait_id), 'kind': 'signal', 'signal': _id(name)})
+    if receipt.get('decision') == 'waiting':
+        raise _YieldExecution()
+    if receipt.get('decision') != 'replay':
+        raise StepOutcomeUnknown('Event wait was not durably acknowledged')
+    return decode(receipt.get('result'))
+
+
+def sleep_until(when: datetime, *, wait_id: str):
+    """Release compute until an explicit timezone-aware wake time."""
+    if not isinstance(when, datetime) or when.tzinfo is None:
+        raise ValidationError('sleep_until requires a timezone-aware datetime')
+    receipt = _control('wait', {'wait_id': _id(wait_id), 'kind': 'timer', 'wake_at': when.isoformat()})
+    if receipt.get('decision') == 'waiting':
+        raise _YieldExecution()
+    if receipt.get('decision') != 'replay':
+        raise StepOutcomeUnknown('Timer wait was not durably acknowledged')
+    return decode(receipt['result']) if receipt.get('result') else None
+
+
+def continue_as_new(input: Any, *, continuation_id: str):
+    """Commit the next segment input and release this execution."""
+    receipt = _control('continue', {'continuation_id': _id(continuation_id), 'input': encode(input)})
+    if receipt.get('decision') != 'continued':
+        raise StepOutcomeUnknown('Continuation was not durably acknowledged')
+    raise _YieldExecution()
+
+
+def put_blob(data: bytes) -> dict:
+    """Commit large bytes and return an immutable reference suitable for a step result."""
+    from .agent_runtime import put_blob as put
+    return put(data)
+
+
+def get_blob(reference: dict) -> bytes:
+    """Read and verify bytes referenced by a committed managed blob."""
+    from .agent_runtime import get_blob as get
+    return get(reference)

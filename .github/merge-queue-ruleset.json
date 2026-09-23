@@ -1,0 +1,90 @@
+{
+  "name": "SDK reviewed merge queue",
+  "target": "branch",
+  "enforcement": "active",
+  "bypass_actors": [],
+  "conditions": {
+    "ref_name": {
+      "include": [
+        "refs/heads/main"
+      ],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "pull_request",
+      "parameters": {
+        "dismiss_stale_reviews_on_push": false,
+        "require_code_owner_review": false,
+        "require_last_push_approval": false,
+        "required_approving_review_count": 0,
+        "required_review_thread_resolution": false
+      }
+    },
+    {
+      "type": "merge_queue",
+      "parameters": {
+        "check_response_timeout_minutes": 30,
+        "grouping_strategy": "ALLGREEN",
+        "max_entries_to_build": 1,
+        "max_entries_to_merge": 1,
+        "merge_method": "MERGE",
+        "min_entries_to_merge": 1,
+        "min_entries_to_merge_wait_minutes": 0
+      }
+    },
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": false,
+        "required_status_checks": [
+          {
+            "context": "build",
+            "integration_id": 15368
+          },
+          {
+            "context": "plugins",
+            "integration_id": 15368
+          },
+          {
+            "context": "test (ubuntu-latest, 3.10)",
+            "integration_id": 15368
+          },
+          {
+            "context": "test (ubuntu-latest, 3.13)",
+            "integration_id": 15368
+          },
+          {
+            "context": "test (windows-latest, 3.10)",
+            "integration_id": 15368
+          },
+          {
+            "context": "test (windows-latest, 3.13)",
+            "integration_id": 15368
+          },
+          {
+            "context": "test (macos-latest, 3.10)",
+            "integration_id": 15368
+          },
+          {
+            "context": "test (macos-latest, 3.13)",
+            "integration_id": 15368
+          },
+          {
+            "context": "agent-install (ubuntu-latest)",
+            "integration_id": 15368
+          },
+          {
+            "context": "agent-install (windows-latest)",
+            "integration_id": 15368
+          },
+          {
+            "context": "agent-install (macos-latest)",
+            "integration_id": 15368
+          }
+        ]
+      }
+    }
+  ]
+}

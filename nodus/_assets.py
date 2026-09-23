@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
 import re
@@ -143,6 +144,24 @@ def _file(path: str | Path, listing: Any) -> tuple[Path, int]:
     return candidate, limit
 
 
+def _upload_identity_capability(listing: Any, key: str | None) -> None:
+    if key is not None and (not isinstance(listing, dict) or listing.get("upload_idempotency") is not True):
+        raise APIError("This controller does not support idempotent uploads. Upgrade the controller before uploading this project")
+
+
+def _upload_headers(path: Path, idempotency_key: str | None) -> dict[str, str]:
+    headers = {"Content-Type": "application/octet-stream"}
+    if idempotency_key is not None:
+        from . import _valid_idempotency_key
+        headers["Idempotency-Key"] = _valid_idempotency_key(idempotency_key)
+        digest = hashlib.sha256()
+        with path.open("rb") as source:
+            while chunk := source.read(64 * 1024):
+                digest.update(chunk)
+        headers["X-Nodus-SHA256"] = digest.hexdigest()
+    return headers
+
+
 def _chunks(path: Path, limit: int):
     with path.open("rb") as source:
         total = 0
@@ -190,12 +209,17 @@ class Assets:
         """List up to the server's 500 most recent assets."""
         return _rows(self._request("GET", "/v1/assets"))
 
-    def upload(self, path: str | Path) -> Asset:
+    def upload(self, path: str | Path, *, idempotency_key: str | None = None) -> Asset:
         """Upload one file or archive and return the ready asset."""
-        source, limit = _file(path, self._request("GET", "/v1/assets"))
+        if idempotency_key is not None:
+            from . import _valid_idempotency_key
+            _valid_idempotency_key(idempotency_key)
+        listing = self._request("GET", "/v1/assets")
+        _upload_identity_capability(listing, idempotency_key)
+        source, limit = _file(path, listing)
         return Asset.from_dict(self._request("POST", "/v1/assets/upload",
             params={"name": source.name}, content=_chunks(source, limit),
-            headers={"Content-Type": "application/octet-stream"}))
+            headers=_upload_headers(source, idempotency_key)))
 
     def import_url(self, url: str) -> Asset:
         """Import a public HTTPS file or archive, including signed links."""
@@ -264,12 +288,17 @@ class AsyncAssets:
         """List up to the server's 500 most recent assets."""
         return _rows(await self._request("GET", "/v1/assets"))
 
-    async def upload(self, path: str | Path) -> Asset:
+    async def upload(self, path: str | Path, *, idempotency_key: str | None = None) -> Asset:
         """Upload one file or archive and return the ready asset."""
-        source, limit = _file(path, await self._request("GET", "/v1/assets"))
+        if idempotency_key is not None:
+            from . import _valid_idempotency_key
+            _valid_idempotency_key(idempotency_key)
+        listing = await self._request("GET", "/v1/assets")
+        _upload_identity_capability(listing, idempotency_key)
+        source, limit = _file(path, listing)
         return Asset.from_dict(await self._request("POST", "/v1/assets/upload",
             params={"name": source.name}, content=_async_chunks(source, limit),
-            headers={"Content-Type": "application/octet-stream"}))
+            headers=_upload_headers(source, idempotency_key)))
 
     async def import_url(self, url: str) -> Asset:
         """Import a public HTTPS file or archive, including signed links."""
