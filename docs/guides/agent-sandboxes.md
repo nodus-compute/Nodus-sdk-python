@@ -1,8 +1,8 @@
 # Run tool-driven agents in sandboxes
 
 The managed tools template, project uploads, file helpers and sleep or wake
-methods described here are unreleased additions. They are not available in the
-published 0.6.0 package. Qualification uses an exact candidate source revision.
+methods require SDK 0.7.0 or later. Availability depends on account admission
+and deployment qualification.
 
 The Sandbox API runs interactive or multi-step agent code in a durable remote
 environment. It has its own resources and methods. Use regular workloads for a
@@ -56,7 +56,7 @@ budget. `project` uploads the local folder as an immutable archive. Known
 credential files, dependency folders, caches and recovery state are excluded from this managed
 upload. Symlinks and special files are rejected. Local project packaging and file
 transfers use secure directory handles on Linux, macOS and local Windows NTFS
-drives. Windows support is a release candidate pending native qualification.
+drives.
 Windows paths can contain spaces, Unicode and long names. Network drives, UNC
 paths, device paths, junctions and other reparse points are rejected. This can
 include OneDrive folders and placeholders. Copy these projects into an ordinary

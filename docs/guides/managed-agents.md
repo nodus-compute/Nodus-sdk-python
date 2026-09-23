@@ -1,7 +1,7 @@
 # Managed durable agents
 
-These additions are unreleased and are not available in the published 0.6.0
-package. Candidate builds use an exact source revision for qualification.
+Managed agent methods require SDK 0.7.0 or later. Availability depends on
+account admission and deployment qualification.
 
 Managed agents require both a qualified tools environment and account admission
 on the deployment. They are a gated CPU capability. Their presence in the SDK
