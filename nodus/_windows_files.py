@@ -78,6 +78,8 @@ _volume_info = _bind(_kernel, "GetVolumeInformationByHandleW", W.BOOL, W.HANDLE,
 _nt_create = _bind(_ntdll, "NtCreateFile", C.c_long, C.POINTER(W.HANDLE), W.DWORD,
                    C.POINTER(_ObjectAttributes), C.POINTER(_IoStatus), C.c_void_p,
                    W.ULONG, W.ULONG, W.ULONG, W.ULONG, C.c_void_p, W.ULONG)
+_nt_set_info = _bind(_ntdll, "NtSetInformationFile", C.c_long, W.HANDLE,
+                     C.POINTER(_IoStatus), C.c_void_p, W.ULONG, C.c_int)
 _dos_error = _bind(_ntdll, "RtlNtStatusToDosError", W.ULONG, C.c_long)
 
 
@@ -276,10 +278,14 @@ class Stage:
         self.stream.flush()
         os.fsync(self.stream.fileno())
         encoded = name.encode("utf-16-le")
-        size = _RenameInfo.name.offset + len(encoded)
-        buffer = C.create_string_buffer(max(size, C.sizeof(_RenameInfo)))
+        buffer = C.create_string_buffer(C.sizeof(_RenameInfo) + len(encoded))
         rename = _RenameInfo.from_buffer(buffer)
-        rename.replace, rename.root, rename.length = 1, self.directory.handle, len(encoded)
+        rename.replace, rename.root, rename.length = 1, None, len(encoded)
         C.memmove(C.addressof(buffer) + _RenameInfo.name.offset, encoded, len(encoded))
-        _checked(_set_info(self.handle, 3, buffer, len(buffer)))
+        # A simple NT filename renames within the held source directory.
+        # The source and its ancestors deny relocation until publication completes.
+        status = _IoStatus()
+        result = _nt_set_info(self.handle, C.byref(status), buffer, len(buffer), 10)
+        if result < 0:
+            raise C.WinError(_dos_error(result))
         self.committed = True

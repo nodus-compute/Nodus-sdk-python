@@ -107,22 +107,24 @@ def test_windows_download_rejects_destination_junction_and_releases_handles(tmp_
 @pytest.mark.parametrize("name", ["result.bin", "x", "😀.txt"])
 def test_windows_download_atomically_publishes_verified_bytes_and_cleans_failed_files(tmp_path, name):
     from nodus._local_files import open_directory
-    output = tmp_path / name
+    destination = tmp_path / "destination"
+    destination.mkdir()
+    output = destination / name
     output.write_bytes(b"original")
     for _ in range(3):
-        with open_directory(tmp_path) as directory:
+        with open_directory(destination) as directory:
             with pytest.raises(RuntimeError):
                 with directory.stage() as staged:
                     staged.write(b"incomplete")
                     raise RuntimeError("interrupted")
             assert output.read_bytes() == b"original"
-            assert list(tmp_path.iterdir()) == [output]
-    with open_directory(tmp_path) as directory, directory.stage() as staged:
+            assert list(destination.iterdir()) == [output]
+    with open_directory(destination) as directory, directory.stage() as staged:
         staged.write(b"verified result")
         assert output.read_bytes() == b"original"
         staged.commit(output.name)
     assert output.read_bytes() == b"verified result"
-    assert list(tmp_path.iterdir()) == [output]
+    assert list(destination.iterdir()) == [output]
 
 
 @windows_only
