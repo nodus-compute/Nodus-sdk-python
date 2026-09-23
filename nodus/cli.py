@@ -502,6 +502,11 @@ def _cmd_pools(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_agent(args: argparse.Namespace) -> int:
+    from ._agent_cli import run
+    return run(args, Client)
+
+
 def _cmd_sandbox(args: argparse.Namespace) -> int:
     with Client(base_url=args.base_url) as client:
         if args.sandbox_cmd == "new":
@@ -510,6 +515,10 @@ def _cmd_sandbox(args: argparse.Namespace) -> int:
                     image=args.image,
                     name=args.name,
                     budget=args.budget,
+                    template=args.template,
+                    project=args.project,
+                    network_permissions=args.network_permission,
+                    setup=args.setup,
                     idempotency_key=key,
                 )
             print(_safe_line(sandbox.id))
@@ -531,7 +540,7 @@ def _cmd_sandbox(args: argparse.Namespace) -> int:
                 show_table(
                     ["Sandbox", "Name", "Status", "Cost"],
                     [[sandbox.id, sandbox.envelope.get("name", ""), sandbox.state, format_cost(sandbox.cost_usd)] for sandbox in sandboxes],
-                    empty="No sandboxes yet. Use nodus sandbox new IMAGE to create one.",
+                    empty="No sandboxes yet. Use nodus sandbox new --budget USD to create one.",
                     plain=args.plain,
                 )
             return 0
@@ -568,6 +577,33 @@ def _cmd_sandbox(args: argparse.Namespace) -> int:
                 print(_safe(frame.text), end="", file=sys.stderr if frame.stream == "stderr" else sys.stdout)
             return 0
         sandbox = _resolve_sandbox(client, args.sandbox_id)
+        if args.sandbox_cmd == "detail":
+            print(json.dumps({"id": sandbox.id, "state": sandbox.state, "url": sandbox.url,
+                              "cost_usd": sandbox.cost_usd, "envelope": sandbox.envelope,
+                              "failure": sandbox.failure}, indent=2, default=str))
+            return 0
+        if args.sandbox_cmd == "files":
+            files = sandbox.files
+            if args.files_cmd == "ls":
+                print(json.dumps(files.list(args.path), indent=2))
+            elif args.files_cmd == "read":
+                print(_safe(files.read(args.path).decode("utf-8", "replace")), end="")
+            elif args.files_cmd == "download":
+                files.download(args.path, args.destination)
+                print(_safe_line(args.destination))
+            elif args.files_cmd == "upload":
+                with _sandbox_mutation(args.idempotency_key, sandbox_id=sandbox.id) as key:
+                    files.upload(args.source, args.path, idempotency_key=key)
+            elif args.files_cmd == "write":
+                data = Path(args.from_file).read_bytes() if args.from_file else args.text
+                with _sandbox_mutation(args.idempotency_key, sandbox_id=sandbox.id) as key:
+                    files.write(args.path, data, expected_sha256=args.expected_sha256, idempotency_key=key)
+            return 0
+        if args.sandbox_cmd in ("sleep", "wake"):
+            with _sandbox_mutation(args.idempotency_key, sandbox_id=sandbox.id) as key:
+                getattr(sandbox, args.sandbox_cmd)(idempotency_key=key)
+            print(_safe_line(sandbox.id))
+            return 0
         if args.sandbox_cmd == "cost":
             sandbox.refresh()
             print(format_cost(sandbox.cost_usd))
@@ -920,7 +956,7 @@ class _CommandHelpFormatter(argparse.RawDescriptionHelpFormatter):
             descriptions = {choice.dest: choice.help for choice in action._choices_actions}
             groups = (
                 ("Setup", ("login", "logout", "init")),
-                ("Run", ("run", "submit", "sandbox")),
+                ("Run", ("run", "submit", "sandbox", "agent")),
                 ("Monitor", ("list", "status", "wait", "logs", "cancel")),
                 ("Results", ("download",)),
                 ("Advanced", ("upload", "assets", "asset", "pools", "events", "artifacts", "ledger", "explain")),
@@ -1144,13 +1180,42 @@ Use nodus COMMAND --help for command options.""",
     pools_utilization.add_argument("--bucket", choices=("hour", "day"), default=None)
     pools_utilization.add_argument("--json", action="store_true", help="include host buckets and foreign device IDs")
 
+    from ._agent_cli import add_parser as agent_parser
+    agent_parser(sub, _positive_cost, _page_limit)
+
     sandbox = sub.add_parser("sandbox", help="create and use agent sandboxes")
     sandbox_sub = sandbox.add_subparsers(dest="sandbox_cmd", required=True, metavar="COMMAND")
     sandbox_new = sandbox_sub.add_parser("new", help="create or reattach to a sandbox")
     sandbox_new.add_argument("image", nargs="?", default=None)
     sandbox_new.add_argument("--name", default=None)
+    sandbox_new.add_argument("--project", help="upload a local project to the managed environment")
+    sandbox_new.add_argument("--setup", help="dependency setup command for the managed environment")
+    sandbox_new.add_argument("--template", help="versioned managed environment, such as nodus:agent-tools-v1")
+    sandbox_new.add_argument("--network-permission", action="append", help="named managed network permission")
     sandbox_new.add_argument("--budget", type=_positive_cost, default=None, help="maximum sandbox cost in USD")
     sandbox_new.add_argument("--idempotency-key", help="reuse the same key when retrying an uncertain request")
+    for action, help_text in (("detail", "inspect a sandbox"), ("sleep", "save project files and release compute"), ("wake", "resume authorized compute")):
+        operation = sandbox_sub.add_parser(action, help=help_text)
+        operation.add_argument("sandbox_id", metavar="NAME_OR_ID")
+        if action != "detail":
+            operation.add_argument("--idempotency-key", help="reuse the key after an uncertain response")
+    files = sandbox_sub.add_parser("files", help="read, write and transfer project files")
+    file_sub = files.add_subparsers(dest="files_cmd", required=True)
+    for action in ("ls", "read", "write", "upload", "download"):
+        operation = file_sub.add_parser(action)
+        operation.add_argument("sandbox_id", metavar="NAME_OR_ID")
+        if action == "upload":
+            operation.add_argument("source")
+        operation.add_argument("path", nargs="?" if action == "ls" else None, default="." if action == "ls" else None)
+        if action == "download":
+            operation.add_argument("destination")
+        if action in ("write", "upload"):
+            operation.add_argument("--idempotency-key")
+        if action == "write":
+            content = operation.add_mutually_exclusive_group(required=True)
+            content.add_argument("--text")
+            content.add_argument("--from-file")
+            operation.add_argument("--expected-sha256", help="required to replace an existing file")
     sandbox_list = sandbox_sub.add_parser("ls", help="list sandboxes")
     sandbox_list.add_argument("--limit", type=_page_limit, default=50)
     sandbox_list.add_argument("--json", action="store_true")
@@ -1240,6 +1305,7 @@ def main(argv: list[str] | None = None) -> int:
         "connection": lambda: _cmd_connection(args),
         "pools": lambda: _cmd_pools(args),
         "sandbox": lambda: _cmd_sandbox(args),
+        "agent": lambda: _cmd_agent(args),
         "benchmark": lambda: _cmd_benchmark(args),
         "list": lambda: _cmd_list(args),
         "status": lambda: _cmd_status(args),

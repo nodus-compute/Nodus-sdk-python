@@ -79,6 +79,28 @@ def journal_socket(tmp_path,monkeypatch):
             elif action=='finish':
                 state['status']='completed';state['result']=request['result']
                 result={'status':'completed','result':request['result']}
+            elif action in ('wait', 'continue'):
+                state.setdefault('control_requests', []).append((action, request))
+                result=state['control_response']
+            elif action.startswith('blob_'):
+                blobs = state.setdefault('blobs', {})
+                blob_id = request['blob_id']
+                state.setdefault('blob_requests', []).append((action, request))
+                if action == 'blob_begin':
+                    blobs.setdefault(blob_id, {'reference': {'id': blob_id, 'sha256': request['sha256'], 'bytes': request['bytes']}, 'data': bytearray(), 'status': 'uploading'})
+                blob = blobs[blob_id]
+                if action == 'blob_put':
+                    assert request['offset'] == len(blob['data'])
+                    blob['data'].extend(base64.b64decode(request['data']))
+                if action == 'blob_commit':
+                    blob['status'] = 'committed'
+                result = {'reference': blob['reference'], 'status': blob['status']}
+                if action == 'blob_get':
+                    offset = request.get('offset', 0)
+                    chunk = bytes(blob['data'][offset:offset + 262144])
+                    if state.get('corrupt_blob'):
+                        chunk = b'x' * len(chunk)
+                    result.update(offset=offset, data=base64.b64encode(chunk).decode(), eof=offset + len(chunk) == len(blob['data']))
             else:
                 raise AssertionError(action)
             body=json.dumps(result).encode();self.send_response(200);self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
@@ -89,6 +111,130 @@ def journal_socket(tmp_path,monkeypatch):
     monkeypatch.setenv('NODUS_AGENT_SOCKET',str(path))
     yield db,state
     server.shutdown();server.server_close();thread.join(2);db.close();effects.close();socket_dir.cleanup()
+
+
+def test_managed_wait_yields_without_recording_a_false_completion(journal_socket):
+    from nodus.agent_runtime import run
+    _, state = journal_socket
+    state['control_response'] = {'decision': 'waiting'}
+    def main(event):
+        nodus.agent.wait_for_event('approval', wait_id='approval:42')
+        pytest.fail('waiting execution continued')
+    assert run(main, run_id='cycle-42', version='1') is None
+    assert state['status'] == 'active'
+    action, body = state['control_requests'][0]
+    assert action == 'wait' and body['wait_id'] == 'approval:42' and body['signal'] == 'approval'
+    assert body['run_id'] == 'cycle-42' and body['session_token'] == 'scoped-capability'
+
+
+def test_managed_signal_replay_finishes_with_verified_event(journal_socket):
+    from nodus.agent_runtime import run
+    _, state = journal_socket
+    state['control_response'] = {'decision': 'replay', 'result': base64.b64encode(b'{"approved":true}').decode()}
+    def main(event):
+        return nodus.agent.wait_for_event('approval', wait_id='approval:42')
+    assert run(main, run_id='cycle-42', version='1') == {'approved': True}
+    assert state['status'] == 'completed'
+
+
+def test_continuation_yields_and_keeps_the_durable_segment_input(journal_socket):
+    from nodus.agent_runtime import run
+    _, state = journal_socket
+    state['control_response'] = {'decision': 'continued'}
+    def main(event):
+        nodus.agent.continue_as_new({'page': 2}, continuation_id='page:2')
+        pytest.fail('continued execution reached completion')
+    run(main, run_id='cycle-42', version='1')
+    action, body = state['control_requests'][0]
+    assert action == 'continue' and json.loads(base64.b64decode(body['input'])) == {'page': 2}
+    assert state['status'] == 'active'
+
+
+def test_managed_blob_stores_large_step_result_by_verified_reference(journal_socket):
+    from nodus.agent_runtime import run, put_blob, get_blob
+    _, state = journal_socket
+    payload = bytes(range(256)) * 2048
+    @nodus.step(name='large-output', version='1', effect='pure')
+    def store_output():
+        return put_blob(payload)
+    def main(event):
+        reference = store_output(_step_id='large-output')
+        assert get_blob(reference) == payload
+        return reference
+    reference = run(main, run_id='cycle-42', version='1')
+    import hashlib
+    assert reference == {'id': 'bl_' + hashlib.sha256(payload).hexdigest(), 'sha256': hashlib.sha256(payload).hexdigest(), 'bytes': len(payload)}
+    puts = [body for action, body in state['blob_requests'] if action == 'blob_put']
+    assert [body['offset'] for body in puts] == [0, 262144]
+    assert all(body['session_token'] == 'scoped-capability' for _, body in state['blob_requests'])
+
+
+def test_managed_blob_rejects_corrupted_download_before_returning_bytes(journal_socket):
+    from nodus.agent_runtime import run, put_blob, get_blob
+    _, state = journal_socket
+    def main(event):
+        reference = put_blob(b'original')
+        state['corrupt_blob'] = True
+        return get_blob(reference)
+    with pytest.raises(nodus.StepOutcomeUnknown, match='hash'):
+        run(main, run_id='cycle-42', version='1')
+    assert state['status'] == 'active'
+
+
+def test_managed_launcher_uses_the_assigned_export_name(journal_socket, monkeypatch):
+    import sys
+    import types
+    from nodus.agent_runtime import main
+    def implementation(event):
+        return event
+    module = types.ModuleType('customer_agent_fixture')
+    module.main = implementation
+    monkeypatch.setitem(sys.modules, module.__name__, module)
+    assert main(['--entrypoint', 'customer_agent_fixture:main', '--run-id', 'cycle-42', '--version', '1']) == {'invoice': 42}
+
+
+def test_private_rpc_serializes_renewal_with_blob_transfer(monkeypatch):
+    import httpx
+    from nodus._agent import _RPC
+    monkeypatch.setenv('NODUS_AGENT_SOCKET', '/tmp/synthetic-agent.sock')
+    rpc = _RPC()
+    rpc.client.close()
+    first_entered, release_first, second_started = threading.Event(), threading.Event(), threading.Event()
+    overlaps, failures = [], []
+    def handler(request):
+        if request.url.path == '/blob_get':
+            first_entered.set()
+            assert release_first.wait(2)
+        elif not release_first.is_set():
+            overlaps.append(request.url.path)
+            return httpx.Response(409, json={'error': 'agent_bridge_unavailable'})
+        return httpx.Response(200, json={'acknowledged': True})
+    rpc.client = httpx.Client(base_url='http://agent.local', transport=httpx.MockTransport(handler))
+    def call(action):
+        if action == 'renew':
+            second_started.set()
+        try:
+            rpc.call(action, {})
+        except Exception as error:
+            failures.append(error)
+    first = threading.Thread(target=call, args=('blob_get',))
+    second = threading.Thread(target=call, args=('renew',))
+    try:
+        first.start()
+        assert first_entered.wait(1)
+        second.start()
+        assert second_started.wait(1)
+        second.join(.05)
+        release_first.set()
+        first.join(2)
+        second.join(2)
+        assert not overlaps and not failures
+    finally:
+        release_first.set()
+        first.join(2)
+        if second.ident is not None:
+            second.join(2)
+        rpc.close()
 
 
 def test_completed_replay_and_lost_completion_do_not_repeat_actual_effect(journal_socket):

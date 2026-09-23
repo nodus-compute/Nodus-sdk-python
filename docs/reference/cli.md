@@ -68,11 +68,23 @@ Older releases require IDs for sandbox commands.
 | Command | What it does |
 |---|---|
 | `nodus sandbox new IMAGE --name NAME --budget USD` | Admit a sandbox and print its ID while startup continues |
+| `nodus sandbox new --project . --budget USD` | Upload a project and use the qualified managed tools template |
 | `nodus sandbox ls` | Show sandbox IDs, names, states and costs |
+| `nodus sandbox detail NAME_OR_ID` | Inspect the sandbox and its admitted settings |
 | `nodus sandbox exec NAME_OR_ID COMMAND` | Run a command and stream its output |
 | `nodus sandbox logs NAME_OR_ID EXEC_ID` | Read all currently stored command output |
 | `nodus sandbox cost NAME_OR_ID` | Read the reported cost |
 | `nodus sandbox rm NAME_OR_ID` | Request termination of the existing sandbox |
+| `nodus sandbox sleep NAME_OR_ID` | Request a verified project save and compute release |
+| `nodus sandbox wake NAME_OR_ID` | Resume compute under existing authorization |
+| `nodus sandbox files ls NAME_OR_ID` | List project files |
+| `nodus sandbox files download NAME_OR_ID PATH LOCAL_PATH` | Download a file or directory with content verification |
+| `nodus sandbox files upload NAME_OR_ID LOCAL_PATH PATH` | Upload regular files without following symlinks |
+
+Managed tools are available only on deployments that advertise the qualified
+template and admit your account. `--project` excludes dependencies, caches,
+credentials and recovery state. Use `--template nodus:agent-tools-v1` explicitly
+when creating a named managed sandbox. Image-less name-only calls reconnect.
 
 Name lookup selects one active exact match in your account. It never creates a
 replacement. Use an ID for a terminated sandbox or when a name is ambiguous.

@@ -140,6 +140,11 @@ def _command(value: str | list[str] | tuple[str, ...]) -> list[str]:
 def _create_payload(
     *,
     image: str | None,
+    template: str | None = None,
+    project: Any = None,
+    source_asset_id: str | None = None,
+    network_permissions: list[str] | None = None,
+    setup: str | None = None,
     cache_image: bool = False,
     name: str | None = None,
     budget: float | None = None,
@@ -160,13 +165,34 @@ def _create_payload(
 ) -> dict[str, Any]:
     if image is not None and (not isinstance(image, str) or not image.strip()):
         raise ValidationError("image must be nonempty text")
-    if image is None and not name:
-        raise ValidationError("image or name is required")
+    if template is None and image is None and (not name or project is not None or source_asset_id is not None) and from_snapshot is None:
+        template = "nodus:agent-tools-v1"
+    if setup is not None:
+        from ._projects import setup_command
+        setup_command(setup)
+        if template is None:
+            raise ValidationError("setup requires a managed template")
+    if template is not None and (template != "nodus:agent-tools-v1" or image is not None or cache_image):
+        raise ValidationError("Choose the managed template or a custom image")
+    if project is not None and (template is None or source_asset_id is not None or bootstrap is not None):
+        raise ValidationError("project requires a managed template and cannot combine source or bootstrap")
+    selected_budget = budget if budget is not None else (outcome or {}).get("max_cost_usd")
+    if template is not None and (type(selected_budget) not in (int, float) or not math.isfinite(selected_budget) or selected_budget <= 0):
+        raise ValidationError("Managed sandboxes require an explicit positive finite budget")
     if stuck_after_s is not None and (type(stuck_after_s) is not int or not 30 <= stuck_after_s <= 604800):
         raise ValidationError("stuck_after_s must be an integer from 30 through 604800")
     if type(cache_image) is not bool or (cache_image and image is None):
         raise ValidationError("cache_image must be a boolean and requires an image when enabled")
     body: dict[str, Any] = {}
+    if template is not None:
+        body["template"] = template
+    if setup is not None:
+        body["setup"] = setup
+    if network_permissions is not None:
+        body["network_permissions"] = network_permissions
+    if source_asset_id is not None:
+        from ._assets import _id as asset_id
+        body["source"] = {"asset_id": asset_id(source_asset_id)}
     if cache_image:
         body["source"] = {"image": image, "cache": True}
     if image is not None:
@@ -433,6 +459,46 @@ class _SandboxExecState:
 class Sandboxes:
     """Create, reconnect to, and list customer sandboxes."""
 
+    def capabilities(self) -> dict[str, Any]:
+        """Read the deployment's managed environment availability and limits."""
+        return self._client._request("GET", "/v1/sandboxes/capabilities")
+
+    def templates(self) -> dict[str, Any]:
+        """List versioned managed environments and their availability."""
+        return self._client._request("GET", "/v1/sandbox-templates")
+
+    def connect(self, reference: str):
+        """Reconnect by exact ID or an unambiguous active sandbox name."""
+        from .errors import NotFoundError
+        if not isinstance(reference, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", reference):
+            raise ValidationError("Use a sandbox ID or a valid sandbox name")
+        missing = None
+        if reference.startswith("sb_") and "." not in reference:
+            try:
+                return self.from_id(reference)
+            except NotFoundError as error:
+                if error.code != "not_found" or re.fullmatch(r"sb_[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", reference):
+                    raise
+                missing = error
+        matches, seen = {}, set()
+        cursor = None
+        while True:
+            rows, next_cursor = self.list_page(name=reference, cursor=cursor)
+            for row in rows:
+                if row.envelope.get("name") == reference and not row.is_terminal:
+                    matches[row.id] = row
+            if not next_cursor:
+                break
+            if next_cursor in seen:
+                raise APIError("Sandbox pagination did not advance")
+            seen.add(next_cursor)
+            cursor = next_cursor
+        if not matches and missing is not None:
+            raise missing
+        if len(matches) != 1:
+            raise ValidationError("Use an exact sandbox ID when the name is absent or ambiguous")
+        return next(iter(matches.values()))
+
     def __init__(self, client: Any):
         self._client = client
 
@@ -440,6 +506,11 @@ class Sandboxes:
         self,
         *,
         image: str | None = None,
+        template: str | None = None,
+        project: Any = None,
+        source_asset_id: str | None = None,
+        network_permissions: list[str] | None = None,
+        setup: str | None = None,
         cache_image: bool = False,
         name: str | None = None,
         budget: float | None = None,
@@ -460,13 +531,17 @@ class Sandboxes:
         idempotency_key: str | None = None,
     ) -> "Sandbox":
         body = _create_payload(
-            image=image, cache_image=cache_image, name=name, budget=budget, wake=wake, requirements=requirements,
+            image=image, template=template, project=project, source_asset_id=source_asset_id, network_permissions=network_permissions, setup=setup, cache_image=cache_image, name=name, budget=budget, wake=wake, requirements=requirements,
             outcome=outcome, policy=policy, lifecycle=lifecycle,
             reservation=reservation, continuity=continuity,
             from_snapshot=from_snapshot, secrets=secrets, connections=connections, service=service, bootstrap=bootstrap, stuck_after_s=stuck_after_s, workspace=workspace,
         )
+        from ._managed_agents import _key
+        key = _key(idempotency_key)
+        if project is not None:
+            from ._projects import upload_project
+            body["source"] = {"asset_id": upload_project(self._client, project, ("sandbox", key))}
         headers: dict[str, str] = {}
-        key = idempotency_key or f"sandbox-{uuid.uuid4()}"
         response = self._client._request(
             "POST", "/v1/sandboxes", json=body,
             idempotency_key=key,
@@ -522,6 +597,27 @@ class Sandboxes:
 
 class Sandbox(_SandboxState):
     @property
+    def files(self):
+        from ._sandbox_files import SandboxFiles
+        return SandboxFiles(self)
+
+    def _lifecycle(self, action: str, idempotency_key: str | None):
+        sandbox_id = _valid_id(self.id, "sandbox")
+        path = f"/v1/sandboxes/{sandbox_id}/{action}"
+        key = idempotency_key or f"sandbox-{action}-{uuid.uuid4()}"
+        response = self._client._request("POST", path, json={}, idempotency_key=key)
+        self._absorb(_mutation_receipt(self._client, response, path, key, expected_id=sandbox_id))
+        return self
+
+    def sleep(self, *, idempotency_key: str | None = None):
+        """Request a verified project save and release of compute."""
+        return self._lifecycle("sleep", idempotency_key)
+
+    def wake(self, *, idempotency_key: str | None = None):
+        """Resume compute within this sandbox's existing authorization."""
+        return self._lifecycle("wake", idempotency_key)
+
+    @property
     def agent_events(self):
         from ._agent_runs import AgentEvents
         return AgentEvents(self._client, _valid_id(self.id, "sandbox"))
@@ -537,6 +633,11 @@ class Sandbox(_SandboxState):
         sandbox_id: str = "",
         *,
         image: str | None = None,
+        template: str | None = None,
+        project: Any = None,
+        source_asset_id: str | None = None,
+        network_permissions: list[str] | None = None,
+        setup: str | None = None,
         cache_image: bool = False,
         name: str | None = None,
         budget: float | None = None,
@@ -556,8 +657,8 @@ class Sandbox(_SandboxState):
         workspace: dict[str, Any] | None = None,
         idempotency_key: str | None = None,
     ):
-        if client is None and image is None and not name:
-            raise ValidationError("image or name is required")
+        if client is None and image is None and not name and template is None and project is None and source_asset_id is None and budget is None and not outcome:
+            raise ValidationError("Provide image or name, or an explicit budget for a managed sandbox")
         self._client = client
         self._owned_client = client is None
         self._init_state(sandbox_id)
@@ -567,7 +668,7 @@ class Sandbox(_SandboxState):
             self._client = Client()
             try:
                 created = self._client.sandboxes.create(
-                    image=image,
+                    image=image, template=template, project=project, source_asset_id=source_asset_id, network_permissions=network_permissions, setup=setup,
                     cache_image=cache_image,
                     name=name,
                     budget=budget,
@@ -771,6 +872,46 @@ class SandboxExec(_SandboxExecState):
 
 
 class AsyncSandboxes:
+    async def capabilities(self) -> dict[str, Any]:
+        """Read the deployment's managed environment availability and limits."""
+        return await self._client._request("GET", "/v1/sandboxes/capabilities")
+
+    async def templates(self) -> dict[str, Any]:
+        """List versioned managed environments and their availability."""
+        return await self._client._request("GET", "/v1/sandbox-templates")
+
+    async def connect(self, reference: str):
+        """Reconnect by exact ID or an unambiguous active sandbox name."""
+        from .errors import NotFoundError
+        if not isinstance(reference, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", reference):
+            raise ValidationError("Use a sandbox ID or a valid sandbox name")
+        missing = None
+        if reference.startswith("sb_") and "." not in reference:
+            try:
+                return await self.from_id(reference)
+            except NotFoundError as error:
+                if error.code != "not_found" or re.fullmatch(r"sb_[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", reference):
+                    raise
+                missing = error
+        matches, seen = {}, set()
+        cursor = None
+        while True:
+            rows, next_cursor = await self.list_page(name=reference, cursor=cursor)
+            for row in rows:
+                if row.envelope.get("name") == reference and not row.is_terminal:
+                    matches[row.id] = row
+            if not next_cursor:
+                break
+            if next_cursor in seen:
+                raise APIError("Sandbox pagination did not advance")
+            seen.add(next_cursor)
+            cursor = next_cursor
+        if not matches and missing is not None:
+            raise missing
+        if len(matches) != 1:
+            raise ValidationError("Use an exact sandbox ID when the name is absent or ambiguous")
+        return next(iter(matches.values()))
+
     def __init__(self, client: Any):
         self._client = client
 
@@ -778,6 +919,11 @@ class AsyncSandboxes:
         self,
         *,
         image: str | None = None,
+        template: str | None = None,
+        project: Any = None,
+        source_asset_id: str | None = None,
+        network_permissions: list[str] | None = None,
+        setup: str | None = None,
         cache_image: bool = False,
         name: str | None = None,
         budget: float | None = None,
@@ -798,13 +944,17 @@ class AsyncSandboxes:
         idempotency_key: str | None = None,
     ) -> "AsyncSandbox":
         body = _create_payload(
-            image=image, cache_image=cache_image, name=name, budget=budget, wake=wake, requirements=requirements,
+            image=image, template=template, project=project, source_asset_id=source_asset_id, network_permissions=network_permissions, setup=setup, cache_image=cache_image, name=name, budget=budget, wake=wake, requirements=requirements,
             outcome=outcome, policy=policy, lifecycle=lifecycle,
             reservation=reservation, continuity=continuity,
             from_snapshot=from_snapshot, secrets=secrets, connections=connections, service=service, bootstrap=bootstrap, stuck_after_s=stuck_after_s, workspace=workspace,
         )
+        from ._managed_agents import _key
+        key = _key(idempotency_key)
+        if project is not None:
+            from ._projects import upload_project_async
+            body["source"] = {"asset_id": await upload_project_async(self._client, project, ("sandbox", key))}
         headers: dict[str, str] = {}
-        key = idempotency_key or f"sandbox-{uuid.uuid4()}"
         response = await self._client._request(
             "POST", "/v1/sandboxes", json=body,
             idempotency_key=key,
@@ -857,6 +1007,27 @@ class AsyncSandboxes:
 
 
 class AsyncSandbox(_SandboxState):
+    @property
+    def files(self):
+        from ._sandbox_files import AsyncSandboxFiles
+        return AsyncSandboxFiles(self)
+
+    async def _lifecycle(self, action: str, idempotency_key: str | None):
+        sandbox_id = _valid_id(self.id, "sandbox")
+        path = f"/v1/sandboxes/{sandbox_id}/{action}"
+        key = idempotency_key or f"sandbox-{action}-{uuid.uuid4()}"
+        response = await self._client._request("POST", path, json={}, idempotency_key=key)
+        self._absorb(_mutation_receipt(self._client, response, path, key, expected_id=sandbox_id))
+        return self
+
+    async def sleep(self, *, idempotency_key: str | None = None):
+        """Request a verified project save and release of compute."""
+        return await self._lifecycle("sleep", idempotency_key)
+
+    async def wake(self, *, idempotency_key: str | None = None):
+        """Resume compute within this sandbox's existing authorization."""
+        return await self._lifecycle("wake", idempotency_key)
+
     @property
     def agent_events(self):
         from ._agent_runs import AsyncAgentEvents

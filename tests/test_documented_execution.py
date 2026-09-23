@@ -31,6 +31,7 @@ DIGEST = hashlib.sha256(DATA).hexdigest()
 def docs_api(monkeypatch):
     calls = []
     submissions = []
+    file_output = {}
     row = {"id": "wl_docs", "status": "completed", "revision": 2,
            "spend_usd": 0.01, "meter": {"total_now_usd": 0.01},
            "route": {"sku": "nodus:test", "region": "test-region", "expected_cost_usd": 0.01}}
@@ -75,6 +76,13 @@ def docs_api(monkeypatch):
             calls.append(("GET", path))
             if self.headers.get("Authorization") != "Bearer nk_docs":
                 return self.reply({"error": "unauthorized"}, 401)
+            if path == "/v1/sandboxes/capabilities":
+                return self.reply({"available": True, "default_template": "nodus:agent-tools-v1", "templates": [
+                    {"id": "nodus:agent-tools-v1", "available": True, "max_project_bytes": 1048576}]})
+            if path.endswith("/execs/sx_files/stream"):
+                return self.reply({"frames": [{"sequence": 1, "stream": "stdout", "offset": 0,
+                    "data": base64.b64encode(json.dumps(file_output).encode()).decode()}],
+                    "next_sequence": 1, "last_sequence": 1, "final_sequence": 1, "state": "completed", "done": True, "complete": True})
             if path == "/v1/pools/pool_docs/proposals":
                 query = parse_qs(urlsplit(self.path).query)
                 if query != {"limit": ["25"], "state": ["pending"]}:
@@ -194,6 +202,25 @@ def docs_api(monkeypatch):
                 return self.reply({"api_key": "nk_docs", "base_url": address, "tenant": "docs-test"})
             if self.headers.get("Authorization") != "Bearer nk_docs":
                 return self.reply({"error": "unauthorized"}, 401)
+            if path == "/v1/agents":
+                assert payload["budget_usd"] == 20 and payload["entrypoint"] == "agent:main"
+                assert payload["source"] == {"asset_id": "asset_docs"}
+                return self.reply({"id": "ag_docs", "name": payload["name"], "status": "active", "budget_usd": 20,
+                                   "current_revision": 1, "url": "https://console.nodus-compute.ai/?view=agent-deployments&agent=ag_docs"}, 202)
+            if path == "/v1/agents/ag_docs/runs":
+                assert payload["input"] == {"values": [1, 2, 3]}
+                return self.reply({"id": "run_docs", "agent_id": "ag_docs", "status": "queued", "input": payload["input"]}, 202)
+            if path == "/v1/sandboxes/sb_docs/files":
+                file_output.clear()
+                file_output.update(operation=payload["operation"], path=payload["path"])
+                if payload["operation"] == "stat":
+                    file_output.update(type="file", size_bytes=len(DATA))
+                elif payload["operation"] == "read":
+                    file_output.update(data=base64.b64encode(DATA).decode(), offset=0, next_offset=len(DATA),
+                                       size_bytes=len(DATA), sha256=DIGEST, eof=True)
+                return self.reply({**execution, "id": "sx_files", "state": "completed", "exit_code": 0}, 202)
+            if path == "/v1/sandboxes/sb_docs/sleep":
+                return self.reply({**sandbox, "state": "suspended"}, 202)
             if path == "/v1/connections":
                 assert payload == {"name": "lab-db", "kind": "neon", "secret": "LAB_DB", "scope": "read", "region": "us-east-1", "live_mode": False}
                 return self.reply(connection, 201)

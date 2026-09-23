@@ -1,5 +1,9 @@
 # Run tool-driven agents in sandboxes
 
+The managed tools template, project uploads, file helpers and sleep or wake
+methods described here are unreleased additions. They are not available in the
+published 0.6.0 package. Qualification uses an exact candidate source revision.
+
 The Sandbox API runs interactive or multi-step agent code in a durable remote
 environment. It has its own resources and methods. Use regular workloads for a
 single submitted job with collected final outputs. Use a sandbox when an agent
@@ -14,6 +18,71 @@ Install the SDK, sign in, and add a payment method in console Billing.
 python -m pip install --upgrade nodus-compute
 nodus login
 ```
+
+## Managed tools environment
+
+On deployments that advertise an available `nodus:agent-tools-v1` template,
+create a sandbox without choosing an image or resource sizes. This CPU
+capability remains gated by deployment qualification and account admission.
+Read `client.sandboxes.capabilities()` or `client.sandboxes.templates()` to
+check availability before uploading a project.
+
+```python
+import nodus
+
+with nodus.Client() as client:
+    sandbox = client.sandboxes.create(
+        project=".",
+        budget=5,
+        idempotency_key="project-session-001",
+    )
+    print(sandbox.id, sandbox.url)
+    execution = sandbox.exec(
+        ["python", "-c", "from pathlib import Path\nPath('result.txt').write_text('ready')"],
+        idempotency_key="project-result-001",
+    )
+    for frame in execution.iter_output():
+        print(frame.text, end="")
+    execution.wait()
+    if not execution.succeeded:
+        raise RuntimeError("The sandbox command failed")
+    sandbox.files.download("result.txt", "./result.txt")
+    sandbox.sleep(idempotency_key="project-sleep-001")
+```
+
+The $5 spending limit is explicit. Change it to your authorized amount. The
+SDK supplies no budget when you omit one, and managed creation refuses a missing
+budget. `project` uploads the local folder as an immutable archive. Known
+credential files, dependency folders, caches and recovery state are excluded from this managed
+upload. Symlinks and special files are rejected. Secure local project packaging
+and file transfers require a POSIX filesystem, including Linux and macOS.
+
+Pass `setup="python -m pip install -r requirements.txt"` to rebuild Python
+dependencies before application commands. Package downloads need the matching
+`network_permissions`, such as `["python_packages"]`. The CLI exposes the same
+controls through `--setup` and repeatable `--network-permission` options.
+
+Use `sandbox.files.list()`, `.read(path)`, `.write(path, bytes)`,
+`.upload(local_path, remote_path)` and `.download(remote_path, local_path)`
+to work with files. Downloads verify content hashes before replacing local
+files. Directory transfer preserves file contents and rejects symlinks. Empty
+directories are not uploaded. Replacing a remote file requires its current
+`expected_sha256`. Keep the same explicit idempotency key and unchanged data
+when retrying writes or uploads.
+
+`sandbox.sleep()` requests a verified project save and compute release.
+Observe `sandbox.refresh().state` for completion. `sandbox.wake()` resumes
+authorized compute. `client.sandboxes.connect(id_or_name)` reconnects to an
+existing identity. Closing `Client` or calling `sandbox.close()` disconnects
+locally. The `with nodus.Sandbox(...)` context still terminates the sandbox
+when it exits.
+
+An image-less name-only create remains a reconnect request. To create a named
+managed environment, pass `template="nodus:agent-tools-v1"` explicitly.
+Custom `image=` calls keep their existing behavior. For independently durable
+work that can release compute while waiting, see [managed agents](managed-agents.md).
+
+## Custom images
 
 Create a sandbox with a container image, resource requirements, and customer
 spending limit. New sandboxes use the server's CPU default unless accelerator

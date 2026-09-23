@@ -19,6 +19,7 @@ _ID = re.compile(r'^[A-Za-z0-9:_.-]{1,128}$')
 _MAX = 256 << 10
 _current = contextvars.ContextVar('nodus_agent_session', default=None)
 _step_context = contextvars.ContextVar('nodus_agent_step', default=None)
+_managed = contextvars.ContextVar('nodus_managed_driver', default=False)
 
 
 def _id(value: Any) -> str:
@@ -77,11 +78,17 @@ class _RPC:
             raise ValidationError('Run this agent inside a sandbox with its private agent socket')
         self.client = httpx.Client(transport=httpx.HTTPTransport(uds=path), base_url='http://agent.local',
                                    trust_env=False, follow_redirects=False, timeout=10)
+        self.lock = threading.Lock()
 
     def close(self):
         self.client.close()
 
     def call(self, action: str, body: dict[str, Any]) -> dict[str, Any]:
+        # The guest broker accepts one RPC at a time, including session renewal.
+        with self.lock:
+            return self._call(action, body)
+
+    def _call(self, action: str, body: dict[str, Any]) -> dict[str, Any]:
         for attempt in range(3):
             try:
                 response = self.client.post('/' + action, json=body)
@@ -194,3 +201,62 @@ def resume(entrypoint, *, run_id: str, version: str, name: str | None = None):
             session.close()
         else:
             rpc.close()
+
+
+class _YieldExecution(BaseException):
+    """End an acknowledged wait or continuation without completing the run."""
+
+
+def _control(action, body):
+    session = _current.get()
+    if not _managed.get() or session is None or _step_context.get() is not None:
+        raise ValidationError('Durable waits require a managed driver outside a step')
+    if not session.guard.acquire(blocking=False):
+        raise ValidationError('The managed driver must execute serially')
+    try:
+        session.healthy()
+        return session.rpc.call(action, {**session.scope, 'request_id': uuid.uuid4().hex, **body})
+    finally:
+        session.guard.release()
+
+
+def wait_for_event(name: str, *, wait_id: str):
+    """Release compute until the named event is durably available for replay."""
+    receipt = _control('wait', {'wait_id': _id(wait_id), 'kind': 'signal', 'signal': _id(name)})
+    if receipt.get('decision') == 'waiting':
+        raise _YieldExecution()
+    if receipt.get('decision') != 'replay':
+        raise StepOutcomeUnknown('Event wait was not durably acknowledged')
+    return decode(receipt.get('result'))
+
+
+def sleep_until(when: datetime, *, wait_id: str):
+    """Release compute until an explicit timezone-aware wake time."""
+    if not isinstance(when, datetime) or when.tzinfo is None:
+        raise ValidationError('sleep_until requires a timezone-aware datetime')
+    receipt = _control('wait', {'wait_id': _id(wait_id), 'kind': 'timer', 'wake_at': when.isoformat()})
+    if receipt.get('decision') == 'waiting':
+        raise _YieldExecution()
+    if receipt.get('decision') != 'replay':
+        raise StepOutcomeUnknown('Timer wait was not durably acknowledged')
+    return decode(receipt['result']) if receipt.get('result') else None
+
+
+def continue_as_new(input: Any, *, continuation_id: str):
+    """Commit the next segment input and release this execution."""
+    receipt = _control('continue', {'continuation_id': _id(continuation_id), 'input': encode(input)})
+    if receipt.get('decision') != 'continued':
+        raise StepOutcomeUnknown('Continuation was not durably acknowledged')
+    raise _YieldExecution()
+
+
+def put_blob(data: bytes) -> dict:
+    """Commit large bytes and return an immutable reference suitable for a step result."""
+    from .agent_runtime import put_blob as put
+    return put(data)
+
+
+def get_blob(reference: dict) -> bytes:
+    """Read and verify bytes referenced by a committed managed blob."""
+    from .agent_runtime import get_blob as get
+    return get(reference)

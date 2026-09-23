@@ -136,6 +136,30 @@ def test_sandbox_cli_accepts_name_only_reattach():
     assert "sandbox" in cli.build_parser().format_help()
 
 
+def test_managed_sandbox_cli_creation_and_controls(monkeypatch, capsys):
+    calls = []
+    def handler(request):
+        calls.append((request.url.path, json.loads(request.content) if request.content else None))
+        return httpx.Response(202, json=SANDBOX)
+    monkeypatch.setattr(cli, "Client", client_factory(handler))
+    assert cli.main(["sandbox", "new", "--budget", "5"]) == 0
+    assert cli.main(["sandbox", "sleep", "sb_agent", "--idempotency-key", "sleep-1"]) == 0
+    assert cli.main(["sandbox", "wake", "sb_agent", "--idempotency-key", "wake-1"]) == 0
+    assert cli.main(["sandbox", "detail", "sb_agent"]) == 0
+    assert calls[0][1]["template"] == "nodus:agent-tools-v1"
+    assert calls[0][1]["outcome"]["max_cost_usd"] == 5
+    assert any(path.endswith("/sleep") for path, _ in calls)
+    assert "sb_agent" in capsys.readouterr().out
+
+
+def test_sandbox_file_cli_accepts_customer_transfer_commands():
+    parser = cli.build_parser()
+    assert parser.parse_args(["sandbox", "new", "--project", ".", "--budget", "5"]).project == "."
+    assert parser.parse_args(["sandbox", "files", "download", "sb_agent", "results", "./results"]).destination == "./results"
+    assert parser.parse_args(["sandbox", "files", "upload", "sb_agent", "./local", "project"]).source == "./local"
+    assert parser.parse_args(["sandbox", "files", "read", "sb_agent", "result.txt"]).path == "result.txt"
+
+
 def test_sandbox_cli_rejects_nonpositive_and_nonfinite_budgets():
     parser = cli.build_parser()
     for value in ("0", "-1", "nan", "inf"):
