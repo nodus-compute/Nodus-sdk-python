@@ -204,7 +204,11 @@ def docs_api(monkeypatch):
                 return self.reply({"error": "unauthorized"}, 401)
             if path == "/v1/agents":
                 assert payload["budget_usd"] == 20 and payload["entrypoint"] == "agent:main"
-                assert payload["source"] == {"asset_id": "asset_docs"}
+                if "bootstrap" in payload:
+                    assert payload["bootstrap"] == {"repo": "your-org/private-agent", "ref": "main"}
+                    assert payload["network_permissions"] == ["github"] and "source" not in payload
+                else:
+                    assert payload["source"] == {"asset_id": "asset_docs"}
                 return self.reply({"id": "ag_docs", "name": payload["name"], "status": "active", "budget_usd": 20,
                                    "current_revision": 1, "url": "https://console.nodus-compute.ai/?view=agent-deployments&agent=ag_docs"}, 202)
             if path == "/v1/agents/ag_docs/runs":
@@ -344,6 +348,8 @@ def test_complete_example_programs(script, args, docs_api, tmp_path):
     ["events", "wl_docs"], ["logs", "wl_docs"],
     ["artifacts", "wl_docs"], ["explain", "wl_docs"], ["ledger", "wl_docs"],
     ["download", "wl_docs"], ["workload", "outputs", "wl_docs"], ["workload", "outputs", "wl_docs", "--reload", "results", "--stage", "main"], ["cancel", "wl_docs"], ["assets"], ["upload", "hello.py"],
+    ["sandbox", "new", "--name", "research-agent", "--github-repo", "your-org/private-agent", "--github-ref", "main", "--budget", "5"],
+    ["agent", "deploy", "worker", "--github-repo", "your-org/private-agent", "--github-ref", "main", "--budget", "20"],
 ])
 def test_installed_terminal_commands(args, docs_api, tmp_path):
     from nodus._workload_file import write_workload_file

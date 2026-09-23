@@ -6,17 +6,16 @@ import sys
 
 from ._agent import encode
 from ._managed_agents import _key
+from ._project_cli import add_source_arguments, source_options
 from .errors import NodusError, ValidationError
 
 
 def add_parser(commands, positive_cost, page_limit):
     parser = commands.add_parser("agent", help="deploy managed durable agents")
     sub = parser.add_subparsers(dest="agent_cmd", required=True)
-    deploy = sub.add_parser("deploy", help="deploy a local Python agent project")
+    deploy = sub.add_parser("deploy", help="deploy a Python agent project")
     deploy.add_argument("name")
-    source = deploy.add_mutually_exclusive_group()
-    source.add_argument("--project", help="project directory, defaults to the current directory")
-    source.add_argument("--source-asset-id", help="reuse an immutable uploaded project")
+    add_source_arguments(deploy, project_help="project directory, defaults to the current directory")
     deploy.add_argument("--entrypoint", default="agent:main")
     deploy.add_argument("--setup", help="dependency setup command saved with the agent revision")
     deploy.add_argument("--budget", type=positive_cost, required=True)
@@ -72,15 +71,15 @@ def _input(args):
 
 
 def run(args, client_factory):
+    source = source_options(args, default_project=True) if args.agent_cmd == "deploy" else None
     with client_factory(base_url=args.base_url) as client:
         action = args.agent_cmd
         key = _key(getattr(args, "idempotency_key", None))
         try:
             if action == "deploy":
-                result = client.agents.create(name=args.name, project=(args.project or ".") if not args.source_asset_id else None,
-                    source_asset_id=args.source_asset_id, entrypoint=args.entrypoint, budget=args.budget, setup=args.setup,
+                result = client.agents.create(name=args.name, entrypoint=args.entrypoint, budget=args.budget,
                     min_workers=args.min_workers, max_workers=args.max_workers, secrets=args.secret,
-                    network_permissions=args.network_permission, idempotency_key=key)
+                    idempotency_key=key, **source)
                 output = result.raw
             elif action in ("list", "ls"):
                 output = [agent.raw for agent in client.agents.list(limit=args.limit)]

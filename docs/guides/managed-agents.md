@@ -75,6 +75,23 @@ or `--source-asset-id ID` to reuse one already uploaded. Use `nodus agent list`,
 the deployment. `submit` accepts JSON through `--input` or `--input-file` and
 requires `--idempotency-key`.
 
+Connect GitHub in the console and grant access to deploy from a public or private
+repository. This uses the existing connection without passing GitHub credentials
+to the CLI:
+
+```bash
+nodus agent deploy worker \
+  --github-repo your-org/private-agent \
+  --github-ref main \
+  --budget 20
+```
+
+Omit `--github-ref` to use the repository default branch. The CLI adds the GitHub
+network permission and runs `--setup` after checkout when provided. Choose one
+of `--github-repo`, `--project` or `--source-asset-id`. Repository subdirectory
+selection is not supported. Use a dotted Python module in `--entrypoint` when
+your agent is inside a package.
+
 Inputs can include `session="customer-42"` to request ordered processing for
 that session. A timezone-aware `deadline` is optional. Use a new event key for
 new input. Retrying the same event key with changed input is a conflict.

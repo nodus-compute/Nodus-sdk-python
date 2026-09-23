@@ -308,6 +308,22 @@ before running dependent commands. Setup failure adds `bootstrap_failed` to the
 SDK's `warnings` list. Bootstrap does not make the root filesystem persistent.
 Production qualification of repository checkout and setup remains pending.
 
+After connecting GitHub in the console and granting repository access, the CLI
+can create a managed sandbox from a public or private repository:
+
+```bash
+nodus sandbox new \
+  --name research-agent \
+  --github-repo your-org/private-agent \
+  --github-ref main \
+  --budget 5
+```
+
+`--github-ref` is optional. The CLI adds the required GitHub network permission.
+Use `--setup` for a command that runs after checkout. GitHub sources cannot be
+combined with `--project` or `--source-asset-id`. The command requires a deployment
+that enables the qualified managed template.
+
 ## Async agents
 
 `AsyncClient` provides the same resource model.

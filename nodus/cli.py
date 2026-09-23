@@ -27,6 +27,7 @@ from ._brief import STATUS_FILTERS
 from .errors import ValidationError, NodusError, NotFoundError, AuthenticationError, APIError, APIConnectionError, APITimeoutError, asset_id_from_error
 from .types import _num
 from ._workload_file import load_workload_file, write_workload_file
+from ._project_cli import add_source_arguments, source_options
 
 # Nearly everything printed here was written somewhere else, and a terminal
 # acts on whatever escapes it is handed. The rule between the two cleaners:
@@ -508,18 +509,20 @@ def _cmd_agent(args: argparse.Namespace) -> int:
 
 
 def _cmd_sandbox(args: argparse.Namespace) -> int:
+    source = source_options(args) if args.sandbox_cmd == "new" else None
     with Client(base_url=args.base_url) as client:
         if args.sandbox_cmd == "new":
+            template = args.template
+            if template is None and args.image is None and args.github_repo is not None:
+                template = "nodus:agent-tools-v1"
             with _sandbox_mutation(args.idempotency_key) as key:
                 sandbox = client.sandboxes.create(
                     image=args.image,
                     name=args.name,
                     budget=args.budget,
-                    template=args.template,
-                    project=args.project,
-                    network_permissions=args.network_permission,
-                    setup=args.setup,
+                    template=template,
                     idempotency_key=key,
+                    **source,
                 )
             print(_safe_line(sandbox.id))
             return 0
@@ -1188,7 +1191,7 @@ Use nodus COMMAND --help for command options.""",
     sandbox_new = sandbox_sub.add_parser("new", help="create or reattach to a sandbox")
     sandbox_new.add_argument("image", nargs="?", default=None)
     sandbox_new.add_argument("--name", default=None)
-    sandbox_new.add_argument("--project", help="upload a local project to the managed environment")
+    add_source_arguments(sandbox_new, project_help="upload a local project to the managed environment")
     sandbox_new.add_argument("--setup", help="dependency setup command for the managed environment")
     sandbox_new.add_argument("--template", help="versioned managed environment, such as nodus:agent-tools-v1")
     sandbox_new.add_argument("--network-permission", action="append", help="named managed network permission")
