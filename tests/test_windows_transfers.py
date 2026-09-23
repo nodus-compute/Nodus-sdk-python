@@ -105,12 +105,17 @@ def test_windows_download_rejects_destination_junction_and_releases_handles(tmp_
 
 @windows_only
 @pytest.mark.parametrize("name", ["result.bin", "x", "😀.txt"])
-def test_windows_download_atomically_publishes_verified_bytes_and_cleans_failed_files(tmp_path, name):
+def test_windows_download_atomically_publishes_verified_bytes_and_cleans_failed_files(tmp_path, name, monkeypatch):
     from nodus._local_files import open_directory
     destination = tmp_path / "destination"
     destination.mkdir()
     output = destination / name
     output.write_bytes(b"original")
+    unrelated = tmp_path / "unrelated"
+    unrelated.mkdir()
+    sentinel = unrelated / name
+    sentinel.write_bytes(b"unrelated")
+    monkeypatch.chdir(unrelated)
     for _ in range(3):
         with open_directory(destination) as directory:
             with pytest.raises(RuntimeError):
@@ -125,6 +130,8 @@ def test_windows_download_atomically_publishes_verified_bytes_and_cleans_failed_
         staged.commit(output.name)
     assert output.read_bytes() == b"verified result"
     assert list(destination.iterdir()) == [output]
+    assert sentinel.read_bytes() == b"unrelated"
+    assert list(unrelated.iterdir()) == [sentinel]
 
 
 @windows_only
