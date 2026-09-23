@@ -305,7 +305,14 @@ def test_python_documentation_executes(path, number, body, docs_api, tmp_path, m
             state["run_id"] = "invoice:42"
             state["input"] = {"invoice_id": 42}
             namespace["send_to_invoice_service"] = lambda invoice_id: "synthetic-remote-7"
-        exec(compile(body.replace('"YOUR_WORKLOAD_ID"', '"wl_docs"'), str(path), "exec"), namespace)
+        program = compile(body.replace('"YOUR_WORKLOAD_ID"', '"wl_docs"'), str(path), "exec")
+        local_project_example = (path.name, number) in {("agent-sandboxes.md", 0), ("managed-agents.md", 1)}
+        descriptor_support = hasattr(os, "fwalk") and hasattr(os, "O_NOFOLLOW") and os.open in os.supports_dir_fd
+        if local_project_example and not descriptor_support:
+            with pytest.raises(nodus.ValidationError, match="POSIX filesystem"):
+                exec(program, namespace)
+        else:
+            exec(program, namespace)
     # Compile embedded Python argv too, without pretending it ran on a GPU.
     for payload in docs_api[2]:
         sources = [payload.get("source", {})] + [s.get("source", {}) for s in payload.get("stages", [])]

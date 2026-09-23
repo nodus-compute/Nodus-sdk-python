@@ -5,6 +5,7 @@ import asyncio
 import hashlib
 import io
 import json
+import os
 import tarfile
 import subprocess
 import sys
@@ -13,6 +14,10 @@ import httpx
 import pytest
 
 import nodus
+
+
+POSIX_FILES = hasattr(os, "fwalk") and hasattr(os, "O_NOFOLLOW") and os.open in os.supports_dir_fd
+requires_posix_files = pytest.mark.skipif(not POSIX_FILES, reason="Secure local file operations require POSIX descriptor APIs")
 
 
 def client_for(handler):
@@ -44,6 +49,7 @@ def test_managed_creation_refuses_missing_or_invalid_budget_before_http(budget):
             client.sandboxes.create(budget=budget)
 
 
+@requires_posix_files
 def test_project_upload_is_bounded_and_excludes_dependencies_and_credentials(tmp_path):
     (tmp_path / "main.py").write_bytes(b"print('ready')\n")
     (tmp_path / ".env").write_text("SECRET=hidden")
@@ -70,6 +76,7 @@ def test_project_upload_is_bounded_and_excludes_dependencies_and_credentials(tmp
     assert calls[-1] == "/v1/sandboxes"
 
 
+@requires_posix_files
 def test_project_symlink_cannot_upload_file_outside_project(tmp_path):
     project = tmp_path / "project"
     project.mkdir()
@@ -80,6 +87,32 @@ def test_project_symlink_cannot_upload_file_outside_project(tmp_path):
         return httpx.Response(200, json={"available": True, "max_project_bytes": 100000})
     with client_for(handle) as client, pytest.raises(nodus.ValidationError, match="symlink"):
         client.sandboxes.create(project=project, budget=5)
+
+
+@pytest.mark.parametrize("operation", ["project", "upload", "download"])
+def test_missing_descriptor_support_refuses_local_files_without_changing_them(tmp_path, monkeypatch, operation):
+    monkeypatch.delattr(os, "O_NOFOLLOW", raising=False)
+    original = tmp_path / "data.txt"
+    original.write_bytes(b"unchanged local bytes")
+    initial_entries = set(tmp_path.iterdir())
+    file_request, _ = file_handler(b"remote bytes")
+    def handle(request):
+        if operation == "project":
+            assert request.url.path == "/v1/sandboxes/capabilities"
+            return httpx.Response(200, json={"available": True, "max_project_bytes": 100000})
+        assert operation == "download", "upload must refuse before sending local bytes"
+        if request.method == "POST":
+            assert json.loads(request.content)["operation"] == "stat"
+        return file_request(request)
+    with client_for(handle) as client, pytest.raises(nodus.ValidationError, match="POSIX filesystem"):
+        if operation == "project":
+            client.sandboxes.create(project=tmp_path, budget=5)
+        elif operation == "upload":
+            nodus.Sandbox(client, "sb_one").files.upload(original, "data.txt")
+        else:
+            nodus.Sandbox(client, "sb_one").files.download("data.txt", original)
+    assert original.read_bytes() == b"unchanged local bytes"
+    assert set(tmp_path.iterdir()) == initial_entries
 
 
 @pytest.mark.parametrize("action", ["sleep", "wake"])
@@ -120,6 +153,7 @@ def test_file_paths_reject_escape_before_http(path):
             nodus.Sandbox(client, "sb_one").files.read(path)
 
 
+@requires_posix_files
 def test_project_retry_reuses_immutable_upload_with_same_client(tmp_path):
     (tmp_path / "main.py").write_text("print(1)")
     uploads, attempts = [], []
@@ -142,6 +176,7 @@ def test_project_retry_reuses_immutable_upload_with_same_client(tmp_path):
     assert len(uploads) == 1 and attempts[0] == attempts[1]
 
 
+@requires_posix_files
 def test_project_retry_reaches_saved_receipt_after_admission_gate_closes(tmp_path):
     (tmp_path / "main.py").write_text("print(1)")
     attempts = []
@@ -165,6 +200,7 @@ def test_project_retry_reaches_saved_receipt_after_admission_gate_closes(tmp_pat
     assert attempts[0] == attempts[1]
 
 
+@requires_posix_files
 def test_project_fifo_replacement_is_rejected_without_blocking(tmp_path):
     (tmp_path / "main.py").write_text("print(1)")
     script = '''
@@ -175,7 +211,7 @@ original = os.open
 def raced(name, flags, *args, **kwargs):
     if name == 'main.py':
         os.unlink(name, dir_fd=kwargs['dir_fd'])
-        os.mkfifo(name, dir_fd=kwargs['dir_fd'])
+        os.mkfifo(os.path.join(sys.argv[1], name))
     return original(name, flags, *args, **kwargs)
 os.open = raced
 os.supports_dir_fd.add(raced)
@@ -185,7 +221,8 @@ try:
 except ValidationError:
     pass
 '''
-    subprocess.run([sys.executable, "-c", script, str(tmp_path)], check=True, capture_output=True, timeout=2)
+    result = subprocess.run([sys.executable, "-c", script, str(tmp_path)], capture_output=True, text=True, timeout=2)
+    assert result.returncode == 0, result.stderr
 
 
 def test_async_managed_agent_and_sandbox_defaults():
@@ -232,6 +269,7 @@ def file_handler(content, *, corrupt=False):
     return handle, seen
 
 
+@requires_posix_files
 def test_download_discovers_type_checks_chunks_and_replaces_only_verified_file(tmp_path):
     data = bytes(range(256)) * 2048
     handler, seen = file_handler(data)
@@ -243,6 +281,7 @@ def test_download_discovers_type_checks_chunks_and_replaces_only_verified_file(t
     assert [body["offset"] for body in seen[1:]] == [0, 262144]
 
 
+@requires_posix_files
 def test_corrupt_download_keeps_existing_local_output(tmp_path):
     handler, _ = file_handler(b"corrupt", corrupt=True)
     target = tmp_path / "output.bin"
@@ -253,6 +292,7 @@ def test_corrupt_download_keeps_existing_local_output(tmp_path):
     assert not list(tmp_path.glob(".nodus-download-*"))
 
 
+@requires_posix_files
 def test_download_parent_swap_cannot_redirect_writes_or_leave_partial_files(tmp_path):
     directory, elsewhere, renamed = tmp_path / "download", tmp_path / "elsewhere", tmp_path / "renamed"
     directory.mkdir()
@@ -367,6 +407,7 @@ def test_missing_download_reports_absence_without_creating_local_output(tmp_path
     assert not target.exists()
 
 
+@requires_posix_files
 def test_upload_ancestor_swap_cannot_read_outside_the_selected_directory(tmp_path, monkeypatch):
     from nodus._sandbox_files import SandboxFiles
     selected, private, moved = tmp_path / "selected", tmp_path / "private", tmp_path / "moved"
@@ -398,6 +439,7 @@ def test_managed_setup_is_persisted_in_the_admitted_definition(resource):
         assert getattr(client, resource).create(**options).id
 
 
+@requires_posix_files
 def test_project_archive_remains_bound_when_an_ancestor_is_swapped(tmp_path, monkeypatch):
     import os
     selected, private, moved = tmp_path / "selected", tmp_path / "private", tmp_path / "moved"

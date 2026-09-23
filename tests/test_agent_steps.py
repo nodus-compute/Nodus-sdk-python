@@ -193,10 +193,10 @@ def test_managed_launcher_uses_the_assigned_export_name(journal_socket, monkeypa
     assert main(['--entrypoint', 'customer_agent_fixture:main', '--run-id', 'cycle-42', '--version', '1']) == {'invoice': 42}
 
 
-def test_private_rpc_serializes_renewal_with_blob_transfer(monkeypatch):
+def test_private_rpc_serializes_renewal_with_blob_transfer(monkeypatch, tmp_path):
     import httpx
     from nodus._agent import _RPC
-    monkeypatch.setenv('NODUS_AGENT_SOCKET', '/tmp/synthetic-agent.sock')
+    monkeypatch.setenv('NODUS_AGENT_SOCKET', str(tmp_path / 'synthetic-agent.sock'))
     rpc = _RPC()
     rpc.client.close()
     first_entered, release_first, second_started = threading.Event(), threading.Event(), threading.Event()
