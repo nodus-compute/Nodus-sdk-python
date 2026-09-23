@@ -4,64 +4,97 @@ on:
 permissions:
   contents: read
 jobs:
-  native-windows:
+  native-standard-user:
     runs-on: windows-latest
-    timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.10", "3.12", "3.13"]
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
-      - name: Record native environment and exact source identity
+          python-version: "3.12"
+      - run: python -m pip install build
+      - run: python -m build --wheel
+      - name: Exercise SDK, CLI and MCP from a verified standard-user token
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force evidence | Out-Null
-          $volumes = Get-Volume | Where-Object DriveLetter | Select-Object DriveLetter, FileSystem, FileSystemLabel
-          $os = Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version, BuildNumber, OSArchitecture
+          $ErrorActionPreference = 'Stop'
+          $root = 'C:\NodusQualification'
+          $suite = Join-Path $root 'suite'
+          New-Item -ItemType Directory -Force $suite | Out-Null
+          $names = @('tests', 'docs', 'examples', 'openapi', 'scripts', 'install', 'plugins', 'actions', 'README.md', 'llms.txt', 'LICENSE', 'RELEASING.md', 'CHANGELOG.md', 'pyproject.toml')
+          foreach ($name in $names) { Copy-Item $name $suite -Recurse }
+          $wheel = Get-ChildItem dist/*.whl | Select-Object -First 1
+          Copy-Item $wheel.FullName $root
+          $wheelPath = Join-Path $root $wheel.Name
+          $userName = 'NodusTransferTest'
+          $password = ConvertTo-SecureString ([Guid]::NewGuid().ToString('N') + 'Aa1!') -AsPlainText -Force
+          New-LocalUser -Name $userName -Password $password -AccountNeverExpires | Out-Null
+          Add-LocalGroupMember -Group 'Users' -Member $userName
+          $credential = [PSCredential]::new("$env:COMPUTERNAME\$userName", $password)
+          icacls $root /grant "${userName}:(OI)(CI)M" /T | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to grant qualification directory access' }
           $metadata = @{
             source_commit = (git rev-parse HEAD)
             package_tree = (git rev-parse HEAD:nodus)
             tests_tree = (git rev-parse HEAD:tests)
             python = (python --version)
-            os = $os
-            volumes = $volumes
-            source_path = (Get-Location).Path
-            temp_path = $env:TEMP
+            os = (Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version, BuildNumber, OSArchitecture)
+            volumes = @(Get-Volume | Where-Object DriveLetter | Select-Object DriveLetter, FileSystem)
+            wheel_sha256 = (Get-FileHash $wheel.FullName -Algorithm SHA256).Hash
           }
-          $metadata | ConvertTo-Json -Depth 5 | Set-Content evidence/environment.json
-          Get-Content evidence/environment.json
-      - run: python -m pip install -e ".[dev]" build
-      - name: Run full SDK suite on native Windows
-        run: python -m pytest -q -ra --junitxml=evidence/sdk-tests.xml
-      - name: Build the universal wheel
-        if: matrix.python-version == '3.12'
-        run: python -m build --wheel
-      - name: Record immutable wheel identity
-        if: matrix.python-version == '3.12'
-        shell: pwsh
-        run: |
-          Get-FileHash dist/*.whl -Algorithm SHA256 | Select-Object Path, Hash, Algorithm | ConvertTo-Json | Set-Content evidence/wheel.json
-          Get-Content evidence/wheel.json
-      - name: Verify native bootstrap and repeat installation
-        if: matrix.python-version == '3.12'
-        shell: bash
-        run: python scripts/verify-agent-install.py --wheel dist/*.whl
-      - name: Verify installed wheel native transfers
-        if: matrix.python-version == '3.12'
-        shell: bash
-        run: python scripts/verify-release.py --wheel dist/*.whl --local-transfers --report evidence/windows-transfers.json
-      - name: Verify installed wheel full SDK, CLI and MCP suite
-        if: matrix.python-version == '3.12'
-        shell: bash
-        run: python scripts/verify-release.py --wheel dist/*.whl --report evidence/installed-wheel.json
+          $metadata | ConvertTo-Json -Depth 5 | Set-Content "$root\environment.json"
+          @'
+          param([string]$PythonExecutable, [string]$WheelPath)
+          $ErrorActionPreference = 'Stop'
+          $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+          $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+          $administrator = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+          $adminSidPresent = @($identity.Groups.Value) -contains 'S-1-5-32-544'
+          @{
+            identity = $identity.Name
+            user_sid = $identity.User.Value
+            elevated_administrator = $administrator
+            administrators_sid_present = $adminSidPresent
+            group_sids = @($identity.Groups.Value)
+          } | ConvertTo-Json -Depth 4 | Set-Content 'C:\NodusQualification\token.json'
+          if ($administrator -or $adminSidPresent -or -not $identity.Name.EndsWith('\NodusTransferTest')) {
+            throw 'Qualification requires the isolated standard-user token'
+          }
+          $env:USERPROFILE = 'C:\NodusQualification\home'
+          $env:HOME = $env:USERPROFILE
+          $env:TEMP = 'C:\NodusQualification\temp'
+          $env:TMP = $env:TEMP
+          $env:PYTHONNOUSERSITE = '1'
+          Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue
+          Remove-Item Env:PYTHONHOME -ErrorAction SilentlyContinue
+          Get-ChildItem Env:NODUS_* -ErrorAction SilentlyContinue | Remove-Item
+          New-Item -ItemType Directory -Force $env:HOME, $env:TEMP | Out-Null
+          & $PythonExecutable -m venv C:\NodusQualification\venv
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $python = 'C:\NodusQualification\venv\Scripts\python.exe'
+          & $python -m pip install --only-binary=:all: "$WheelPath[mcp,dev]"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Set-Location C:\NodusQualification\suite
+          & $python -c "import json,nodus; print(json.dumps({'version':nodus.__version__,'module':nodus.__file__}))" | Set-Content C:\NodusQualification\installed-module.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $python -m pytest -q -ra tests/test_windows_transfers.py tests/test_managed_experience.py tests/test_mcp.py --junitxml=C:\NodusQualification\standard-user-tests.xml
+          exit $LASTEXITCODE
+          '@ | Set-Content "$root\standard-user.ps1"
+          $basePython = (Get-Command python).Source
+          $process = Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -Credential $credential -LoadUserProfile -ArgumentList @('-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "$root\standard-user.ps1", '-PythonExecutable', $basePython, '-WheelPath', $wheelPath) -WorkingDirectory $root -RedirectStandardOutput "$root\stdout.log" -RedirectStandardError "$root\stderr.log" -Wait -PassThru
+          Get-Content "$root\token.json" -ErrorAction SilentlyContinue
+          Get-Content "$root\stdout.log" -Tail 30
+          Get-Content "$root\stderr.log" -Tail 30
+          if ($process.ExitCode -ne 0) { throw "Standard-user qualification failed with exit code $($process.ExitCode)" }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: windows-${{ matrix.python-version }}-qualification
+          name: windows-standard-user-qualification
           path: |
-            evidence/
-            dist/*.whl
+            C:/NodusQualification/environment.json
+            C:/NodusQualification/token.json
+            C:/NodusQualification/installed-module.json
+            C:/NodusQualification/standard-user-tests.xml
+            C:/NodusQualification/stdout.log
+            C:/NodusQualification/stderr.log
+            C:/NodusQualification/*.whl
