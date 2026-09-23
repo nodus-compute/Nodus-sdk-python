@@ -43,7 +43,7 @@ Source = "https://github.com/Nodus-compute/Nodus-sdk-python"
 Issues = "https://github.com/Nodus-compute/Nodus-sdk-python/issues"
 
 [tool.setuptools.package-data]
-nodus = ["py.typed"]
+nodus = ["py.typed", "_operation_manifest.json"]
 
 [tool.setuptools.packages.find]
 where = ["."]

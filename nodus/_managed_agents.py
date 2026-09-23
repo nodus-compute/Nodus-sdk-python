@@ -73,7 +73,7 @@ class _Handle:
 
     def __getattr__(self, name):
         fields = {"name", "status", "current_revision", "budget_usd", "cost_usd", "reserved_usd", "min_workers", "max_workers",
-                  "workers", "created_at", "updated_at", "url", "agent_id", "revision", "session", "reason", "input", "result",
+                  "workers", "queued", "startup", "created_at", "updated_at", "url", "agent_id", "revision", "session", "reason", "input", "result",
                   "deadline", "next_wake_at", "sandbox_id", "exec_id", "attempt", "segment",
                   "recovery_policy", "checkpoint_id", "checkpoint_status", "checkpoint_error", "last_checkpoint_at"}
         if name not in fields:

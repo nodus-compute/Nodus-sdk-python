@@ -583,7 +583,7 @@ def _cmd_sandbox(args: argparse.Namespace) -> int:
         if args.sandbox_cmd == "detail":
             print(json.dumps({"id": sandbox.id, "state": sandbox.state, "url": sandbox.url,
                               "cost_usd": sandbox.cost_usd, "envelope": sandbox.envelope,
-                              "failure": sandbox.failure}, indent=2, default=str))
+                              "failure": sandbox.failure, "startup": sandbox.startup}, indent=2, default=str))
             return 0
         if args.sandbox_cmd == "files":
             files = sandbox.files

@@ -81,9 +81,11 @@ class _Files:
         source = no_symlinks(source)
         return self._drive(self._upload(source, _path(path or source.name), key), mutation_key=key)
 
-    def download(self, path, destination, *, recursive=None):
+    def download(self, path, destination, *, recursive=None, idempotency_key=None):
         """Download a verified file or recursively copy a project directory."""
-        return self._drive(self._download(_path(path, root=recursive is not False), no_symlinks(destination), recursive))
+        from . import _valid_idempotency_key
+        key = _valid_idempotency_key(idempotency_key) if idempotency_key is not None else None
+        return self._drive(self._download(_path(path, root=recursive is not False), no_symlinks(destination), recursive), mutation_key=key)
 
     def _list(self, path):
         body = yield {"operation": "list", "path": path}
@@ -217,12 +219,15 @@ class _Files:
 
 class SandboxFiles(_Files):
     def _drive(self, workflow, mutation_key=None):
-        result = None
+        result, sequence = None, 0
         while True:
             try:
                 request = workflow.send(result)
             except StopIteration as done:
                 return done.value
+            if mutation_key and "_key" not in request:
+                request["_key"] = "file-" + hashlib.sha256((mutation_key + ":" + str(sequence)).encode()).hexdigest()
+            sequence += 1
             try:
                 result = self._request(request)
             except BaseException as error:
@@ -247,12 +252,15 @@ class SandboxFiles(_Files):
 
 class AsyncSandboxFiles(_Files):
     async def _drive(self, workflow, mutation_key=None):
-        result = None
+        result, sequence = None, 0
         while True:
             try:
                 request = workflow.send(result)
             except StopIteration as done:
                 return done.value
+            if mutation_key and "_key" not in request:
+                request["_key"] = "file-" + hashlib.sha256((mutation_key + ":" + str(sequence)).encode()).hexdigest()
+            sequence += 1
             try:
                 result = await self._request(request)
             except BaseException as error:

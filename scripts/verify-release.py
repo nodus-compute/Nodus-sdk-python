@@ -45,6 +45,8 @@ def main() -> int:
             environment = work / 'venv'
             subprocess.run([sys.executable, '-m', 'venv', str(environment)], check=True, env=env)
             python = environment / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
+            env['PATH'] = str(python.parent) + os.pathsep + env.get('PATH', '')
+            env['VIRTUAL_ENV'] = str(environment)
             report['stage'] = 'install'
             for attempt in range(6 if args.version else 1):
                 installed = subprocess.run([str(python), '-m', 'pip', 'install', '--no-cache-dir',

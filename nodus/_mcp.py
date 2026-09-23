@@ -78,7 +78,7 @@ async def _lifespan(server: FastMCP) -> AsyncIterator[httpx.AsyncClient]:
 
 
 def create_server(base_url: str | None = None) -> FastMCP:
-    """Create workload tools with credentials resolved on each call."""
+    """Create execution tools with credentials resolved on each call."""
     server = FastMCP("nodus", log_level="WARNING", lifespan=_lifespan)
     read = ToolAnnotations(readOnlyHint=True, destructiveHint=False)
 
@@ -126,7 +126,7 @@ def create_server(base_url: str | None = None) -> FastMCP:
                               workload=workload, idempotency_key=idempotency_key)
 
     @server.tool(structured_output=False, annotations=read)
-    async def list_workloads(ctx: Context, scope: Literal["team", "mine"] | None = None,
+    async def list_workloads(ctx: Context, scope: Literal["team", "mine", ""] | None = None,
                              limit: Limit | None = None, offset: Offset | None = None) -> str:
         """List workloads. Pass next_offset from the response to read the next page."""
         params = {name: value for name, value in {"scope": scope, "limit": limit, "offset": offset}.items()
@@ -160,4 +160,10 @@ def create_server(base_url: str | None = None) -> FastMCP:
         """List final output metadata and download paths, without downloading files."""
         return await _request(ctx.request_context.lifespan_context, "GET", f"/v1/workloads/{_valid_id(workload_id)}/outputs", base_url=base_url)
 
+    from ._mcp_execution import register_execution_tools
+    register_execution_tools(server, base_url, _request)
+    from ._mcp_transfers import register_transfer_tools
+    register_transfer_tools(server, base_url, _check_origin)
+    from ._mcp_manifest import register_manifest
+    register_manifest(server)
     return server
