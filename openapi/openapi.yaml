@@ -428,9 +428,7 @@
           "workspace_source": {
             "$ref": "#/components/schemas/WorkspaceSourceAlias"
           }
-        },
-        "x-go-source": "internal/store/assets.go",
-        "x-go-type": "Asset"
+        }
       },
       "AssetImportRequest": {
         "type": "object",
@@ -504,8 +502,6 @@
             "description": "Reuse an eligible ready export for this tenant, connection, exact SQL apart from outer whitespace, branch and format from the last 24 hours."
           }
         },
-        "x-go-source": "internal/assets/import.go",
-        "x-go-type": "Request",
         "description": "The server requires the source appropriate to kind. Import limits are deployment specific and returned by GET /v1/assets. Archives cannot contain links, special files, unsafe paths or more than 10000 files. Connection queries produce data.parquet or data.csv inside a normal input asset, with a 5 GB and 50 million row limit. Existing tenant storage quota also applies. Credentials remain on the control plane."
       },
       "AssetList": {
@@ -640,9 +636,7 @@
             "minimum": 1,
             "maximum": 64
           }
-        },
-        "x-go-source": "internal/benchmark/benchmark.go",
-        "x-go-type": "Matrix"
+        }
       },
       "BenchmarkReport": {
         "type": "object",
@@ -674,9 +668,7 @@
               "$ref": "#/components/schemas/BenchmarkCell"
             }
           }
-        },
-        "x-go-source": "internal/benchmark/benchmark.go",
-        "x-go-type": "Report"
+        }
       },
       "BenchmarkRequest": {
         "type": "object",
@@ -699,9 +691,7 @@
             "maximum": 1000000,
             "description": "One total USD cap. Server divides microdollars across at most 64 immutable cell budgets. Unused cell allocations are not redistributed."
           }
-        },
-        "x-go-source": "internal/benchmark/benchmark.go",
-        "x-go-type": "Request"
+        }
       },
       "CheckpointSummary": {
         "type": "object",
@@ -720,9 +710,7 @@
             "format": "date-time",
             "description": "Original commit time of the latest useful recovery checkpoint. Independent of event pagination and unchanged by commit retries or artifact-only uploads."
           }
-        },
-        "x-go-source": "internal/models/models.go",
-        "x-go-type": "CheckpointSummary"
+        }
       },
       "Continuity": {
         "type": "object",
@@ -762,9 +750,7 @@
             ],
             "description": "Application save and resume integration. New submissions leave application checkpoint preparation disabled unless auto or hf-trainer-v1 is explicitly selected. Omission and none preserve the original source and application-managed checkpoint behavior. A stage inherits an explicit workload selection when omitted. Imported source alone does not enable preparation. auto attempts the supported framework adapter and otherwise runs the original command with application-managed checkpoints. hf-trainer-v1 requires supported Hugging Face Trainer preparation and runtime validation. Explicit managed selections require execution-v2, enabled preparation and source.asset_id. Previously accepted submissions keep their original selection. Prepared source does not itself prove that application state has been saved or recovered."
           }
-        },
-        "x-go-source": "internal/models/models.go",
-        "x-go-type": "Continuity"
+        }
       },
       "CostBreakdown": {
         "type": "object",
@@ -802,9 +788,7 @@
           "total_usd": {
             "type": "number"
           }
-        },
-        "x-go-source": "internal/models/models.go",
-        "x-go-type": "CostBreakdown"
+        }
       },
       "CustomerFallbackBranch": {
         "type": "object",
@@ -822,9 +806,7 @@
             ],
             "description": "Estimated fallback cost, or null when a trustworthy total estimate is unavailable."
           }
-        },
-        "x-go-source": "internal/models/models.go",
-        "x-go-type": "CustomerFallbackBranch"
+        }
       },
       "CustomerLedgerEntry": {
         "type": "object",
@@ -858,9 +840,7 @@
             "type": "string",
             "format": "date-time"
           }
-        },
-        "x-go-source": "internal/store/pilot.go",
-        "x-go-type": "CustomerLedgerEntry"
+        }
       },
       "CustomerRejectedOffer": {
         "type": "object",
@@ -868,9 +848,7 @@
           "reason": {
             "type": "string"
           }
-        },
-        "x-go-source": "internal/models/models.go",
-        "x-go-type": "CustomerRejectedOffer"
+        }
       },
       "CustomerRouteSummary": {
         "type": "object",
@@ -947,9 +925,7 @@
               "$ref": "#/components/schemas/CustomerRejectedOffer"
             }
           }
-        },
-        "x-go-source": "internal/models/models.go",
-        "x-go-type": "CustomerRouteSummary"
+        }
       },
       "EmptyRequest": {
         "type": "object",
@@ -1061,9 +1037,7 @@
             "default": 0,
             "description": "Platform fees accruing at as_of."
           }
-        },
-        "x-go-source": "internal/store/meter.go",
-        "x-go-type": "Meter"
+        }
       },
       "Outcome": {
         "type": "object",
@@ -1076,9 +1050,7 @@
             "type": "string",
             "description": "RFC3339 completion deadline, or empty/omitted for none. Example: 2026-12-01T18:00:00Z."
           }
-        },
-        "x-go-source": "internal/models/models.go",
-        "x-go-type": "Outcome"
+        }
       },
       "Output": {
         "type": "object",
@@ -1152,9 +1124,7 @@
             },
             "description": "HTTPS hostnames added to the connection host allowlist. Isolated execution blocks all other network access."
           }
-        },
-        "x-go-source": "internal/models/models.go",
-        "x-go-type": "Policy"
+        }
       },
       "Requirements": {
         "type": "object",
@@ -1234,9 +1204,7 @@
             ],
             "description": "No interconnect guarantee. Requests for NVLink or NVSwitch are rejected until topology can be verified."
           }
-        },
-        "x-go-source": "internal/models/models.go",
-        "x-go-type": "Requirements"
+        }
       },
       "ResourceAttributes": {
         "type": "object",
@@ -1264,9 +1232,7 @@
             "minimum": 0,
             "description": "Number of GPUs in this single-machine allocation."
           }
-        },
-        "x-go-source": "internal/models/models.go",
-        "x-go-type": "ResourceAttributes"
+        }
       },
       "RoutingPlacement": {
         "type": "object",
@@ -1450,9 +1416,7 @@
           "outcome": {
             "type": "string"
           }
-        },
-        "x-go-source": "internal/store/route_insights.go",
-        "x-go-type": "RoutingPlacement"
+        }
       },
       "Sandbox": {
         "type": "object",
@@ -2419,7 +2383,6 @@
       },
       "SandboxService": {
         "type": "object",
-        "x-go-source": "internal/sandbox/service.go",
         "required": [
           "command",
           "port",
@@ -2443,8 +2406,7 @@
             "type": "string",
             "description": "Absolute HTTP health path. Successful 2xx health response is required before serving requests."
           }
-        },
-        "x-go-type": "Service"
+        }
       },
       "SandboxState": {
         "type": "string",
@@ -2573,9 +2535,7 @@
           "total": {
             "type": "number"
           }
-        },
-        "x-go-source": "internal/models/models.go",
-        "x-go-type": "ScoreBreakdown"
+        }
       },
       "SecretMetadata": {
         "type": "object",
@@ -2601,9 +2561,7 @@
             "type": "string",
             "description": "Stable tenant secret ID shared by its versions."
           }
-        },
-        "x-go-source": "internal/store/sandbox_secrets.go",
-        "x-go-type": "SecretMetadata"
+        }
       },
       "SecretWrite": {
         "type": "object",
@@ -2659,9 +2617,7 @@
           "from_output": {
             "type": "string"
           }
-        },
-        "x-go-source": "internal/models/models.go",
-        "x-go-type": "StageInput"
+        }
       },
       "StagePayload": {
         "type": "object",
@@ -2719,8 +2675,6 @@
             "description": "Named output paths or file and database sink declarations. Sinks support CSV, JSONL and flat Parquet files. Credentials stay on the control plane. Outputs in one stage must use distinct connection and table targets."
           }
         },
-        "x-go-source": "internal/models/models.go",
-        "x-go-type": "StagePayload",
         "required": [
           "id",
           "source"
@@ -2796,9 +2750,7 @@
             "type": "number",
             "description": "Optional reported training display metric. Independent of recovery progress."
           }
-        },
-        "x-go-source": "internal/models/models.go",
-        "x-go-type": "StageRunSummary"
+        }
       },
       "SubmitResult": {
         "type": "object",
@@ -2857,9 +2809,7 @@
             "minimum": 0,
             "description": "Runner queue overflow observations. A nonzero value means measurements are incomplete."
           }
-        },
-        "x-go-source": "internal/models/unit_metrics.go",
-        "x-go-type": "UnitMetrics"
+        }
       },
       "Workload": {
         "type": "object",
@@ -2950,9 +2900,7 @@
             },
             "description": "Detail-only source preparation status for stages requesting managed checkpoint integration. Does not assert runtime framework compatibility or successful application recovery."
           }
-        },
-        "x-go-source": "internal/models/models.go",
-        "x-go-type": "Workload"
+        }
       },
       "WorkloadEvent": {
         "type": "object",
@@ -2977,9 +2925,7 @@
             "type": "string",
             "format": "date-time"
           }
-        },
-        "x-go-source": "internal/models/models.go",
-        "x-go-type": "WorkloadEvent"
+        }
       },
       "WorkloadInput": {
         "type": "object",
@@ -3011,8 +2957,6 @@
             "$ref": "#/components/schemas/BucketInput"
           }
         },
-        "x-go-source": "internal/models/models.go",
-        "x-go-type": "WorkloadInput",
         "required": [
           "name"
         ],
@@ -3093,9 +3037,7 @@
             },
             "description": "Run links captured from live output, available before completion."
           }
-        },
-        "x-go-source": "internal/store/pilot.go",
-        "x-go-type": "WorkloadListItem"
+        }
       },
       "WorkloadPayload": {
         "type": "object",
@@ -3192,8 +3134,6 @@
             "description": "Optional wandb run group. Defaults to the workload ID. This does not create or schedule a sweep."
           }
         },
-        "x-go-source": "internal/models/models.go",
-        "x-go-type": "WorkloadPayload",
         "description": "Customer workload request. Supply source.image/source.command, explicit stages, or the train_eval framework with source.command. Unknown top-level JSON fields are currently ignored for compatibility: use documented names. A non-null rl object follows the stricter RLMetadata contract. The SDK validates its top-level arguments. Numeric fields retain existing server behavior. No stronger validation is implied here."
       },
       "WorkloadSource": {
@@ -3219,9 +3159,7 @@
             "description": "Identifier of code previously imported into this team. The runner stages it before starting the command.",
             "pattern": "^(asset_[A-Za-z0-9-]{1,64})?$"
           }
-        },
-        "x-go-source": "internal/models/models.go",
-        "x-go-type": "WorkloadSource"
+        }
       },
       "ResearchWorkspaceConfiguration": {
         "type": "object",
@@ -3300,15 +3238,12 @@
             "maxLength": 8192,
             "description": "Optional plain SSH public keys, one per line, up to 20. Private keys, certificates and authorized_keys options are rejected. Account SSH keys can also provide access to direct sessions."
           }
-        },
-        "x-go-source": "internal/researchworkspace/config.go",
-        "x-go-type": "Config"
+        }
       },
       "ResearchWorkspaceCapabilities": {
         "type": "object",
         "required": [
           "available",
-          "account_funded_sessions",
           "storage_limit_bytes",
           "environments",
           "gpu_counts",
@@ -3424,9 +3359,7 @@
           "gpu": {"type": "string", "maxLength": 64, "description": "Optional GPU model override. Omit or send an empty string to inherit the workspace configuration."},
           "gpu_count": {"type": "integer", "enum": [0, 1, 2, 4, 8], "description": "Exact GPUs on one machine. Omitted or zero inherits the workspace configuration."},
           "gpu_memory_gb": {"type": "number", "minimum": 0, "maximum": 1024, "description": "Memory per GPU in GB. Omitted or zero inherits the workspace configuration."}
-        },
-        "x-go-source": "internal/api/workspace_workloads.go",
-        "x-go-type": "workspaceWorkloadRequest"
+        }
       },
       "WorkspaceArchiveSegment": {
         "type": "object",
@@ -3437,9 +3370,7 @@
           "offset": {"type": "integer", "format": "int64", "minimum": 0, "multipleOf": 512},
           "bytes": {"type": "integer", "format": "int64", "minimum": 512, "maximum": 67108864, "multipleOf": 512}
         },
-        "description": "One contiguous segment of the canonical archive. Offsets begin at zero with no gaps or overlap, and lengths sum to archive_bytes.",
-        "x-go-source": "internal/researcharchive/manifest.go",
-        "x-go-type": "Segment"
+        "description": "One contiguous segment of the canonical archive. Offsets begin at zero with no gaps or overlap, and lengths sum to archive_bytes."
       },
       "WorkspaceArchiveInventory": {
         "type": "object",
@@ -3449,9 +3380,7 @@
           "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$", "description": "Versioned inventory digest derived from ordered paths, file bytes and metadata. The server verifies it against the uploaded archive."},
           "payload_bytes": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 10000000000},
           "entries": {"type": "integer", "minimum": 1, "maximum": 100000}
-        },
-        "x-go-source": "internal/researcharchive/manifest.go",
-        "x-go-type": "inventoryWire"
+        }
       },
       "WorkspaceArchiveManifest": {
         "type": "object",
@@ -3464,9 +3393,7 @@
           "inventory": {"$ref": "#/components/schemas/WorkspaceArchiveInventory"},
           "segments": {"type": "array", "minItems": 1, "maxItems": 100160, "items": {"$ref": "#/components/schemas/WorkspaceArchiveSegment"}}
         },
-        "description": "Version 3 canonical workspace archive commitment, limited to 16 MiB of manifest JSON. Requires a qualified archive writer. Arbitrary tar, zip or compressed bytes are not accepted. The archive permits ordered regular files, directories and confined symbolic links, with at most 10 GB of payload and 512 MiB of archive metadata. Verification checks the complete archive and inventory before replacing saved files.",
-        "x-go-source": "internal/researcharchive/manifest.go",
-        "x-go-type": "manifestWire"
+        "description": "Version 3 canonical workspace archive commitment, limited to 16 MiB of manifest JSON. Requires a qualified archive writer. Arbitrary tar, zip or compressed bytes are not accepted. The archive permits ordered regular files, directories and confined symbolic links, with at most 10 GB of payload and 512 MiB of archive metadata. Verification checks the complete archive and inventory before replacing saved files."
       },
       "WorkspaceTransferRequest": {
         "type": "object",
@@ -3489,9 +3416,7 @@
           "expires_at": {"type": "string", "format": "date-time", "description": "Refresh the estimate after this timestamp."},
           "estimate_only": {"type": "boolean", "const": true}
         },
-        "description": "Read-only current price estimate for an exact workspace configuration. Does not allocate compute, reserve capacity or lock a price. Admission refreshes price and availability within the customer's spending controls.",
-        "x-go-source": "internal/sandboxproducer/preview.go",
-        "x-go-type": "PricePreview"
+        "description": "Read-only current price estimate for an exact workspace configuration. Does not allocate compute, reserve capacity or lock a price. Admission refreshes price and availability within the customer's spending controls."
       },
       "WorkspaceTransfer": {
         "type": "object",
@@ -3505,9 +3430,7 @@
           "manifest_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
           "manifest_bytes": {"type": "integer", "format": "int64", "minimum": 1, "maximum": 16777216},
           "uploaded_segments": {"type": "array", "items": {"type": "integer", "minimum": 0}, "description": "Zero-based indexes already verified for this transfer. Empty when no segment is present."}
-        },
-        "x-go-source": "internal/store/research_workspace_transfers.go",
-        "x-go-type": "ResearchTransfer"
+        }
       },
       "WorkspaceWorkload": {
         "type": "object",
@@ -3517,9 +3440,7 @@
           "status": {"type": "string"},
           "created_at": {"type": "string", "format": "date-time"},
           "source_revision": {"type": "string", "description": "Digest identifying the immutable saved project revision used for this workload."}
-        },
-        "x-go-source": "internal/store/workspace_workloads.go",
-        "x-go-type": "WorkspaceWorkload"
+        }
       },
       "WorkspaceSourceStorage": {
         "type": "object",
@@ -3690,9 +3611,7 @@
           "storage_settled_usd": {"type": "number", "default": 0, "description": "Zero for workspace compute sessions. Saved-file charges belong to the account meter."},
           "compute_accruing_usd": {"type": "number"},
           "platform_fee_accruing_usd": {"type": "number"}
-        },
-        "x-go-source": "internal/store/meter.go",
-        "x-go-type": "Meter"
+        }
       },
       "ResearchWorkspaceAccountStorage": {
         "type": "object",
@@ -3753,9 +3672,7 @@
             "format": "date-time"
           }
         },
-        "description": "Account-wide saved-file usage and posted charges. Account-policy overage is prorated continuously by logical payload bytes and time over a fixed 30-day month. This uses the R2 Standard unit rate without reproducing its daily-peak invoice. Unfunded retention is not backcharged. File export and deletion remain available with stopped compute.",
-        "x-go-source": "internal/store/research_account_storage.go",
-        "x-go-type": "ResearchAccountStorageSummary"
+        "description": "Account-wide saved-file usage and posted charges. Account-policy overage is prorated continuously by logical payload bytes and time over a fixed 30-day month. This uses the R2 Standard unit rate without reproducing its daily-peak invoice. Unfunded retention is not backcharged. File export and deletion remain available with stopped compute."
       },
       "ResearchWorkspaceFileRevision": {
         "type": "object",
@@ -3811,9 +3728,7 @@
             "type": "string",
             "description": "Authenticated API-relative path for downloading this segment without cross-origin browser requests."
           }
-        },
-        "x-go-source": "internal/api/research_workspace_files.go",
-        "x-go-type": "ResearchWorkspaceExportSegment"
+        }
       },
       "ResearchWorkspaceFileExport": {
         "type": "object",
@@ -3869,9 +3784,7 @@
             "minimum": 0,
             "description": "Read the next page at this offset. Omitted on the final page."
           }
-        },
-        "x-go-source": "internal/api/research_workspace_files.go",
-        "x-go-type": "ResearchWorkspaceFileExport"
+        }
       },
       "ResearchWorkspaceFileDeletion": {
         "type": "object",
@@ -3893,9 +3806,7 @@
             "type": "boolean",
             "const": true
           }
-        },
-        "x-go-source": "internal/store/research_workspace_files.go",
-        "x-go-type": "ResearchWorkspaceFileDeletion"
+        }
       },
       "ResearchWorkspaceStorage": {
         "type": "object",
@@ -3906,9 +3817,7 @@
           "retained_bytes": {"type": "integer", "format": "int64", "description": "Total retained storage for this workspace, including data needed to restore saved files. May exceed the latest save's stored_bytes."},
           "charged_usd": {"type": "number", "description": "Lifetime posted storage charges for this workspace, not a compute-session charge."},
           "as_of": {"type": "string", "format": "date-time"}
-        },
-        "x-go-source": "internal/store/research_workspaces.go",
-        "x-go-type": "ResearchWorkspaceStorage"
+        }
       },
       "WorkspacePendingUpload": {
         "type": "object",
@@ -4033,9 +3942,7 @@
           "ssh_config": {"type": "string", "description": "OpenSSH configuration using the workspace gateway as ProxyJump. Requires the private key corresponding to the saved public key. Do not disable host-key checking."},
           "gateway_fingerprint": {"type": "string", "description": "SHA256 fingerprint of the deployment's stable SSH gateway host key."},
           "gateway_known_hosts": {"type": "string", "description": "OpenSSH known_hosts entry for the gateway, to install before connecting. The guest has a separate project-persisted host key and first-use confirmation."}
-        },
-        "x-go-source": "internal/workspacessh/client.go",
-        "x-go-type": "ConnectionConfig"
+        }
       },
       "WorkspaceWebSocketSSHConnection": {
         "type": "object",
@@ -4047,9 +3954,7 @@
           "workspace_id": {"type": "string"},
           "session_id": {"type": "string"},
           "generation": {"type": "integer", "minimum": 1}
-        },
-        "x-go-source": "internal/api/workspace_ssh_stream.go",
-        "x-go-type": "workspaceWebSocketSSHConnection"
+        }
       },
       "WorkspaceCreateRequest": {
         "type": "object",
@@ -4250,9 +4155,7 @@
           "created_at",
           "updated_at"
         ],
-        "description": "Customer infrastructure pool with free read-only measurement, optional account-priced Predict, and explicit paid Route activation. Each execution host requires separate host-bound reenrollment. Owned cost is advisory and does not create a charge.",
-        "x-go-source": "internal/models/pools.go",
-        "x-go-type": "PrivatePool"
+        "description": "Customer infrastructure pool with free read-only measurement, optional account-priced Predict, and explicit paid Route activation. Each execution host requires separate host-bound reenrollment. Owned cost is advisory and does not create a charge."
       },
       "PoolCreateRequest": {
         "type": "object",
@@ -4267,9 +4170,7 @@
         "required": [
           "name"
         ],
-        "additionalProperties": false,
-        "x-go-source": "internal/api/pools.go",
-        "x-go-type": "poolCreateRequest"
+        "additionalProperties": false
       },
       "PoolPatchRequest": {
         "type": "object",
@@ -4355,8 +4256,6 @@
         },
         "additionalProperties": false,
         "minProperties": 1,
-        "x-go-source": "internal/api/pools.go",
-        "x-go-type": "poolPatchRequest",
         "description": "Change Predict separately from other settings. Enabling requires explicit accepted_predict_rate_version predict-account-monthly-v1 and accepted_predict_monthly_micros 99000000. Disabling requires only predict_enabled false and stops future refresh and renewal after the last enabled pool is disabled. Cached views remain readable. Change Route and its waiting settings separately from Predict, name, and owned cost. Enabling Route requires an active pool and explicit route-platform-v1 consent at 20000 USD micros per active customer device-hour, including optimize and apply. Consent fields are rejected unless enabling. Disabling blocks new admission and retains accepted terms, existing work, and exact cleanup."
       },
       "PoolEnrollmentTokenRequest": {
@@ -4376,8 +4275,6 @@
           }
         },
         "additionalProperties": false,
-        "x-go-source": "internal/api/pools.go",
-        "x-go-type": "poolTokenRequest",
         "description": "Observe is the default, including an omitted body. Execute mode requires an existing host_id and a fresh installation. Token issuance does not activate Route or change host credentials until enrollment."
       },
       "PoolEnrollmentToken": {
@@ -4407,9 +4304,7 @@
           "token",
           "mode",
           "expires_at"
-        ],
-        "x-go-source": "internal/store/pools.go",
-        "x-go-type": "PoolEnrollmentToken"
+        ]
       },
       "PoolInventoryDevice": {
         "type": "object",
@@ -4514,9 +4409,7 @@
           "memory_mb",
           "device_uuid",
           "state"
-        ],
-        "x-go-source": "internal/models/pools.go",
-        "x-go-type": "HostDevice"
+        ]
       },
       "PoolHost": {
         "type": "object",
@@ -4586,9 +4479,7 @@
           "last_heartbeat_at",
           "drain_requested_at",
           "enrolled_at"
-        ],
-        "x-go-source": "internal/models/pools.go",
-        "x-go-type": "PoolHost"
+        ]
       },
       "PoolList": {
         "type": "object",
@@ -4746,8 +4637,6 @@
           "data_status",
           "burst_cost_micros"
         ],
-        "x-go-source": "internal/finops/ledger.go",
-        "x-go-type": "Metrics",
         "description": "Totals cover retained ready-device hourly rows only. Complete means all represented ready seconds have activity evidence, not that the pool existed throughout the requested range. Partial means some ready seconds lack observations and all activity totals and percentages are null. No data means no retained rows. Zero capacity has null percentages. Missing activity is never counted as idle or stranded. Fragmentation, queued and burst are unavailable without Route and remain null in the observe ledger. Route measurements use independent durable queue and execution evidence in the pool summary. Host summaries and host buckets keep Route fields null because these cannot be attributed to a private host."
       },
       "PoolUtilizationBucket": {
@@ -4777,8 +4666,6 @@
           "metrics",
           "foreign_device_ids"
         ],
-        "x-go-source": "internal/api/pools_utilization.go",
-        "x-go-type": "poolUtilizationBucket",
         "description": "Half-open UTC bucket. Empty buckets have no_data metrics. Foreign device IDs identify positive observed foreign allocation even when other activity is unknown."
       },
       "PoolUtilizationHost": {
@@ -4810,9 +4697,7 @@
           "device_count",
           "summary",
           "buckets"
-        ],
-        "x-go-source": "internal/api/pools_utilization.go",
-        "x-go-type": "poolUtilizationHost"
+        ]
       },
       "PoolUtilization": {
         "type": "object",
@@ -4852,9 +4737,7 @@
           "bucket",
           "summary",
           "hosts"
-        ],
-        "x-go-source": "internal/api/pools_utilization.go",
-        "x-go-type": "poolUtilizationResponse"
+        ]
       },
       "PoolPredictSubscription": {
         "type": "object",
@@ -4902,8 +4785,6 @@
           "paid_current_period",
           "enabled_pool_count"
         ],
-        "x-go-source": "internal/store/pools_predict_billing.go",
-        "x-go-type": "PoolPredictSubscription",
         "description": "Fixed USD 99 per account per UTC calendar month, independent of device and pool count. The first activation charges the full current month. paid_current_period means funded by credits or accepted postpaid receivable, not that a postpaid invoice has been paid."
       },
       "PoolForecastBand": {
@@ -4936,9 +4817,7 @@
           "p10",
           "p50",
           "p90"
-        ],
-        "x-go-source": "internal/finops/forecast.go",
-        "x-go-type": "Band"
+        ]
       },
       "PoolForecast": {
         "type": "object",
@@ -4996,8 +4875,6 @@
           "required_history_hours",
           "points"
         ],
-        "x-go-source": "internal/finops/forecast.go",
-        "x-go-type": "Forecast",
         "description": "Allocated device-hour demand including foreign allocations. A seasonal baseline requires 672 complete hourly observations. Unknown demand is not replaced with zero. No learned model is claimed unless its registry promotion was verified."
       },
       "PoolForecastEvaluation": {
@@ -5115,8 +4992,6 @@
           "covered_days",
           "daily_coverage"
         ],
-        "x-go-source": "internal/finops/forecast.go",
-        "x-go-type": "ForecastEvaluation",
         "description": "Last 30 completed UTC days scored only against forecasts issued before the target hour. Missing actuals are excluded and denominators are explicit. Daily coverage is the fraction of complete days with every hour covered, not a nominal 80 percent daily interval."
       },
       "PoolAdvisoryPrice": {
@@ -5139,8 +5014,6 @@
           "observed_at",
           "basis"
         ],
-        "x-go-source": "internal/store/pools_predict.go",
-        "x-go-type": "PoolAdvisoryPrice",
         "description": "Fresh compatible available market configuration observed with the customer markup. Device-fit hourly advisory only, not a workload completion quote or an executable reservation."
       },
       "PoolForecastSnapshot": {
@@ -5181,9 +5054,7 @@
           "calibration",
           "owned_devices",
           "advisory_burst_price"
-        ],
-        "x-go-source": "internal/store/pools_predict.go",
-        "x-go-type": "PoolForecastSnapshot"
+        ]
       },
       "PoolRecommendationOutcome": {
         "type": "object",
@@ -5212,8 +5083,6 @@
           "outcome",
           "reported_saving_micros"
         ],
-        "x-go-source": "internal/store/pools_predict.go",
-        "x-go-type": "PoolRecommendationOutcome",
         "description": "Immutable customer-reported manual outcome. reported_saving_micros is optional customer testimony, not measured or verified savings. No action is executed by recording an outcome."
       },
       "PoolRecommendationDone": {
@@ -5239,8 +5108,6 @@
         "required": [
           "outcome"
         ],
-        "x-go-source": "internal/store/pools_predict.go",
-        "x-go-type": "PoolRecommendationDone",
         "additionalProperties": false
       },
       "PoolRecommendation": {
@@ -5317,9 +5184,7 @@
           "state",
           "recommendation",
           "outcome"
-        ],
-        "x-go-source": "internal/store/pools_predict.go",
-        "x-go-type": "PoolRecommendation"
+        ]
       },
       "PoolForecastResponse": {
         "type": "object",
@@ -5363,9 +5228,7 @@
           "refresh_status",
           "subscription",
           "snapshot"
-        ],
-        "x-go-source": "internal/api/pools_predict.go",
-        "x-go-type": "poolForecastResponse"
+        ]
       },
       "PoolRecommendationsResponse": {
         "type": "object",
@@ -5410,8 +5273,6 @@
           "recommendations",
           "next_cursor"
         ],
-        "x-go-source": "internal/api/pools_predict.go",
-        "x-go-type": "poolRecommendationsResponse",
         "description": "One page of advice and recorded human outcomes, newest first. Follow next_cursor to read older records. Use state=open for current actionable advice."
       },
       "PoolRightSizeRecommendation": {
@@ -5456,9 +5317,7 @@
           "recommended_devices",
           "expected_savings_micros",
           "evidence"
-        ],
-        "x-go-source": "internal/finops/optimize.go",
-        "x-go-type": "Recommendation"
+        ]
       },
       "PoolRightSizeEvidence": {
         "type": "object",
@@ -5556,8 +5415,6 @@
           "advisory_price",
           "demand_distribution"
         ],
-        "x-go-source": "internal/finops/optimize.go",
-        "x-go-type": "RightSizeEvidence",
         "description": "Recomputable prospective scenario costs in USD micros. Uses allocated demand and the observed hourly market price. Expected savings are not measured outcomes or guaranteed cost to completion."
       },
       "PoolDemandMass": {
@@ -5575,9 +5432,7 @@
         "required": [
           "device_hours",
           "scenario_count"
-        ],
-        "x-go-source": "internal/finops/optimize.go",
-        "x-go-type": "DemandMass"
+        ]
       },
       "PoolIdleRecommendation": {
         "type": "object",
@@ -5637,8 +5492,6 @@
           "expires_at",
           "evidence"
         ],
-        "x-go-source": "internal/finops/idle.go",
-        "x-go-type": "IdleRecommendation",
         "description": "Advisory device allocation with SM below 5 percent for an uninterrupted 30 minutes, supported by one week of observed hourly history. Foreign is only a boolean. No process identity or measured savings are inferred. Evidence expires after three minutes."
       },
       "PoolIdleEvidence": {
@@ -5694,9 +5547,7 @@
           "history_from",
           "history_to",
           "historical_observed_hours"
-        ],
-        "x-go-source": "internal/finops/idle.go",
-        "x-go-type": "IdleReclaimEvidence"
+        ]
       },
       "PoolDrainRecommendation": {
         "type": "object",
@@ -5747,8 +5598,6 @@
           "expires_at",
           "evidence"
         ],
-        "x-go-source": "internal/finops/drain.go",
-        "x-go-type": "DrainRecommendation",
         "description": "A retained UTC drain window with at least three hours remaining at generation. The window may start in the current hour. Expiry is no later than window_to and 24 hours after generation. No measured or estimated saving is invented."
       },
       "PoolDrainEvidence": {
@@ -5804,9 +5653,7 @@
           "history_to",
           "history_hours",
           "model"
-        ],
-        "x-go-source": "internal/finops/drain.go",
-        "x-go-type": "DrainWindowEvidence"
+        ]
       },
       "PoolDefragmentEvidence": {
         "type": "object",
@@ -5851,9 +5698,7 @@
           "threshold_seconds",
           "packing_policy",
           "foreign_jobs_movable"
-        ],
-        "x-go-source": "internal/finops/defragment.go",
-        "x-go-type": "DefragmentEvidence"
+        ]
       },
       "PoolDefragmentRecommendation": {
         "type": "object",
@@ -5900,8 +5745,6 @@
           "expires_at",
           "evidence"
         ],
-        "x-go-source": "internal/finops/defragment.go",
-        "x-go-type": "DefragmentRecommendation",
         "description": "Manual placement advice from 336 fully observed Route hours. No advice is produced from missing placement observations. Foreign jobs are never proposed for movement and savings are not inferred."
       },
       "Placement": {
@@ -5944,9 +5787,7 @@
             }
           }
         ],
-        "description": "Choose exactly one customer pool or prefer any eligible market capacity. Omit placement to prefer eligible private capacity.",
-        "x-go-source": "internal/models/placement.go",
-        "x-go-type": "Placement"
+        "description": "Choose exactly one customer pool or prefer any eligible market capacity. Omit placement to prefer eligible private capacity."
       },
       "PoolProposal": {
         "type": "object",
@@ -6131,8 +5972,6 @@
             "maximum": 32
           }
         },
-        "x-go-source": "internal/api/pools_action_policies.go",
-        "x-go-type": "poolActionPolicyRequest",
         "additionalProperties": false
       },
       "PoolActionPolicy": {
@@ -6188,9 +6027,7 @@
             "default": false,
             "description": "True only when this server implements a trusted shadow producer for this kind. This does not establish automatic qualification."
           }
-        },
-        "x-go-source": "internal/api/pools_action_policies.go",
-        "x-go-type": "poolActionPolicyView"
+        }
       },
       "PoolActionSettings": {
         "type": "object",
@@ -6214,9 +6051,7 @@
               "$ref": "#/components/schemas/PoolActionPolicy"
             }
           }
-        },
-        "x-go-source": "internal/api/pools_action_policies.go",
-        "x-go-type": "poolActionSettingsResponse"
+        }
       },
       "PoolActKillSwitchRequest": {
         "type": "object",
@@ -6228,8 +6063,6 @@
             "type": "boolean"
           }
         },
-        "x-go-source": "internal/api/pools_action_policies.go",
-        "x-go-type": "poolActKillSwitchRequest",
         "additionalProperties": false
       },
       "PoolShadowRun": {
@@ -6327,8 +6160,6 @@
             "description": "This exact cycle has 168 trusted hours, is completed and ended within 30 days. Current entitlement, policy, permissions and kill switch are checked separately."
           }
         },
-        "x-go-source": "internal/store/pools_action_views.go",
-        "x-go-type": "PoolShadowView",
         "description": "A future 168-hour observation cycle. Missing capture is a gap, never fabricated evidence. Only idle reclaim currently has a trusted producer. Completed generic evidence cannot qualify automatic actions."
       },
       "PoolShadowRuns": {
@@ -6356,9 +6187,7 @@
             ],
             "maxLength": 2048
           }
-        },
-        "x-go-source": "internal/store/pools_action_views.go",
-        "x-go-type": "PoolShadowPage"
+        }
       },
       "PoolActOutcome": {
         "type": "object",
@@ -6419,8 +6248,6 @@
             "description": "Observed Route platform-fee reduction over equal 30-minute windows. Not total infrastructure saving or a causal counterfactual."
           }
         },
-        "x-go-source": "internal/api/pools_action_proposals.go",
-        "x-go-type": "poolActOutcomeView",
         "description": "Observed outcomes and customer reports are distinct. Missing measured savings stay null. Customer input never supplies server measurement."
       },
       "PoolActProposal": {
@@ -6511,9 +6338,7 @@
               }
             ]
           }
-        },
-        "x-go-source": "internal/api/pools_action_proposals.go",
-        "x-go-type": "poolActProposalView"
+        }
       },
       "PoolActProposals": {
         "type": "object",
@@ -6540,9 +6365,7 @@
             ],
             "maxLength": 2048
           }
-        },
-        "x-go-source": "internal/api/pools_action_proposals.go",
-        "x-go-type": "poolActProposalsResponse"
+        }
       },
       "WorkloadFreeze": {
         "type": "object",
@@ -6619,8 +6442,6 @@
           "storage_charge_micros",
           "storage_billing_status"
         ],
-        "x-go-source": "internal/store/workload_freeze.go",
-        "x-go-type": "WorkloadFreeze",
         "description": "Saved checkpoint files and verified compute cleanup. Freeze and resume do not restore arbitrary process memory. The customer command must load its checkpoint."
       },
       "PoolWaitTuningEvidence": {
@@ -6700,9 +6521,7 @@
           "history_from",
           "history_to",
           "source_sha256"
-        ],
-        "x-go-source": "internal/finops/wait_tuning.go",
-        "x-go-type": "WaitTuningEvidence"
+        ]
       },
       "PoolWaitTuningRecommendation": {
         "type": "object",
@@ -6743,8 +6562,6 @@
           "expires_at",
           "evidence"
         ],
-        "x-go-source": "internal/finops/wait_tuning.go",
-        "x-go-type": "WaitTuningRecommendation",
         "description": "At most 25 percent adjustment based on 336 hours of actual Route coverage and completed settled executions. Applies to future waits. No counterfactual savings or universal delay guarantee."
       },
       "PoolForecastQueue": {
@@ -6790,8 +6607,6 @@
           "added_device_hours",
           "outside_horizon_device_hours"
         ],
-        "x-go-source": "internal/finops/queue.go",
-        "x-go-type": "QueueEvidence",
         "description": "Retained queued demand under an immediate-start scenario from the next complete hour. This is not a placement promise. Unknown runtimes remain a job count. Known device-hours equal added device-hours plus demand beyond the selected horizon."
       },
       "BucketInput": {
@@ -6829,9 +6644,7 @@
             ],
             "description": "Request temporary credentials synchronously from the configured team webhook. Credentials are never stored. The workload receives a sequential FIFO path in NODUS_INPUT_<name> and must consume it through EOF. Recovery restarts the stream and requests fresh credentials."
           }
-        },
-        "x-go-source": "internal/models/assets.go",
-        "x-go-type": "BucketInput"
+        }
       },
       "RLMetadata": {
         "type": "object",
@@ -6915,9 +6728,7 @@
             }
           }
         ],
-        "description": "RL task association. Managed launches create the recipe provenance through /v1/rl-runs. For custom workloads, omit recipe and provide your own executable code, model setup, task limit and typed task events. Unknown and duplicate fields are rejected.",
-        "x-go-source": "internal/models/rl.go",
-        "x-go-type": "RLMetadata"
+        "description": "RL task association. Managed launches create the recipe provenance through /v1/rl-runs. For custom workloads, omit recipe and provide your own executable code, model setup, task limit and typed task events. Unknown and duplicate fields are rejected."
       },
       "RLGradingResults": {
         "type": "object",
@@ -6964,9 +6775,7 @@
             },
             "description": "All admitted attempts in the requested revision, ordered by creation time and attempt identity. An empty list means no admitted attempts."
           }
-        },
-        "x-go-source": "internal/store/rl_grading_results.go",
-        "x-go-type": "RLGradingResults"
+        }
       },
       "RLGradingReceipt": {
         "type": "object",
@@ -7039,9 +6848,7 @@
             ],
             "description": "Present only when state is infrastructure_failure."
           }
-        },
-        "x-go-source": "internal/protocol/rl_grading.go",
-        "x-go-type": "RLGradingResponse"
+        }
       },
       "RLEvent": {
         "type": "object",
@@ -7165,9 +6972,7 @@
             ]
           }
         ],
-        "description": "A persisted application-reported task event. The encoded event is limited to 16 KiB. Stable event IDs are deduplicated within a workload, stage and execution generation. Reusing an identity with changed content in the same generation is rejected. A stage, generation, phase, task, attempt and kind may have only one immutable observation. Recovered generations retain separate observations, including identical content. Task completion is not workload completion, and these events do not change checkpoints or recovery progress. No task_started event is required before a task_completed event.",
-        "x-go-source": "internal/models/rl.go",
-        "x-go-type": "RLEvent"
+        "description": "A persisted application-reported task event. The encoded event is limited to 16 KiB. Stable event IDs are deduplicated within a workload, stage and execution generation. Reusing an identity with changed content in the same generation is rejected. A stage, generation, phase, task, attempt and kind may have only one immutable observation. Recovered generations retain separate observations, including identical content. Task completion is not workload completion, and these events do not change checkpoints or recovery progress. No task_started event is required before a task_completed event."
       },
       "RLEventRow": {
         "type": "object",
@@ -7202,9 +7007,7 @@
             "$ref": "#/components/schemas/RLEvent"
           }
         },
-        "description": "An immutable replay row. Events are returned in ascending server replay order.",
-        "x-go-source": "internal/store/rl_events.go",
-        "x-go-type": "RLEventRow"
+        "description": "An immutable replay row. Events are returned in ascending server replay order."
       },
       "RLEventPage": {
         "type": "object",
@@ -7250,9 +7053,7 @@
             "description": "True when any delivery reported loss or hit a storage limit. Stored evidence is bounded to 100,000 events and 64 MiB of encoded event bodies per workload. Treat results as partial when true or dropped_events is nonzero. False does not prove lossless delivery after host loss."
           }
         },
-        "description": "Tenant-scoped persisted RL evidence with a consistent database snapshot for each page. While a run is active, keep polling the returned cursor even when has_more is false. After observing terminal workload status, perform a fresh drain before considering replay complete. A terminal workload status does not establish a task score.",
-        "x-go-source": "internal/store/rl_events.go",
-        "x-go-type": "RLEventPage"
+        "description": "Tenant-scoped persisted RL evidence with a consistent database snapshot for each page. While a run is active, keep polling the returned cursor even when has_more is false. After observing terminal workload status, perform a fresh drain before considering replay complete. A terminal workload status does not establish a task score."
       },
       "RLRecipeProvenance": {
         "type": "object",
@@ -7299,9 +7100,7 @@
           "config_sha256",
           "request_sha256",
           "review_token"
-        ],
-        "x-go-source": "internal/models/rl.go",
-        "x-go-type": "RLRecipeProvenance"
+        ]
       },
       "RLRecipeRequest": {
         "type": "object",
@@ -7361,8 +7160,6 @@
           }
         },
         "required": [],
-        "x-go-source": "internal/rlrecipe/recipe.go",
-        "x-go-type": "Request",
         "description": "Omitted fields use these defaults. Explicit null, unknown or repeated fields are rejected. Model, runtime and commands are selected by the recipe."
       },
       "RLRunRequest": {
@@ -7444,9 +7241,7 @@
         "required": [
           "name",
           "description"
-        ],
-        "x-go-source": "internal/rlrecipe/recipe.go",
-        "x-go-type": "Output"
+        ]
       },
       "RLRecipePhase": {
         "type": "object",
@@ -7472,9 +7267,7 @@
           "id",
           "label",
           "description"
-        ],
-        "x-go-source": "internal/rlrecipe/recipe.go",
-        "x-go-type": "Phase"
+        ]
       },
       "RLRecipeDefaults": {
         "type": "object",
@@ -7511,9 +7304,7 @@
           "training_steps",
           "max_cost_usd",
           "seed"
-        ],
-        "x-go-source": "internal/rlrecipe/recipe.go",
-        "x-go-type": "DefaultValues"
+        ]
       },
       "RLRecipeLimits": {
         "type": "object",
@@ -7541,9 +7332,7 @@
           "comparison_tasks_min",
           "training_steps_min",
           "training_steps_max"
-        ],
-        "x-go-source": "internal/rlrecipe/recipe.go",
-        "x-go-type": "Limits"
+        ]
       },
       "RLRecipeDescriptor": {
         "type": "object",
@@ -7616,9 +7405,7 @@
           "defaults",
           "limits",
           "outputs"
-        ],
-        "x-go-source": "internal/rlrecipe/recipe.go",
-        "x-go-type": "Descriptor"
+        ]
       },
       "RLRunEstimate": {
         "type": "object",
@@ -7746,9 +7533,7 @@
           "execution_seconds",
           "completion_seconds",
           "compute_cost_usd"
-        ],
-        "x-go-source": "internal/api/estimates.go",
-        "x-go-type": "EstimatePreview"
+        ]
       },
       "RLRunPreview": {
         "type": "object",
@@ -7799,9 +7584,7 @@
           "estimate",
           "launchable",
           "blocking_reasons"
-        ],
-        "x-go-source": "internal/api/rl_runs.go",
-        "x-go-type": "rlRunPreview"
+        ]
       },
       "ConnectionCreate": {
         "type": "object",
@@ -7854,9 +7637,7 @@
             "default": false,
             "description": "Requires a current team administrator and wandb write or readwrite scope."
           }
-        },
-        "x-go-source": "internal/connections/connections.go",
-        "x-go-type": "CreateRequest"
+        }
       },
       "Connection": {
         "type": "object",
@@ -7939,9 +7720,7 @@
           "created_by": {
             "type": "string"
           }
-        },
-        "x-go-source": "internal/connections/connections.go",
-        "x-go-type": "Connection"
+        }
       },
       "ConnectionExport": {
         "type": "object",
@@ -7990,9 +7769,7 @@
             ],
             "description": "Durable export state. Failed exports release this record after object cleanup."
           }
-        },
-        "x-go-source": "internal/store/connection_exports.go",
-        "x-go-type": "ConnectionExport"
+        }
       },
       "WorkloadLink": {
         "type": "object",
@@ -8013,8 +7790,7 @@
           "kind",
           "url"
         ],
-        "x-go-package": "internal/models",
-        "x-go-type": "WorkloadLink"
+        "x-go-package": "internal/models"
       },
       "OutputDeclaration": {
         "type": "object",
@@ -8085,9 +7861,7 @@
           "sink_error": {
             "type": "string"
           }
-        },
-        "x-go-source": "internal/store/connection_loads.go",
-        "x-go-type": "ConnectionLoad"
+        }
       },
       "CheckpointPreparationSummary": {
         "type": "object",
@@ -8119,14 +7893,10 @@
             ],
             "format": "date-time"
           }
-        },
-        "x-go-source": "internal/models/checkpoint_integration.go",
-        "x-go-type": "CheckpointPreparationSummary"
+        }
       },
       "OperationDefinition": {
         "type": "object",
-        "x-go-source": "internal/operations/operations.go",
-        "x-go-type": "Definition",
         "properties": {
           "id": {
             "type": "string"
@@ -8635,8 +8405,6 @@
       },
       "RunDraft": {
         "type": "object",
-        "x-go-source": "internal/rundraft/draft.go",
-        "x-go-type": "Draft",
         "required": [
           "revision",
           "values",
