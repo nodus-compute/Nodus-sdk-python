@@ -115,8 +115,9 @@ curl --fail --silent --show-error --get \
 
 Leave `NODUS_AFTER` unset for the first page. Set it to the returned `next_after`
 and repeat until that value is empty. Each page has its own `observed_at` time
-and may reflect newer state. `logical_runs` and `allocations` cover all runs of
-the definition, while `runs` contains the current page. The endpoint returns
+and may reflect newer state. `logical_runs` covers all runs of the definition.
+`allocations` includes retained attempts and resources, including warm attempts
+not assigned to a run, while `runs` contains the current page. The endpoint returns
 404 for definitions that do not exist or belong to another tenant.
 
 Allocation counts can overlap. A completed run can still have pending cleanup.
