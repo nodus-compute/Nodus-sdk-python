@@ -9,17 +9,18 @@ from test_pools import POOL, exercise
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])
-def test_route_activation_and_zero_settings(asynchronous):
-    payload = {"route_enabled": True, "accepted_route_rate_version": "route-platform-v1",
-               "accepted_route_rate_micros": 20000, "wait_policy": "never", "wait_alpha": 0,
+@pytest.mark.parametrize("version,rate", [("route-platform-v1", 20000), ("byoc-free-v1", 0)])
+def test_route_activation_and_zero_settings(asynchronous, version, rate):
+    payload = {"route_enabled": True, "accepted_route_rate_version": version,
+               "accepted_route_rate_micros": rate, "wait_policy": "never", "wait_alpha": 0,
                "waiting_budget_pct": 0, "burst_approval": "always", "burst_threshold_micros": 0,
                "burst_timeout_behaviour": "cancel"}
     def handler(req):
         assert (req.method, req.url.path) == ("PATCH", "/v1/pools/pool_test")
         assert json.loads(req.content) == payload
-        return httpx.Response(200, json={**POOL, **payload, "platform_rate_micros": 20000})
+        return httpx.Response(200, json={**POOL, **payload, "platform_rate_micros": rate, "route_price_version": version})
     result = exercise(handler, asynchronous, lambda pools: pools.set_route("pool_test", True,
-        accepted_rate_version="route-platform-v1", accepted_rate_micros=20000,
+        accepted_rate_version=version, accepted_rate_micros=rate,
         wait_policy="never", wait_alpha=0, waiting_budget_pct=0, burst_approval="always",
         burst_threshold_micros=0, burst_timeout_behaviour="cancel"))
     assert result.route_enabled is True
@@ -42,6 +43,8 @@ def test_invalid_route_settings_never_reach_network(asynchronous, settings):
 
 @pytest.mark.parametrize("asynchronous", [False, True])
 @pytest.mark.parametrize("enabled,consent", [(True, {}), (True, {"accepted_rate_version":"old", "accepted_rate_micros":20000}),
+    (True, {"accepted_rate_version":"byoc-free-v1", "accepted_rate_micros":20000}),
+    (True, {"accepted_rate_version":"byoc-free-v1", "accepted_rate_micros":False}),
     (False,{"accepted_rate_version":"route-platform-v1"}), (1,{})])
 def test_route_consent_is_explicit(asynchronous, enabled, consent):
     with pytest.raises(nodus.ValidationError):
@@ -50,11 +53,12 @@ def test_route_consent_is_explicit(asynchronous, enabled, consent):
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])
-@pytest.mark.parametrize("wrong", [{"id":"pool_other"}, {"route_enabled": False}, {"platform_rate_micros":0}])
-def test_route_response_cannot_confirm_another_pool_or_rate(asynchronous, wrong):
+@pytest.mark.parametrize("version,rate", [("route-platform-v1", 20000), ("byoc-free-v1", 0)])
+@pytest.mark.parametrize("wrong", [{"id":"pool_other"}, {"route_enabled": False}, {"platform_rate_micros":1}, {"platform_rate_micros":False}, {"route_price_version":"other"}])
+def test_route_response_cannot_confirm_another_pool_or_rate(asynchronous, version, rate, wrong):
     with pytest.raises(nodus.APIError):
-        exercise(lambda req: httpx.Response(200,json={**POOL,"route_enabled":True,"platform_rate_micros":20000,**wrong}),
-            asynchronous,lambda pools: pools.set_route("pool_test",True,accepted_rate_version="route-platform-v1",accepted_rate_micros=20000))
+        exercise(lambda req: httpx.Response(200,json={**POOL,"route_enabled":True,"platform_rate_micros":rate,"route_price_version":version,**wrong}),
+            asynchronous,lambda pools: pools.set_route("pool_test",True,accepted_rate_version=version,accepted_rate_micros=rate))
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])
@@ -83,7 +87,7 @@ def test_route_cli_consent_and_execute_token(monkeypatch, capsys):
             calls.append(json.loads(req.content))
             if req.url.path.endswith("enrollment-tokens"):
                 return httpx.Response(201,json={"id":"pet_test","token":"synthetic-secret","mode":"execute","expires_at":"2026-09-18T12:00:00Z"})
-            return httpx.Response(200,json={**POOL,**calls[-1],"platform_rate_micros":20000})
+            return httpx.Response(200,json={**POOL,**calls[-1],"platform_rate_micros":20000,"route_price_version":"route-platform-v1"})
         client._http=httpx.Client(base_url="https://nodus.invalid",transport=httpx.MockTransport(handler))
         return client
     monkeypatch.setattr(cli,"Client",factory)
