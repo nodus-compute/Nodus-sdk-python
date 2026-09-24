@@ -8788,7 +8788,9 @@
         "properties": {
           "recovery_policy": {
             "type": "string",
-            "enum": ["checkpoint-v1"],
+            "enum": [
+              "checkpoint-v1"
+            ],
             "description": "Accepted application-state recovery policy. Omitted for revisions with explicit file recovery."
           },
           "checkpoint_id": {
@@ -8797,7 +8799,12 @@
           },
           "checkpoint_status": {
             "type": "string",
-            "enum": ["pending", "ready", "committed", "failed"],
+            "enum": [
+              "pending",
+              "ready",
+              "committed",
+              "failed"
+            ],
             "description": "Latest capture status. Ready means uploaded files are verified but not yet committed with the journal boundary."
           },
           "checkpoint_error": {
@@ -8809,7 +8816,9 @@
             "format": "date-time",
             "description": "Commit time of the current useful application-state checkpoint. Omitted for empty baselines and runs without saved state."
           },
-          "payload_expired": {"type": "boolean"},
+          "payload_expired": {
+            "type": "boolean"
+          },
           "id": {
             "type": "string"
           },
@@ -8870,6 +8879,23 @@
           },
           "startup": {
             "$ref": "#/components/schemas/SandboxStartup"
+          },
+          "group_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9:_.-]{1,128}$",
+            "description": "Present for a task belonging to a static agent group."
+          },
+          "task_key": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9:_.-]{1,128}$"
+          },
+          "depends_on": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9:_.-]{1,128}$"
+            },
+            "description": "Immutable prerequisite task keys within the group."
           }
         },
         "required": [
@@ -12024,6 +12050,280 @@
         },
         "required": [
           "authorization"
+        ]
+      },
+      "ManagedAgentGroupCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9:_.-]{1,128}$"
+          },
+          "agent_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9:_.-]{1,128}$"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Omit or use zero to pin the current definition revision when the group is created."
+          },
+          "budget_usd": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1000000,
+            "multipleOf": 1e-06,
+            "description": "A sublimit of the existing deployment budget. This does not create a second funded balance."
+          },
+          "max_active": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "description": "Authorized attempts in admitting, starting or running state, including retained waiting workers. This is not measured productive concurrency."
+          },
+          "max_held": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "description": "All unsettled assigned attempts, including draining and uncertain allocations. Must be at least max_active and at most the deployment worker limit."
+          },
+          "max_pending": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000,
+            "description": "All nonterminal tasks, including active, waiting and blocked work. Omit or use zero for the smaller of 1000 and the account entitlement."
+          }
+        },
+        "required": [
+          "name",
+          "agent_id",
+          "budget_usd",
+          "max_active",
+          "max_held"
+        ]
+      },
+      "ManagedAgentGroupTask": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "task_key": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9:_.-]{1,128}$",
+            "description": "Immutable identity within this group. Reuse with identical content to recover the same run."
+          },
+          "input": {
+            "description": "Valid JSON without duplicate object keys, bounded to 256 KiB. The complete batch is also limited to 1 MiB."
+          },
+          "depends_on": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9:_.-]{1,128}$"
+            },
+            "maxItems": 100,
+            "uniqueItems": true,
+            "description": "Prerequisite task keys from this group or the same batch. All prerequisites must commit success before dispatch. Results are not automatically copied into this input."
+          },
+          "deadline": {
+            "type": "string",
+            "format": "date-time",
+            "description": "A new task deadline must be in the future. Accepted task retries preserve the original deadline."
+          }
+        },
+        "required": [
+          "task_key",
+          "input"
+        ]
+      },
+      "ManagedAgentGroupBatchRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tasks": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/ManagedAgentGroupTask"
+            }
+          }
+        },
+        "required": [
+          "tasks"
+        ]
+      },
+      "ManagedAgentGroupTaskReceipt": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "task_key": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9:_.-]{1,128}$"
+          },
+          "run_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9:_.-]{1,128}$"
+          }
+        },
+        "required": [
+          "task_key",
+          "run_id"
+        ]
+      },
+      "ManagedAgentGroupBatch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "group_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9:_.-]{1,128}$"
+          },
+          "runs": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/ManagedAgentGroupTaskReceipt"
+            },
+            "description": "Stable task and run identities in request order."
+          }
+        },
+        "required": [
+          "group_id",
+          "runs"
+        ]
+      },
+      "ManagedAgentGroup": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9:_.-]{1,128}$"
+          },
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9:_.-]{1,128}$"
+          },
+          "agent_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9:_.-]{1,128}$"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "cancelled"
+            ],
+            "description": "Admission lifecycle. Use logical_runs for task progress and allocations for remaining cleanup."
+          },
+          "budget_usd": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1000000,
+            "multipleOf": 1e-06,
+            "description": "A sublimit of the existing deployment budget. This does not create a second funded balance."
+          },
+          "max_active": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "description": "Authorized attempts in admitting, starting or running state, including retained waiting workers. This is not measured productive concurrency."
+          },
+          "max_held": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "description": "All unsettled assigned attempts, including draining and uncertain allocations. Must be at least max_active and at most the deployment worker limit."
+          },
+          "max_pending": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000
+          },
+          "max_retained_runs": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000,
+            "description": "Persisted admission cap for runs whose payloads have not expired. Completion alone does not release this count."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cancelled_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "logical_runs": {
+            "$ref": "#/components/schemas/ManagedAgentLogicalRunCounts",
+            "description": "Counts of logical run statuses across all revisions of this definition. Running does not establish productive activity."
+          },
+          "allocations": {
+            "$ref": "#/components/schemas/ManagedAgentAllocationObservations",
+            "description": "Retained attempt and resource evidence. Counts can overlap and do not establish current healthy capacity."
+          },
+          "retained_runs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "cost_usd": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Settled attempt costs within the deployment account."
+          },
+          "reserved_usd": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Full budget liability of every unsettled assigned attempt. A closed marker alone cannot release this reservation."
+          },
+          "active_authorized_attempts": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Attempts in admitting, starting or running state. Includes retained waiting or recovering workers and does not establish productive activity."
+          },
+          "work_status": {
+            "type": "string",
+            "enum": [
+              "empty",
+              "pending",
+              "running",
+              "waiting",
+              "blocked",
+              "completed",
+              "cancelled",
+              "cancelling"
+            ],
+            "description": "Read-only summary of the current logical runs, independent of group admission and remaining cleanup."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "agent_id",
+          "revision",
+          "status",
+          "budget_usd",
+          "max_active",
+          "max_held",
+          "max_pending",
+          "max_retained_runs",
+          "created_at",
+          "cancelled_at",
+          "logical_runs",
+          "allocations",
+          "retained_runs",
+          "cost_usd",
+          "reserved_usd",
+          "active_authorized_attempts",
+          "work_status"
         ]
       }
     },
@@ -20968,6 +21268,336 @@
             "description": "Usage-continuation forecast horizon in days."
           }
         ]
+      }
+    },
+    "/v1/agent-groups": {
+      "post": {
+        "operationId": "createManagedAgentGroup",
+        "summary": "Create a bounded group on one agent definition",
+        "tags": [
+          "Managed agents"
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Stable key for this logical operation. Reuse the same key and body after an uncertain response."
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedAgentGroup"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Group or definition is missing or belongs to another tenant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Operation refused with a diagnostic and next action",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManagedAgentGroupCreate"
+              }
+            }
+          }
+        },
+        "description": "Requires explicit group admission entitlement and an owned agent definition. Pins one definition revision. The same submission key and body recover the same group after an uncertain response, including when new admission is disabled. Group limits cannot raise the deployment worker or spending limit."
+      }
+    },
+    "/v1/agent-groups/{id}": {
+      "get": {
+        "operationId": "getManagedAgentGroup",
+        "summary": "Observe group progress and outstanding allocation liability",
+        "tags": [
+          "Managed agents"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedAgentGroup"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Group or definition is missing or belongs to another tenant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Operation refused with a diagnostic and next action",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Requires authentication and a group owned by the authenticated tenant. A missing or foreign-owned group returns 404. Returns one database snapshot of task counts, retained payload counts, settled spending and unsettled allocations. Available when new admission is disabled."
+      }
+    },
+    "/v1/agent-groups/{id}/runs": {
+      "post": {
+        "operationId": "submitManagedAgentGroupBatch",
+        "summary": "Atomically submit up to 100 independent or dependent tasks",
+        "tags": [
+          "Managed agents"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Stable key for this logical operation. Reuse the same key and body after an uncertain response."
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedAgentGroupBatch"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Group or definition is missing or belongs to another tenant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Operation refused with a diagnostic and next action",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManagedAgentGroupBatchRequest"
+              }
+            }
+          }
+        },
+        "description": "Requires authentication and a group owned by the authenticated tenant. A missing or foreign-owned group returns 404. The whole request is limited to 1 MiB. Duplicate task keys, missing dependencies and cycles are rejected atomically. A task key with changed input, dependencies or deadline conflicts. Retrying the same batch key returns its original ordered receipt even after cancellation or admission disablement. Separate tasks have independent sessions and writable state."
+      },
+      "get": {
+        "operationId": "listManagedAgentGroupRuns",
+        "summary": "List retained tasks with stable pagination",
+        "tags": [
+          "Managed agents"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "runs": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ManagedAgentRun"
+                      }
+                    },
+                    "next_after": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "runs",
+                    "next_after"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Group or definition is missing or belongs to another tenant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Operation refused with a diagnostic and next action",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Requires authentication and a group owned by the authenticated tenant. A missing or foreign-owned group returns 404. Returns existing managed-run projections ordered by run ID. Pass next_after as after and stop at an empty cursor. Cursor ownership is checked. Each page is a separate database snapshot."
+      }
+    },
+    "/v1/agent-groups/{id}/cancel": {
+      "post": {
+        "operationId": "cancelManagedAgentGroup",
+        "summary": "Fence new group work and continue member cleanup",
+        "tags": [
+          "Managed agents"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Stable key for this logical operation. Reuse the same key and body after an uncertain response."
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedAgentGroup"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Group or definition is missing or belongs to another tenant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Operation refused with a diagnostic and next action",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Requires authentication and a group owned by the authenticated tenant. A missing or foreign-owned group returns 404. Commits a durable cancellation fence. Existing executors asynchronously cancel nonterminal members and reconcile their allocations, including when new admission is disabled. The 202 response does not claim completed physical cleanup. Previously completed results are retained."
       }
     }
   },
