@@ -187,6 +187,10 @@ class _Session:
         receipt = self.rpc.call('checkpoint_begin', {**self.scope, 'request_id': uuid.uuid4().hex,
                                 'operation': operation, 'operation_id': operation_id, **values})
         checkpoint_id = receipt.get('checkpoint_id')
+        if operation == 'child_cancel' and receipt.get('status') == 'legacy_replay' and checkpoint_id == '':
+            # Only an existing cancellation may predate checkpoint capture.
+            # The effect endpoint still verifies its original key and target.
+            return {}
         if not isinstance(checkpoint_id, str) or not _ID.fullmatch(checkpoint_id):
             raise StepOutcomeUnknown('Invalid checkpoint identity')
         deadline = time.monotonic() + 45 * 60

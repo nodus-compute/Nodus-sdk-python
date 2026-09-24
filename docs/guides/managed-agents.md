@@ -205,6 +205,9 @@ that direct child's own scope.
 Forwarding a grandchild's blob reference does not grant the parent access to it.
 
 `child.cancel(cancel_key="stop:1")` returns a cancellation-request receipt.
+With application-state recovery enabled, it captures the parent's state before
+a new cancellation request. A saved older receipt replays its original decision.
+Keep the cancellation key and target stable on replay.
 It does not assert that execution or resource cleanup has finished. Join the
 children to observe their terminal outcomes before finishing the parent.
 Child references are immutable and provide `.to_dict()` for carrying their

@@ -260,7 +260,8 @@ def cancel_child(child: ChildReference | dict, *, cancel_key: str) -> ChildCance
     child, cancel_key = _reference(child), _agent._id(cancel_key)
     with _session() as session:
         _owned(child, session)
-        receipt = _call(session, 'child_cancel', {'child_run_id': child.run_id, 'cancel_key': cancel_key})
+        receipt = _call(session, 'child_cancel', {'child_run_id': child.run_id, 'cancel_key': cancel_key},
+                        checkpoint=('child_cancel', cancel_key))
         try:
             raw = receipt.get('cancel_requested_at')
             when = datetime.fromisoformat(raw.replace('Z', '+00:00')) if isinstance(raw, str) else None

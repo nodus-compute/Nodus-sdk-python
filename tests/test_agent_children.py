@@ -27,13 +27,16 @@ def outcome(child='child-1', sequence=1, spawn_key='part:1', result=None):
 @pytest.fixture
 def coordinator(monkeypatch, tmp_path):
     state = {'calls': [], 'children': {}, 'lost': {}, 'checkpoint': False, 'wait': None,
-             'result': None, 'blob': b'', 'transform': lambda action, response: response}
+             'result': None, 'blob': b'', 'transform': lambda action, response: response,
+             'before_action': lambda action, body: None, 'cancellations': {}, 'legacy_cancel_keys': set(),
+             'owners': {'child-1': 'parent', 'foreign-child': 'another-parent', 'grandchild': 'child-1'}}
     rpc_class = _agent._RPC
     monkeypatch.setenv('NODUS_AGENT_SOCKET', str(tmp_path / 'private.sock'))
 
     def handler(request):
         action, body = request.url.path[1:], json.loads(request.content)
         state['calls'].append((action, copy.deepcopy(body)))
+        state['before_action'](action, body)
         if action in ('session', 'renew'):
             response = {'session_token': 'private-session', 'epoch': 1,
                 'expires_at': (datetime.now(timezone.utc) + timedelta(seconds=60)).isoformat(),
@@ -41,22 +44,38 @@ def coordinator(monkeypatch, tmp_path):
             if state['checkpoint']:
                 response.update(recovery_policy='checkpoint-v1', checkpoint_id='cp-baseline')
         elif action == 'checkpoint_begin':
-            response = {'checkpoint_id': 'cp-' + body['operation_id'], 'status': 'ready'}
+            if body['operation'] == 'child_cancel' and body['operation_id'] in state['legacy_cancel_keys']:
+                response = {'checkpoint_id': '', 'status': 'legacy_replay'}
+            else:
+                response = {'checkpoint_id': 'cp-' + body['operation_id'], 'status': 'ready'}
         elif action == 'child_spawn':
             key = body['spawn_key']
             replay = key in state['children']
             if not replay:
                 state['children'][key] = {'run_id': 'child-' + str(len(state['children']) + 1),
                     'parent_run_id': 'parent', 'spawn_key': key, 'group_id': 'group-1', 'depth': 1}
+                state['owners'][state['children'][key]['run_id']] = 'parent'
             response = {'decision': 'replay' if replay else 'admitted', 'child': state['children'][key]}
         elif action == 'children_wait':
             response = {'wait_id': body['wait_id'], 'mode': body['mode'], **copy.deepcopy(state['wait'])}
         elif action == 'child_cancel':
-            response = {'decision': 'requested', 'child_run_id': body['child_run_id'], 'cancel_key': body['cancel_key'],
-                        'cancel_requested_at': '2026-09-24T12:00:00Z'}
+            key = body['cancel_key']
+            replay = key in state['cancellations']
+            if replay and state['cancellations'][key]['child_run_id'] != body['child_run_id']:
+                return httpx.Response(409, json={'code': 'idempotency_conflict'})
+            if key in state['legacy_cancel_keys'] and 'checkpoint_id' in body:
+                return httpx.Response(409, json={'code': 'agent_checkpoint_conflict'})
+            if not replay:
+                state['cancellations'][key] = {'child_run_id': body['child_run_id'], 'cancel_key': key,
+                                              'cancel_requested_at': '2026-09-24T12:00:00Z'}
+            response = {'decision': 'replay' if replay else 'requested', **state['cancellations'][key]}
         elif action == 'child_result':
+            if state['owners'].get(body['child_run_id']) != body['run_id']:
+                return httpx.Response(404, json={'code': 'not_found'})
             response = {'child_run_id': body['child_run_id'], 'result_hash': body['result_hash'], 'result': encoded(state['result'])}
         elif action == 'child_blob_get':
+            if state['owners'].get(body['child_run_id']) != body['run_id']:
+                return httpx.Response(404, json={'code': 'not_found'})
             data, offset = state['blob'], body['offset']
             chunk = data[offset:offset + 262144]
             response = {'child_run_id': body['child_run_id'], 'reference': {
@@ -249,6 +268,130 @@ def test_cancel_receipt_reports_request_without_claiming_cleanup(coordinator):
     assert drive(work) == 'child-1'
     assert receipts[0].decision == 'requested'
     assert receipts[0].cancel_requested_at == datetime(2026, 9, 24, 12, tzinfo=timezone.utc)
+
+
+def test_cancel_captures_decision_before_effect_and_replays_lost_reply(coordinator, tmp_path):
+    state, drive = coordinator
+    state['checkpoint'] = True
+    state['lost']['child_cancel'] = 3
+    decision_file = tmp_path / 'decision.json'
+    decision = b'{"child":"child-1","cancel_key":"stop:1","reason":"other result accepted"}'
+    decision_file.write_bytes(decision)
+    captured, at_effect = {}, []
+    child = {'run_id': 'child-1', 'parent_run_id': 'parent', 'spawn_key': 'part:1', 'group_id': 'group-1', 'depth': 1}
+
+    def observe(action, body):
+        if action == 'checkpoint_begin' and body['operation'] == 'child_cancel':
+            captured.setdefault(body['operation_id'], decision_file.read_bytes())
+        if action == 'child_cancel':
+            at_effect.append(captured.get(body['cancel_key']))
+    state['before_action'] = observe
+
+    def work():
+        selected = json.loads(decision_file.read_bytes())
+        assert selected['child'] == child['run_id']
+        return nodus.agent.cancel_child(child, cancel_key=selected['cancel_key']).to_dict()
+
+    with pytest.raises(nodus.StepOutcomeUnknown):
+        drive(work)
+    assert captured == {'stop:1': decision}
+    assert at_effect == [decision] * 3
+    assert not any(action == 'finish' for action, _ in state['calls'])
+    # Simulate host file restoration from the captured bytes before constructing
+    # a replacement driver. This does not exercise native checkpoint storage.
+    decision_file.write_bytes(b'{}')
+    decision_file.write_bytes(captured['stop:1'])
+    replay = drive(work)
+    assert replay['decision'] == 'replay' and replay['child_run_id'] == 'child-1'
+    assert len(state['cancellations']) == 1
+    requests = [body for action, body in state['calls'] if action == 'child_cancel']
+    assert len(requests) == 4 and requests[0] == requests[1] == requests[2]
+    assert {body['checkpoint_id'] for body in requests} == {'cp-stop:1'}
+    assert {body['cancel_key'] for body in requests} == {'stop:1'}
+
+
+def test_cancel_checkpoint_failure_prevents_the_effect(coordinator):
+    state, drive = coordinator
+    state['checkpoint'] = True
+    state['transform'] = lambda action, response: (
+        {**response, 'status': 'failed', 'failure_code': 'checkpoint_upload_failed'}
+        if action == 'checkpoint_begin' else response)
+    child = {'run_id': 'child-1', 'parent_run_id': 'parent', 'spawn_key': 'part:1', 'group_id': 'group-1', 'depth': 1}
+    with pytest.raises(nodus.StepOutcomeUnknown, match='checkpoint_upload_failed'):
+        drive(lambda: nodus.agent.cancel_child(child, cancel_key='stop:1').to_dict())
+    assert [action for action, _ in state['calls']] == ['session', 'checkpoint_begin']
+
+
+@pytest.mark.parametrize('wrong_target', [False, True])
+def test_legacy_cancellation_marker_replays_only_the_original_target(coordinator, wrong_target):
+    state, drive = coordinator
+    state.update(checkpoint=True, legacy_cancel_keys={'stop:1'})
+    original = {'child_run_id': 'child-1', 'cancel_key': 'stop:1', 'cancel_requested_at': '2026-09-24T12:00:00Z'}
+    state['cancellations']['stop:1'] = dict(original)
+    child = {'run_id': 'child-2' if wrong_target else 'child-1', 'parent_run_id': 'parent',
+             'spawn_key': 'part:2' if wrong_target else 'part:1', 'group_id': 'group-1', 'depth': 1}
+
+    def work():
+        return nodus.agent.cancel_child(child, cancel_key='stop:1').to_dict()
+
+    if wrong_target:
+        with pytest.raises(nodus.StepDefinitionConflict):
+            drive(work)
+        assert not any(action == 'finish' for action, _ in state['calls'])
+    else:
+        receipt = drive(work)
+        assert receipt['decision'] == 'replay' and receipt['child_run_id'] == 'child-1'
+    assert state['cancellations'] == {'stop:1': original}
+    actions = [action for action, _ in state['calls']]
+    assert actions[:3] == ['session', 'checkpoint_begin', 'child_cancel']
+    cancellation = next(body for action, body in state['calls'] if action == 'child_cancel')
+    assert 'checkpoint_id' not in cancellation
+    assert cancellation['child_run_id'] == child['run_id'] and cancellation['cancel_key'] == 'stop:1'
+
+
+@pytest.mark.parametrize('operation,checkpoint_id', [
+    ('spawn', ''), ('children_wait', ''), ('child_cancel', 'cp-forged'), ('child_cancel', None),
+])
+def test_legacy_marker_cannot_skip_other_checkpoints(coordinator, operation, checkpoint_id):
+    state, drive = coordinator
+    state['checkpoint'] = True
+    state['transform'] = lambda action, response: (
+        {'status': 'legacy_replay', 'checkpoint_id': checkpoint_id} if action == 'checkpoint_begin' else response)
+    child = {'run_id': 'child-1', 'parent_run_id': 'parent', 'spawn_key': 'part:1', 'group_id': 'group-1', 'depth': 1}
+
+    def work():
+        if operation == 'spawn':
+            return nodus.agent.spawn_child(None, spawn_key='part:1')
+        if operation == 'children_wait':
+            return nodus.agent.next_child_completions(wait_id='wait:1')
+        return nodus.agent.cancel_child(child, cancel_key='stop:1')
+
+    with pytest.raises(nodus.StepOutcomeUnknown):
+        drive(work)
+    assert [action for action, _ in state['calls']] == ['session', 'checkpoint_begin']
+
+
+@pytest.mark.parametrize('child_id', ['foreign-child', 'grandchild'])
+@pytest.mark.parametrize('action', ['child_result', 'child_blob_get'])
+def test_server_refuses_foreign_or_grandchild_reads_without_driver_progress(coordinator, child_id, action):
+    state, drive = coordinator
+    state.update(result={'private': 42}, blob=b'private bytes')
+    digest = hashlib.sha256(state['blob']).hexdigest()
+    reference = {'id': 'bl_' + digest, 'sha256': digest, 'bytes': len(state['blob'])}
+    forged = outcome(child=child_id, result=state['result'])
+
+    def work():
+        with pytest.raises(nodus.StepOutcomeUnknown, match='not_found'):
+            if action == 'child_result':
+                nodus.agent.child_result(forged)
+            else:
+                nodus.agent.get_child_blob(forged, reference)
+        return 'must not finish after scope refusal'
+
+    with pytest.raises(nodus.StepOutcomeUnknown):
+        drive(work)
+    assert [called for called, _ in state['calls']] == ['session', action]
+    assert state['calls'][1][1]['child_run_id'] == child_id
 
 
 def test_controls_refuse_parallel_or_nested_step_use(coordinator):
