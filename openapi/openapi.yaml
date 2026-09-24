@@ -12264,11 +12264,11 @@
           },
           "logical_runs": {
             "$ref": "#/components/schemas/ManagedAgentLogicalRunCounts",
-            "description": "Counts of logical run statuses across all revisions of this definition. Running does not establish productive activity."
+            "description": "Counts only tasks belonging to this group, excluding other groups and standalone runs. Running does not establish productive activity."
           },
           "allocations": {
             "$ref": "#/components/schemas/ManagedAgentAllocationObservations",
-            "description": "Retained attempt and resource evidence. Counts can overlap and do not establish current healthy capacity."
+            "description": "Retained attempts and resources assigned to this group. Unassigned warm attempts belong to the deployment account and are excluded. Counts can overlap and do not establish current healthy capacity."
           },
           "retained_runs": {
             "type": "integer",
