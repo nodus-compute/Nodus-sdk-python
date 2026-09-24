@@ -8879,6 +8879,314 @@
           "status"
         ]
       },
+      "ManagedAgentObservations": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "schema_version": {
+            "type": "string",
+            "enum": [
+              "managed-agent-observations-v1"
+            ],
+            "description": "Version of these lifecycle observation semantics."
+          },
+          "agent_id": {
+            "type": "string"
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Database observation time for this response. Subsequent pages can observe newer state."
+          },
+          "logical_runs": {
+            "$ref": "#/components/schemas/ManagedAgentLogicalRunCounts",
+            "description": "Counts of logical run statuses across all revisions of this definition. Running does not establish productive activity."
+          },
+          "allocations": {
+            "$ref": "#/components/schemas/ManagedAgentAllocationObservations",
+            "description": "Retained attempt and resource evidence. Counts can overlap and do not establish current healthy capacity."
+          },
+          "productive_active_agents": {
+            "type": "null",
+            "description": "Null because retained lifecycle records do not independently measure productive agent activity."
+          },
+          "productive_active_agents_status": {
+            "type": "string",
+            "enum": [
+              "measurement_unavailable"
+            ],
+            "description": "Whether productive agent concurrency is independently measured."
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ManagedAgentRunObservation"
+            }
+          },
+          "next_after": {
+            "type": "string",
+            "description": "Cursor for the next page in ascending run ID order, or an empty string. Each page has its own database snapshot."
+          }
+        },
+        "required": [
+          "schema_version",
+          "agent_id",
+          "observed_at",
+          "logical_runs",
+          "allocations",
+          "productive_active_agents",
+          "productive_active_agents_status",
+          "runs",
+          "next_after"
+        ]
+      },
+      "ManagedAgentLogicalRunCounts": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "queued": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "starting": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "running": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "waiting": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "recovering": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "blocked": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "completed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "cancelled": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "total",
+          "queued",
+          "starting",
+          "running",
+          "waiting",
+          "recovering",
+          "blocked",
+          "completed",
+          "cancelled"
+        ]
+      },
+      "ManagedAgentAllocationObservations": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "total_attempts": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "open_attempts": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Attempts not recorded closed, including admitted, starting, running and draining allocations."
+          },
+          "starting_attempts": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "draining_attempts": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "warm_attempts": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Open attempts not assigned to a logical run."
+          },
+          "unresolved_attempts": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Attempts with uncertain creation or retained candidate cleanup and accounting incidents."
+          },
+          "cleanup_pending_attempts": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Attempts still open or lacking settled cleanup, including retained resource, lease, allowance or storage liability. Includes active attempts and does not mean stop was requested."
+          },
+          "unreleased_instances": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Known instance records without removal evidence. This is not a healthy instance count."
+          }
+        },
+        "required": [
+          "total_attempts",
+          "open_attempts",
+          "starting_attempts",
+          "draining_attempts",
+          "warm_attempts",
+          "unresolved_attempts",
+          "cleanup_pending_attempts",
+          "unreleased_instances"
+        ]
+      },
+      "ManagedAgentRunObservation": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "run_id": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "starting",
+              "running",
+              "waiting",
+              "recovering",
+              "blocked",
+              "completed",
+              "cancelled"
+            ]
+          },
+          "attempt_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "submitted_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "first_allocation_created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Earliest retained attempt creation time. A warm allocation can predate submission."
+          },
+          "first_boot_observed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Earliest retained sandbox boot binding. A warm boot can predate submission."
+          },
+          "first_driver_started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "First recorded driver process start. This is not proof of useful task work."
+          },
+          "first_session_started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "First durable driver session receipt."
+          },
+          "first_step_completed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "First retained completed step receipt. A completed step does not establish accepted task output."
+          },
+          "first_useful_command_at": {
+            "type": "null",
+            "description": "Null because useful work requires independent workload evidence."
+          },
+          "first_useful_command_status": {
+            "type": "string",
+            "enum": [
+              "measurement_unavailable"
+            ],
+            "description": "Whether useful command activity is independently measured."
+          },
+          "result_committed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Logical result commit time for completed runs. Customer acceptance is checked separately."
+          },
+          "cleanup_completed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Latest attempt closure when every associated attempt and retained resource liability is settled. Otherwise null."
+          },
+          "open_attempts": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Attempts not recorded closed, including admitted, starting, running and draining allocations."
+          },
+          "unresolved_attempts": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Attempts with uncertain creation or retained candidate cleanup and accounting incidents."
+          },
+          "cleanup_pending_attempts": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Attempts still open or lacking settled cleanup, including retained resource, lease, allowance or storage liability. Includes active attempts and does not mean stop was requested."
+          },
+          "unreleased_instances": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Known instance records without removal evidence. This is not a healthy instance count."
+          }
+        },
+        "required": [
+          "run_id",
+          "revision",
+          "status",
+          "attempt_count",
+          "submitted_at",
+          "first_allocation_created_at",
+          "first_boot_observed_at",
+          "first_driver_started_at",
+          "first_session_started_at",
+          "first_step_completed_at",
+          "first_useful_command_at",
+          "first_useful_command_status",
+          "result_committed_at",
+          "cleanup_completed_at",
+          "open_attempts",
+          "unresolved_attempts",
+          "cleanup_pending_attempts",
+          "unreleased_instances"
+        ]
+      },
       "ManagedAgentSubmit": {
         "type": "object",
         "additionalProperties": false,
@@ -18990,6 +19298,75 @@
             }
           }
         }
+      }
+    },
+    "/v1/agents/{id}/observations": {
+      "get": {
+        "operationId": "getManagedAgentObservations",
+        "summary": "Observe retained lifecycle evidence and resource liability",
+        "tags": [
+          "Managed agents"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedAgentObservations"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The agent definition does not exist or is not owned by the authenticated tenant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Operation refused with a diagnostic and next action",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Requires authentication and an agent definition owned by the authenticated tenant. Returns 404 when the definition does not exist or belongs to another tenant. Returns one read-only database snapshot with a paginated run projection. Counts cover all runs of the definition. Missing timestamps and productive activity remain explicitly unmeasured. Available for retained work when new admission is disabled."
       }
     },
     "/v1/agents/{id}/runs": {

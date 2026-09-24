@@ -99,6 +99,34 @@ new input. Retrying the same event key with changed input is a conflict.
 `AsyncClient.agents` exposes the same operations. Await methods that perform
 requests and use `async for` with `.iterate()`.
 
+## Observe lifecycle and cleanup
+
+Read lifecycle observations through the authenticated HTTP endpoint. Set
+`NODUS_API_KEY` through your secret manager, `NODUS_BASE_URL` to your HTTPS API
+origin without `/v1`, and `NODUS_AGENT_ID` to the definition's `agent.id`.
+
+```bash
+curl --fail --silent --show-error --get \
+  --header "Authorization: Bearer ${NODUS_API_KEY}" \
+  --data-urlencode "limit=50" \
+  --data-urlencode "after=${NODUS_AFTER:-}" \
+  "${NODUS_BASE_URL}/v1/agents/${NODUS_AGENT_ID}/observations"
+```
+
+Leave `NODUS_AFTER` unset for the first page. Set it to the returned `next_after`
+and repeat until that value is empty. Each page has its own `observed_at` time
+and may reflect newer state. `logical_runs` covers all runs of the definition.
+`allocations` includes retained attempts and resources, including warm attempts
+not assigned to a run, while `runs` contains the current page. The endpoint returns
+404 for definitions that do not exist or belong to another tenant.
+
+Allocation counts can overlap. A completed run can still have pending cleanup.
+In `managed-agent-observations-v1`, `productive_active_agents` and each run's
+`first_useful_command_at` are always null, with their status fields set to
+`measurement_unavailable`. Lifecycle observations do not independently verify
+productive work or accepted task outputs. Check those against your workload's
+expected results.
+
 ## Wait without keeping a worker busy
 
 Inside `main`, call `nodus.agent.wait_for_event("approval", wait_id="approval:1")`
