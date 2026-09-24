@@ -9,6 +9,9 @@ does not establish production qualification or general CPU workload support.
 Authenticate with `nodus login` or provide `NODUS_API_KEY` through your secret
 manager. Never put that account key in the uploaded project.
 
+For bounded task batches with independent state and dependency ordering, see
+[agent groups](agent-groups.md).
+
 ## Deploy and submit
 
 Save this synchronous entrypoint as `agent.py` in your project:
