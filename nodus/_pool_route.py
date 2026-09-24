@@ -54,6 +54,8 @@ def route_result(value: Any, pool_id: str, payload: dict[str, Any]) -> Any:
             raise APIError("The API did not confirm the submitted Route settings. Refresh before trying again")
     if payload.get("route_enabled") is True:
         rate = value.get("platform_rate_micros")
-        if type(rate) is not int or rate != payload["accepted_route_rate_micros"] or value.get("route_price_version") != payload["accepted_route_rate_version"]:
+        version = value.get("route_price_version")
+        legacy_paid = "route_price_version" not in value and payload["accepted_route_rate_version"] == "route-platform-v1"
+        if type(rate) is not int or rate != payload["accepted_route_rate_micros"] or (not legacy_paid and version != payload["accepted_route_rate_version"]):
             raise APIError("The API did not confirm the accepted Route rate")
     return value

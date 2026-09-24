@@ -9,8 +9,8 @@ from test_pools import POOL, exercise
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])
-@pytest.mark.parametrize("version,rate", [("route-platform-v1", 20000), ("byoc-free-v1", 0)])
-def test_route_activation_and_zero_settings(asynchronous, version, rate):
+@pytest.mark.parametrize("version,rate,include_version", [("route-platform-v1", 20000, True), ("route-platform-v1", 20000, False), ("byoc-free-v1", 0, True)])
+def test_route_activation_and_zero_settings(asynchronous, version, rate, include_version):
     payload = {"route_enabled": True, "accepted_route_rate_version": version,
                "accepted_route_rate_micros": rate, "wait_policy": "never", "wait_alpha": 0,
                "waiting_budget_pct": 0, "burst_approval": "always", "burst_threshold_micros": 0,
@@ -18,7 +18,10 @@ def test_route_activation_and_zero_settings(asynchronous, version, rate):
     def handler(req):
         assert (req.method, req.url.path) == ("PATCH", "/v1/pools/pool_test")
         assert json.loads(req.content) == payload
-        return httpx.Response(200, json={**POOL, **payload, "platform_rate_micros": rate, "route_price_version": version})
+        response = {**POOL, **payload, "platform_rate_micros": rate}
+        if include_version:
+            response["route_price_version"] = version
+        return httpx.Response(200, json=response)
     result = exercise(handler, asynchronous, lambda pools: pools.set_route("pool_test", True,
         accepted_rate_version=version, accepted_rate_micros=rate,
         wait_policy="never", wait_alpha=0, waiting_budget_pct=0, burst_approval="always",
