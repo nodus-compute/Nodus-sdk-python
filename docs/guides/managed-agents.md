@@ -149,6 +149,77 @@ select sandbox IDs. Waits and continuations run outside decorated steps.
 Keep code outside steps deterministic. Record model calls and external effects
 with the effect contracts in [durable steps](../durable-steps.md).
 
+## Coordinate child agents
+
+Child controls require separately enabled child support for the account and
+assigned runtime. Unavailable child actions or disabled child admission raise
+`nodus.AgentChildrenUnavailable`. A controller that cannot capture child
+checkpoints, or an incompatible session, can instead raise
+`nodus.StepOutcomeUnknown`. These methods use the assigned private session.
+Do not place an account API key inside the coordinator or its children.
+
+Inside a grouped managed entrypoint, spawn children with stable keys, then wait
+for their recorded outcomes. Each child executes the same pinned definition
+with its own input and private state:
+
+```python
+def main(event):
+    if event["role"] == "worker":
+        return {"total": sum(event["values"])}
+
+    children = [
+        nodus.agent.spawn_child(
+            {"role": "worker", "values": values},
+            spawn_key=f"part:{index}",
+        )
+        for index, values in enumerate(event["parts"])
+    ]
+    outcomes = nodus.agent.await_children(children, wait_id="all-parts")
+    return [
+        {"child": item.child_run_id, "status": item.status,
+         "result": item.result() if item.status == "completed" else None}
+        for item in outcomes
+    ]
+```
+
+Keep each key and its input stable across replay. Changing input, deadline or
+permissions under the same spawn key conflicts. Child controls run serially
+outside decorated steps.
+Children execute independently. Do not use threads or `asyncio.gather` to issue
+concurrent controls through the parent session.
+
+An all-child wait accepts at most 100 distinct direct-child references and
+returns outcomes in the requested order. For incremental delivery, use
+`nodus.agent.next_child_completions(after=cursor, wait_id=page_id, limit=100)`.
+The frozen page exposes `outcomes`, `next_after` and `exhausted`. Start with cursor
+`"0"`, use a stable wait ID for each page and advance with `next_after`. Apply
+external effects inside ordinary durable steps so replaying a page does not
+repeat an unrecorded effect. An exhausted page describes the children admitted
+when that page was recorded. Spawning more children requires a new wait ID.
+
+`item.result()` fetches and verifies one completed child's JSON result.
+Cancelled outcomes retain their status and reason. An expired result raises
+`nodus.StepResultExpired`. After observing a child's terminal outcome, use
+`child.get_blob(reference)` or `item.get_blob(reference)` for bytes committed in
+that direct child's own scope.
+Forwarding a grandchild's blob reference does not grant the parent access to it.
+
+`child.cancel(cancel_key="stop:1")` returns a cancellation-request receipt.
+With application-state recovery enabled, it captures the parent's state before
+a new cancellation request. A saved older receipt replays its original decision.
+Keep the cancellation key and target stable on replay.
+It does not assert that execution or resource cleanup has finished. Join the
+children to observe their terminal outcomes before finishing the parent.
+Child references are immutable and provide `.to_dict()` for carrying their
+identities in a continuation's JSON input.
+
+Optional `permissions` can narrow `secrets`, `secret_refs`, `connections` and
+`egress_allow`. Omitted fields and `None` inherit the parent's permission.
+An empty list removes that capability. Removing named secrets does not remove
+separately declared connection credentials. The server refuses any broadening
+or removal that makes mandatory setup invalid. Children share the existing
+group and deployment spending limits.
+
 ## Recovery boundaries
 
 New deployments admitted with qualified application-state recovery use
