@@ -54,8 +54,10 @@ def test_forecast_keeps_cached_evidence_and_unknown_calibration(asynchronous, st
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])
-def test_forecast_without_snapshot_does_not_invent_a_series(asynchronous):
-    result = exercise(lambda req: httpx.Response(200, json={**FORECAST, "snapshot": None, "refresh_status": "awaiting_refresh"}),
+@pytest.mark.parametrize("free", [False, True])
+def test_forecast_without_snapshot_does_not_invent_a_series(asynchronous, free):
+    subscription = {**SUBSCRIPTION, "rate_version": "byoc-free-v1", "monthly_micros": 0, "paid_current_period": False} if free else SUBSCRIPTION
+    result = exercise(lambda req: httpx.Response(200, json={**FORECAST, "snapshot": None, "subscription": subscription, "refresh_status": "awaiting_refresh"}),
                       asynchronous, lambda pools: pools.forecast("pool_test"))
     assert result.snapshot is None
 
@@ -120,9 +122,11 @@ def test_invalid_predict_requests_never_reach_network(asynchronous, operation, a
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])
-@pytest.mark.parametrize("defect", ["price_bool", "unordered_band", "negative_band", "false_calibration", "incomplete_points", "huge_band"])
+@pytest.mark.parametrize("defect", ["price_bool", "unordered_band", "negative_band", "false_calibration", "incomplete_points", "huge_band", "unpaid_active", "free_nonzero"])
 def test_malformed_forecast_evidence_is_refused(asynchronous, defect):
     body = copy.deepcopy(FORECAST)
+    if defect == "unpaid_active": body["subscription"]["paid_current_period"] = False
+    if defect == "free_nonzero": body["subscription"].update(rate_version="byoc-free-v1", monthly_micros=1, paid_current_period=False)
     if defect == "price_bool": body["subscription"]["monthly_micros"] = True
     if defect == "unordered_band": body["snapshot"]["forecast"]["points"][0]["p50"] = 10
     if defect == "huge_band": body["snapshot"]["forecast"]["points"][0]["p10"] = 10**1000

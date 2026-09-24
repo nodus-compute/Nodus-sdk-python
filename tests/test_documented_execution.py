@@ -164,7 +164,7 @@ def docs_api(monkeypatch):
             if payload.get("route_enabled") is True and (payload.get("accepted_route_rate_version") != "route-platform-v1" or payload.get("accepted_route_rate_micros") != 20000):
                 return self.reply({"error": "route_rate_consent"}, 409)
             return self.reply({"id": "pool_docs", "name": "Research", "kind": "hosts", "state": "active",
-                "route_enabled": True, "platform_rate_micros": 20000, **payload})
+                "route_enabled": True, "platform_rate_micros": 20000, "route_price_version": "route-platform-v1", **payload})
 
         def do_POST(self):
             path = urlsplit(self.path).path

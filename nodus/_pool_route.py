@@ -36,8 +36,8 @@ def route_patch(enabled: bool, version: str | None, rate: int | None, settings: 
     if type(enabled) is not bool:
         raise ValidationError("enabled must be a boolean")
     if enabled:
-        if version != "route-platform-v1" or type(rate) is not int or rate != 20000:
-            raise ValidationError("Enable Route only after accepting route-platform-v1 at 20000 USD micros per active customer device-hour")
+        if type(rate) is not int or (version, rate) not in (("route-platform-v1", 20000), ("byoc-free-v1", 0)):
+            raise ValidationError("Accept the pool's Route terms explicitly: route-platform-v1 at 20000 USD micros per device-hour, or byoc-free-v1 at zero for a cloud-connected pool")
         return {**settings, "route_enabled": True, "accepted_route_rate_version": version, "accepted_route_rate_micros": rate}
     if version is not None or rate is not None:
         raise ValidationError("Rate consent applies only when enabling Route")
@@ -52,6 +52,10 @@ def route_result(value: Any, pool_id: str, payload: dict[str, Any]) -> Any:
             continue
         if value.get(key) != expected or type(value.get(key)) is bool and type(expected) is not bool:
             raise APIError("The API did not confirm the submitted Route settings. Refresh before trying again")
-    if payload.get("route_enabled") is True and value.get("platform_rate_micros") != 20000:
-        raise APIError("The API did not confirm the accepted Route rate")
+    if payload.get("route_enabled") is True:
+        rate = value.get("platform_rate_micros")
+        version = value.get("route_price_version")
+        legacy_paid = "route_price_version" not in value and payload["accepted_route_rate_version"] == "route-platform-v1"
+        if type(rate) is not int or rate != payload["accepted_route_rate_micros"] or (not legacy_paid and version != payload["accepted_route_rate_version"]):
+            raise APIError("The API did not confirm the accepted Route rate")
     return value

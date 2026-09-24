@@ -3,7 +3,7 @@
 Sign in with `nodus login` or configure `NODUS_API_KEY`. Pools register
 customer-owned GPU hosts for free, read-only measurement on deployments where
 Compute is enabled. Your existing scheduler continues running your workloads.
-Predict adds an optional paid forecast and advisory recommendations. Route
+Predict adds forecasts and advisory recommendations with pool-specific terms. Route
 requires separate execution enrollment and explicit price consent.
 
 Create a pool with `nodus pools create Research`. The command prints its pool
@@ -84,7 +84,17 @@ A burst crossing a window boundary leaves cost unknown instead of prorating it.
 
 ## Forecasts and advisory recommendations
 
-Observe measurements remain free. Predict costs **$99 per account per UTC
+Observe measurements remain free. Cloud-connected BYOCompute pools also have
+free Predict and Route under `byoc-free-v1`. Their subscription reports
+`monthly_micros: 0` and `paid_current_period: false`, even when active. This
+does not change a paid subscription covering other pools in the account.
+For a cloud-connected pool, supply `byoc-free-v1` and zero to
+`set_predict` or `set_route` when enabling. The equivalent CLI flags are
+`--accept-rate-version byoc-free-v1` with `--accept-monthly-micros 0` for
+Predict or `--accept-rate-micros 0` for Route. Cloud provider charges and
+separately authorized market capacity still apply.
+
+For other pools, Predict costs **$99 per account per UTC
 calendar month**, with no additional pool or device fee. The first activation
 charges the full current month without proration. Enabling another pool in an
 already-active period adds no charge. An active period can reflect an accepted
@@ -124,8 +134,8 @@ that a whole day falls inside it.
 Enable Predict only after reviewing the returned price. Python callers use
 `set_predict(pool_id, True, accepted_rate_version=...,
 accepted_monthly_micros=...)`, supplying the exact rate version and integer
-USD micros they accept. The SDK has no default consent or amount. With the
-current rate, the CLI is:
+USD micros they accept. The SDK has no default consent or amount. For a paid
+Predict subscription, the CLI is:
 
 ```sh
 nodus pools predict POOL_ID on \
@@ -195,7 +205,8 @@ be awaited. Forecasts return `PoolForecast`, recommendations return
 
 ## Enable Route with explicit consent
 
-An account admin can enable Route at **$0.02 per active customer device-hour**,
+Cloud-connected pools use free Route as described above. For other pools,
+an account admin can enable Route at **$0.02 per active customer device-hour**,
 including optimization and apply. Your private hosts have no supplier rental
 charge. Market capacity has separate compute charges. Enabling Route does not
 create a Predict subscription or change an observe host's execution permission.
@@ -248,7 +259,7 @@ one. These fields may also accompany `set_route` in one request.
 
 | Field | Values |
 |---|---|
-| `wait_policy` | `never` keeps waiting for private capacity and never uses market fallback. `after_wait` allows fallback after waiting. `cheaper` may allow early fallback with active, paid Predict and usable forecast evidence |
+| `wait_policy` | `never` keeps waiting for private capacity and never uses market fallback. `after_wait` allows fallback after waiting. `cheaper` may allow early fallback with active Predict entitlement and usable forecast evidence |
 | `wait_alpha` | Finite number at least zero. New pools default to 0.1 |
 | `waiting_budget_pct` | Number from 0 through 100 |
 | `burst_approval` | `auto`, `above_threshold`, or `always` |
@@ -256,7 +267,7 @@ one. These fields may also accompany `set_route` in one request.
 | `burst_timeout_behaviour` | `keep_waiting` or `cancel` |
 
 The `cheaper` policy compares a current market quote's expected cost to completion
-with the pool's forecast opportunity cost. It requires enabled, funded Predict,
+with the pool's forecast opportunity cost. It requires enabled Predict entitlement,
 a positive owned hardware cost, a trusted runtime estimate of at most 30 days,
 and a ready forecast no more than two hours old. Missing or stale evidence does
 not authorize early fallback. Burst approval and workload spending controls

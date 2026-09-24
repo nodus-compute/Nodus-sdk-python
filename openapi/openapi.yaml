@@ -4110,7 +4110,7 @@
               "after_wait",
               "cheaper"
             ],
-            "description": "never keeps waiting for private capacity without market fallback. after_wait permits fallback after the retained wait. cheaper requires funded Predict and a current forecast showing lower expected market completion cost. Missing evidence keeps waiting."
+            "description": "never keeps waiting for private capacity without market fallback. after_wait permits fallback after the retained wait. cheaper requires active Predict and a current forecast showing lower expected market completion cost. Missing evidence keeps waiting."
           },
           "burst_approval": {
             "type": "string",
@@ -4172,6 +4172,10 @@
           "updated_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "route_price_version": {
+            "type": "string",
+            "description": "Accepted Nodus Route pricing version. byoc-free-v1 with a zero platform rate identifies free cloud-connected execution. Absent before pricing terms are accepted. Retained when routing is disabled."
           }
         },
         "required": [
@@ -4193,7 +4197,7 @@
           "created_at",
           "updated_at"
         ],
-        "description": "Customer infrastructure pool with free read-only measurement, optional account-priced Predict, and explicit paid Route activation. Each execution host requires separate host-bound reenrollment. Owned cost is advisory and does not create a charge."
+        "description": "Customer infrastructure pool with read-only measurement. Cloud-connected pools have free Predict and Route under byoc-free-v1. Other pools retain their separately accepted pricing. Each execution host requires host-bound reenrollment. Owned cost is advisory and does not create a charge."
       },
       "PoolCreateRequest": {
         "type": "object",
@@ -4241,14 +4245,14 @@
           },
           "accepted_route_rate_version": {
             "type": "string",
-            "description": "Explicit route-platform-v1 consent required on each enable request."
+            "description": "Cloud-connected pools accept byoc-free-v1 at zero. Other pools require explicit route-platform-v1 consent on each enable request."
           },
           "accepted_route_rate_micros": {
             "type": "integer",
             "format": "int64",
             "minimum": 0,
             "maximum": 9223372036854775807,
-            "description": "Explicit 20000 USD micros per active customer device-hour required on each enable request."
+            "description": "Zero for free cloud-connected pools. Other pools require explicit 20000 USD micros per active customer device-hour on each enable request."
           },
           "wait_policy": {
             "type": "string",
@@ -4257,7 +4261,7 @@
               "after_wait",
               "cheaper"
             ],
-            "description": "never keeps waiting for private capacity without market fallback. after_wait permits fallback after the retained wait. cheaper requires funded Predict and a current forecast showing lower expected market completion cost. Missing evidence keeps waiting."
+            "description": "never keeps waiting for private capacity without market fallback. after_wait permits fallback after the retained wait. cheaper requires active Predict and a current forecast showing lower expected market completion cost. Missing evidence keeps waiting."
           },
           "wait_alpha": {
             "type": "number",
@@ -4294,7 +4298,7 @@
         },
         "additionalProperties": false,
         "minProperties": 1,
-        "description": "Change Predict separately from other settings. Enabling requires explicit accepted_predict_rate_version predict-account-monthly-v1 and accepted_predict_monthly_micros 99000000. Disabling requires only predict_enabled false and stops future refresh and renewal after the last enabled pool is disabled. Cached views remain readable. Change Route and its waiting settings separately from Predict, name, and owned cost. Enabling Route requires an active pool and explicit route-platform-v1 consent at 20000 USD micros per active customer device-hour, including optimize and apply. Consent fields are rejected unless enabling. Disabling blocks new admission and retains accepted terms, existing work, and exact cleanup."
+        "description": "Change Predict separately from other settings. Cloud-connected pools use free Predict and accept byoc-free-v1 with accepted_predict_monthly_micros 0. Other pools require explicit accepted_predict_rate_version predict-account-monthly-v1 and accepted_predict_monthly_micros 99000000 when enabling. Disabling requires only predict_enabled false and stops future refresh and renewal after the last enabled pool is disabled. Cached views remain readable. Change Route and its waiting settings separately from Predict, name, and owned cost. Enabling Route requires an active pool. Cloud-connected pools use byoc-free-v1 at zero and reject paid consent. Other pools require explicit route-platform-v1 consent at 20000 USD micros per active customer device-hour, including optimize and apply. Free cloud Predict and Route requests may omit consent fields, though explicit byoc-free-v1 and zero are also accepted. Consent fields are rejected unless enabling. Disabling blocks new admission and retains accepted terms, existing work, and exact cleanup."
       },
       "PoolEnrollmentTokenRequest": {
         "type": "object",
@@ -4823,7 +4827,7 @@
           "paid_current_period",
           "enabled_pool_count"
         ],
-        "description": "Fixed USD 99 per account per UTC calendar month, independent of device and pool count. The first activation charges the full current month. paid_current_period means funded by credits or accepted postpaid receivable, not that a postpaid invoice has been paid."
+        "description": "Cloud-connected pools report byoc-free-v1, monthly_micros 0 and paid_current_period false, including while active. Other pools use fixed USD 99 per account per UTC calendar month, independent of device and pool count. The first paid activation charges the full current month. paid_current_period means funded by credits or accepted postpaid receivable, not that a postpaid invoice has been paid."
       },
       "PoolForecastBand": {
         "type": "object",
@@ -10488,6 +10492,1172 @@
           }
         },
         "description": "Measured startup stages. Missing durations are unobserved. Overlapping durations must not be added into elapsed latency."
+      },
+      "CloudOnboardingInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": [
+              "aws",
+              "gcp"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "Optional name, trimmed on submission. Empty or omitted values become AWS or Google Cloud for the selected provider. At most 100 UTF-8 bytes."
+          },
+          "regions": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z]{2}-[a-z]+-[0-9]+$"
+            },
+            "maxItems": 100,
+            "uniqueItems": true,
+            "default": [],
+            "description": "Commercial AWS regions only. GovCloud and China partitions are not supported by this connection flow. Omitted, null, or empty discovers all enabled account regions. A nonempty list restricts collection. Region order does not affect idempotency. GCP requires an empty list."
+          },
+          "project_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{4,28}[a-z0-9]$",
+            "description": "Google Cloud project ID. Required for GCP and omitted for AWS."
+          },
+          "billing_location": {
+            "type": "string",
+            "enum": [
+              "US",
+              "EU"
+            ],
+            "description": "Location of the dedicated Google Cloud billing dataset. Defaults to US for GCP and is omitted for AWS."
+          }
+        },
+        "required": [
+          "provider"
+        ],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "provider": {
+                  "const": "gcp"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "project_id"
+              ],
+              "properties": {
+                "regions": {
+                  "maxItems": 0
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "project_id": false,
+                "billing_location": false
+              }
+            }
+          }
+        ]
+      },
+      "CloudOnboardingSession": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Opaque server-generated setup identity."
+          },
+          "provider": {
+            "type": "string",
+            "enum": [
+              "aws",
+              "gcp"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 0,
+            "maxItems": 100,
+            "description": "AWS enabled account regions when empty. Always an array and empty for Google Cloud."
+          },
+          "role_name": {
+            "type": "string",
+            "pattern": "^(NodusObserve-[a-f0-9]{32})?$",
+            "description": "Prepared AWS role name. Empty for Google Cloud."
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "completed",
+              "cancelled"
+            ]
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "connection_id": {
+            "type": "string",
+            "description": "Present after completion. A later disconnect does not remove this completion receipt."
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "project_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{4,28}[a-z0-9]$",
+            "description": "Google Cloud project ID. Required for GCP and omitted for AWS."
+          },
+          "billing_location": {
+            "type": "string",
+            "enum": [
+              "US",
+              "EU"
+            ],
+            "description": "Location of the dedicated Google Cloud billing dataset. Defaults to US for GCP and is omitted for AWS."
+          },
+          "project_number": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{5,19}$",
+            "description": "Google Cloud project number verified for this connection."
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "name",
+          "regions",
+          "role_name",
+          "state",
+          "expires_at",
+          "revision",
+          "created_at"
+        ],
+        "description": "Setup expires after 24 hours. Expired pending records remain readable with their original expiry and cannot complete. Only unexpired pending records appear in the active list."
+      },
+      "CloudOnboardingAction": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "open_provider",
+              "unavailable",
+              "expired",
+              "completed",
+              "cancelled"
+            ]
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Prepared AWS CloudFormation approval or Google Cloud Shell URL, present for open_provider."
+          },
+          "message": {
+            "type": "string",
+            "description": "Explanation when guided setup is unavailable."
+          },
+          "setup_command": {
+            "type": "string",
+            "description": "Reviewable Google Cloud Shell setup command. Present only for pending GCP setup. Does not contain credentials."
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "CloudOnboardingResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "session": {
+            "$ref": "#/components/schemas/CloudOnboardingSession"
+          },
+          "next_action": {
+            "$ref": "#/components/schemas/CloudOnboardingAction"
+          },
+          "connection": {
+            "$ref": "#/components/schemas/CloudObservationConnection"
+          }
+        },
+        "required": [
+          "session",
+          "next_action"
+        ],
+        "description": "Connection is included after completion while it remains connected. A completed receipt never reconnects a disconnected account."
+      },
+      "CloudOnboardingSessionList": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CloudOnboardingSession"
+            },
+            "maxItems": 5
+          }
+        },
+        "required": [
+          "sessions"
+        ]
+      },
+      "CloudOnboardingVerifyRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "pattern": "^[0-9]{12}$",
+            "description": "AWS account ID from the stack outputs. This is a hint until Nodus verifies the exact session role using STS."
+          },
+          "project_number": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{5,19}$",
+            "description": "Google Cloud project number printed by setup. Nodus verifies it against the saved project ID and observation access before completing setup."
+          }
+        },
+        "oneOf": [
+          {
+            "required": [
+              "account_id"
+            ],
+            "not": {
+              "required": [
+                "project_number"
+              ]
+            }
+          },
+          {
+            "required": [
+              "project_number"
+            ],
+            "not": {
+              "required": [
+                "account_id"
+              ]
+            }
+          }
+        ]
+      },
+      "CloudObservationConfig": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": [
+              "aws",
+              "gcp",
+              "azure"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "role_arn": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "billing_table": {
+            "type": "string"
+          },
+          "billing_location": {
+            "type": "string"
+          },
+          "billing_scope": {
+            "type": "string"
+          },
+          "directory_id": {
+            "type": "string"
+          },
+          "subscription_id": {
+            "type": "string"
+          },
+          "client_id": {
+            "type": "string"
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "provider",
+          "name"
+        ],
+        "description": "Account identity and read scope. Fields depend on the provider. Credentials are never returned."
+      },
+      "CloudObservationConnection": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string",
+            "enum": [
+              "aws",
+              "gcp",
+              "azure"
+            ]
+          },
+          "scope": {
+            "type": "string"
+          },
+          "config": {
+            "$ref": "#/components/schemas/CloudObservationConfig"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "collecting",
+              "ready",
+              "partial",
+              "error"
+            ]
+          },
+          "last_attempt_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "last_success_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "scope",
+          "config",
+          "state",
+          "last_attempt_at",
+          "last_success_at",
+          "created_at"
+        ]
+      },
+      "CloudConnectionList": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "connections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CloudObservationConnection"
+            }
+          },
+          "can_connect": {
+            "type": "boolean",
+            "description": "Whether credential storage is configured. This does not confer administrator access or prove guided AWS availability."
+          },
+          "collection_interval_minutes": {
+            "type": "integer",
+            "const": 60
+          },
+          "connection_limit": {
+            "type": "integer",
+            "const": 200
+          }
+        },
+        "required": [
+          "connections",
+          "can_connect",
+          "collection_interval_minutes",
+          "connection_limit"
+        ]
+      },
+      "CloudConnectionSetup": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "aws_principal_arn": {
+            "type": "string"
+          },
+          "aws_external_id": {
+            "type": "string"
+          },
+          "guided_aws_available": {
+            "type": "boolean",
+            "description": "Guided AWS setup is configured and its published access template matches this release. This does not verify access to the customer's AWS account."
+          },
+          "guided_aws_unavailable_reason": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "observe"
+            ]
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "resource_inventory",
+                "virtual_machine_inventory",
+                "cpu",
+                "network",
+                "disk_io",
+                "account_costs"
+              ]
+            }
+          },
+          "guided_gcp_available": {
+            "type": "boolean",
+            "description": "Guided Google Cloud setup is configured. This does not verify access to the customer project."
+          },
+          "guided_gcp_unavailable_reason": {
+            "type": "string"
+          },
+          "google_signin_available": {
+            "type": "boolean",
+            "description": "The Google Web OAuth client and keyless observation identity are configured."
+          }
+        },
+        "required": [
+          "aws_principal_arn",
+          "aws_external_id",
+          "guided_aws_available",
+          "guided_aws_unavailable_reason",
+          "mode",
+          "capabilities",
+          "guided_gcp_available",
+          "guided_gcp_unavailable_reason"
+        ]
+      },
+      "CloudObservationCoverage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "Source collection state. May be empty before its first collection."
+          },
+          "source": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "observed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "status",
+          "source",
+          "message",
+          "observed_at"
+        ]
+      },
+      "CloudObservedResource": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "provider_id": {
+            "type": "string"
+          },
+          "resource_type": {
+            "type": "string"
+          },
+          "service": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "group": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "zone": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "machine_type": {
+            "type": "string"
+          },
+          "gpu_type": {
+            "type": "string"
+          },
+          "vcpus": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "memory_gb": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "gpu_count": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "tags": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "region",
+          "state",
+          "machine_type",
+          "vcpus",
+          "memory_gb",
+          "gpu_count",
+          "tags"
+        ],
+        "description": "Customer cloud resource metadata. Missing measurements remain null. Discovery does not enroll the resource for workload execution."
+      },
+      "CloudDailyObservation": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date"
+          },
+          "value": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "day",
+          "value"
+        ]
+      },
+      "CloudObservationBreakdown": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ]
+      },
+      "CloudObservationForecast": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "history_days": {
+            "type": "integer"
+          },
+          "points": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/CloudDailyObservation"
+            }
+          },
+          "total": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "breakdown": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CloudObservationBreakdown"
+            }
+          },
+          "by_region": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CloudObservationBreakdown"
+            }
+          },
+          "by_project": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CloudObservationBreakdown"
+            }
+          }
+        },
+        "required": [
+          "status",
+          "method",
+          "message",
+          "history_days",
+          "points",
+          "total"
+        ],
+        "description": "Usage-continuation projection from measured history. Does not predict credit exhaustion or compare workload execution prices."
+      },
+      "CloudObservationSeries": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "history": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/CloudDailyObservation"
+            }
+          },
+          "total": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "breakdown": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/CloudObservationBreakdown"
+            }
+          },
+          "by_region": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CloudObservationBreakdown"
+            }
+          },
+          "by_project": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CloudObservationBreakdown"
+            }
+          },
+          "forecast": {
+            "$ref": "#/components/schemas/CloudObservationForecast"
+          },
+          "measured_total": {
+            "type": "number",
+            "description": "Sum of available observed costs in an aggregate window. A missing complete total means the subtotal has incomplete coverage."
+          },
+          "by_provider": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CloudObservationBreakdown"
+            },
+            "description": "Observed spending allocated to cloud providers. Currencies and unavailable costs are not combined."
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "unit",
+          "history",
+          "total",
+          "breakdown",
+          "forecast"
+        ]
+      },
+      "CloudObservationReport": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "discovery": {
+            "$ref": "#/components/schemas/CloudObservationCoverage"
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "series": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CloudObservationSeries"
+            }
+          },
+          "resources": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/CloudObservedResource"
+            }
+          },
+          "inventory": {
+            "$ref": "#/components/schemas/CloudObservationCoverage"
+          },
+          "performance": {
+            "$ref": "#/components/schemas/CloudObservationCoverage"
+          },
+          "billing": {
+            "$ref": "#/components/schemas/CloudObservationCoverage"
+          },
+          "gpu_inventory": {
+            "$ref": "#/components/schemas/CloudGPUInventory"
+          }
+        },
+        "required": [
+          "discovery",
+          "from",
+          "to",
+          "series",
+          "resources",
+          "inventory",
+          "performance",
+          "billing",
+          "gpu_inventory"
+        ]
+      },
+      "CloudConnectionReportResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "connection": {
+            "$ref": "#/components/schemas/CloudObservationConnection"
+          },
+          "report": {
+            "$ref": "#/components/schemas/CloudObservationReport"
+          },
+          "gpu_history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CloudGPUHistory"
+            },
+            "maxItems": 30,
+            "description": "History for the selected 7 or 30 UTC days, including today, from the current connected scope. Retention is up to 90 days. This window differs from report history, which ends yesterday."
+          }
+        },
+        "required": [
+          "connection",
+          "report",
+          "gpu_history"
+        ]
+      },
+      "CloudGPUInventoryModel": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "gpu_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "running_gpus": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "stopped_gpus": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "other_gpus": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "vm_count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "model",
+          "gpu_count",
+          "running_gpus",
+          "stopped_gpus",
+          "other_gpus",
+          "vm_count"
+        ]
+      },
+      "CloudGPUInventory": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "observed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "total_gpus": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "running_gpus": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "stopped_gpus": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "other_gpus": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "gpu_vms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "unknown_count_vms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "unknown_model_gpus": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CloudGPUInventoryModel"
+            }
+          }
+        },
+        "required": [
+          "status",
+          "observed_at",
+          "total_gpus",
+          "running_gpus",
+          "stopped_gpus",
+          "other_gpus",
+          "gpu_vms",
+          "unknown_count_vms",
+          "unknown_model_gpus",
+          "models"
+        ],
+        "description": "Known attached GPU counts grouped by model and VM power state. This is not device utilization, schedulable capacity, or workload attribution. Unknown GPU counts and models remain explicit. Source status and observation time identify retained or unavailable data."
+      },
+      "CloudGPUHistory": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date"
+          },
+          "inventory": {
+            "$ref": "#/components/schemas/CloudGPUInventory"
+          }
+        },
+        "required": [
+          "day",
+          "inventory"
+        ],
+        "description": "Latest successfully collected inventory aggregate for one UTC day and the current connection revision. Does not include resource identifiers, names, tags, or customer commands. Missing days are absent rather than zero."
+      },
+      "CloudExecutionHost": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "host_id": {
+            "type": "string",
+            "description": "Nodus host identity in the dedicated pool."
+          },
+          "resource_id": {
+            "type": "string",
+            "description": "Customer-owned AWS instance identity recorded by the administrator."
+          },
+          "region": {
+            "type": "string",
+            "description": "AWS region containing the observed instance."
+          },
+          "bound_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "execution_configured": {
+            "type": "boolean",
+            "description": "The enrolled host has declared the required Nodus execution configuration. Health, cloud authorization and available capacity are checked separately. This is not a physical host attestation."
+          }
+        },
+        "required": [
+          "host_id",
+          "resource_id",
+          "region",
+          "bound_at",
+          "execution_configured"
+        ],
+        "description": "An administrator-declared association between an enrolled Nodus host and observed AWS capacity. This association does not attest the physical instance identity or grant execution credentials."
+      },
+      "CloudExecution": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "connection_id": {
+            "type": "string",
+            "description": "Nodus cloud connection identity."
+          },
+          "pool_id": {
+            "type": "string",
+            "description": "Dedicated Nodus pool identity, present after execution has first been enabled."
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Explicit authorization for future private workload routing. Host enrollment, health and available capacity are checked separately."
+          },
+          "hosts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CloudExecutionHost"
+            }
+          }
+        },
+        "required": [
+          "connection_id",
+          "enabled",
+          "hosts"
+        ]
+      },
+      "CloudExecutionUpdate": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ]
+      },
+      "CloudExecutionHostInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "host_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "resource_id": {
+            "type": "string",
+            "pattern": "^i-(?:[a-f0-9]{8}|[a-f0-9]{17})$"
+          },
+          "region": {
+            "type": "string",
+            "pattern": "^[a-z]{2}(?:-[a-z]+)+-[0-9]+$"
+          }
+        },
+        "required": [
+          "host_id",
+          "resource_id",
+          "region"
+        ]
+      },
+      "GoogleCloudAuthorization": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "consent",
+              "exchanging",
+              "authorized",
+              "connecting",
+              "completed",
+              "cancelled"
+            ]
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "step": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 7
+          },
+          "billing_status": {
+            "type": "string",
+            "enum": [
+              "not_requested",
+              "preparing",
+              "ready",
+              "needs_setup"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "state",
+          "expires_at",
+          "step",
+          "billing_status"
+        ],
+        "description": "Temporary setup authorization owned by the consenting team administrator. No Google tokens or private federation configuration are returned."
+      },
+      "GoogleCloudProject": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "GoogleCloudAuthorizationResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "authorization": {
+            "$ref": "#/components/schemas/GoogleCloudAuthorization"
+          },
+          "authorization_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "projects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GoogleCloudProject"
+            }
+          },
+          "next_page_token": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "session": {
+            "$ref": "#/components/schemas/CloudOnboardingSession"
+          },
+          "connection": {
+            "$ref": "#/components/schemas/CloudObservationConnection"
+          },
+          "next_action": {
+            "$ref": "#/components/schemas/CloudOnboardingAction"
+          }
+        },
+        "required": [
+          "authorization"
+        ]
       }
     },
     "securitySchemes": {
@@ -10504,7 +11674,7 @@
   "info": {
     "title": "Nodus Infrastructure Execution API",
     "version": "1.1.0",
-    "description": "Provider-neutral infrastructure execution for AI workloads. This contract describes customer API-key workload, sandbox, research workspace, asset, and webhook operations. Console sign-in, operator, runner, and supplier protocols are outside its scope. Obtain a key using nodus login or the console. Use the deployment API origin as the base URL. No paid workload is executed by viewing this contract."
+    "description": "Provider-neutral infrastructure execution for AI workloads. This contract describes customer API-key workload, sandbox, research workspace, asset, webhook, and cloud observation operations. Console sign-in, operator, runner, and supplier protocols are outside its scope. Obtain a key using nodus login or the console. Use the deployment API origin as the base URL. No paid workload is executed by viewing this contract."
   },
   "openapi": "3.1.0",
   "paths": {
@@ -15470,7 +16640,7 @@
       "put": {
         "operationId": "setPoolActionPolicy",
         "summary": "Set one complete action policy",
-        "description": "Requires an account admin. Approve and auto require active funded Predict and Route with accepted current terms and the kill switch off. Auto also requires a recent complete trusted matching shadow cycle. Off and recommend can be saved without activation. Recommendations require Predict. Saving a policy does not execute an action.",
+        "description": "Requires an account admin. Approve and auto require active Predict and Route with accepted current terms and the kill switch off. Auto also requires a recent complete trusted matching shadow cycle. Off and recommend can be saved without activation. Recommendations require Predict. Saving a policy does not execute an action.",
         "tags": [
           "Pools"
         ],
@@ -15645,7 +16815,7 @@
       "post": {
         "operationId": "startPoolShadowRun",
         "summary": "Start a future shadow observation cycle",
-        "description": "Requires an account admin, funded Predict, active Route consent and the kill switch off. Starts at the next complete UTC hour and runs for 168 hours. Starting the same configuration within one hour returns the existing cycle. No action is applied by shadow mode.",
+        "description": "Requires an account admin, active Predict, active Route authorization and the kill switch off. Starts at the next complete UTC hour and runs for 168 hours. Starting the same configuration within one hour returns the existing cycle. No action is applied by shadow mode.",
         "tags": [
           "Pools"
         ],
@@ -15826,7 +16996,7 @@
             }
           }
         },
-        "description": "Requires an account admin. Send an empty object or omit the body. The server retains immutable action evidence. Approval rechecks funded Predict, Route, policy and expiry. Dispatch rechecks authority separately. A stale proposal records no-op or expired state and returns a conflict. Rejection does not apply an action."
+        "description": "Requires an account admin. Send an empty object or omit the body. The server retains immutable action evidence. Approval rechecks active Predict, Route, policy and expiry. Dispatch rechecks authority separately. A stale proposal records no-op or expired state and returns a conflict. Rejection does not apply an action."
       }
     },
     "/v1/pools/{id}/action-proposals/{pid}/reject": {
@@ -15889,7 +17059,7 @@
             }
           }
         },
-        "description": "Requires an account admin. Send an empty object or omit the body. The server retains immutable action evidence. Approval rechecks funded Predict, Route, policy and expiry. Dispatch rechecks authority separately. A stale proposal records no-op or expired state and returns a conflict. Rejection does not apply an action."
+        "description": "Requires an account admin. Send an empty object or omit the body. The server retains immutable action evidence. Approval rechecks active Predict, Route, policy and expiry. Dispatch rechecks authority separately. A stale proposal records no-op or expired state and returns a conflict. Rejection does not apply an action."
       }
     },
     "/v1/workloads/{id}/freeze": {
@@ -18394,6 +19564,975 @@
           }
         }
       }
+    },
+    "/v1/cloud-onboarding-sessions": {
+      "post": {
+        "operationId": "startCloudOnboarding",
+        "summary": "Start or replay guided cloud setup",
+        "tags": [
+          "Cloud observation"
+        ],
+        "description": "Requires an API key owned by a user who is currently a team administrator. Keys without a user owner do not inherit administrator access. The console uses the same service with its authenticated session. Creates setup intent only. Requires configured guided deployment settings for the selected provider. Same normalized settings and key return the same session without extending expiry. Changed settings or more than five active sessions return 409 cloud_onboarding_conflict. Missing deployment settings return 503 cloud_setup_unavailable. No observation connection is created until verification succeeds.",
+        "responses": {
+          "201": {
+            "description": "Start or replay guided cloud setup",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloudOnboardingResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, administrator access, invalid input, missing records, conflicts, rate limits, credential storage, and transient failures are returned using the stable error and message fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "description": "Stable key for this setup, at most 200 UTF-8 bytes with no control characters. Reuse after an uncertain response."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloudOnboardingInput"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "listCloudOnboardingSessions",
+        "summary": "List active guided cloud setup sessions",
+        "tags": [
+          "Cloud observation"
+        ],
+        "description": "Requires an API key owned by a user who is currently a team administrator. Keys without a user owner do not inherit administrator access. The console uses the same service with its authenticated session. Returns only pending, unexpired sessions in creation order. Completed, cancelled, and expired sessions remain available by ID.",
+        "responses": {
+          "200": {
+            "description": "List active guided cloud setup sessions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloudOnboardingSessionList"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, administrator access, invalid input, missing records, conflicts, rate limits, credential storage, and transient failures are returned using the stable error and message fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/cloud-onboarding-sessions/{id}": {
+      "get": {
+        "operationId": "getCloudOnboardingSession",
+        "summary": "Resume guided cloud setup",
+        "tags": [
+          "Cloud observation"
+        ],
+        "description": "Requires an API key owned by a user who is currently a team administrator. Keys without a user owner do not inherit administrator access. The console uses the same service with its authenticated session. Returns the saved session and next action, including terminal and expired records. Reading does not renew expiry.",
+        "responses": {
+          "200": {
+            "description": "Resume guided cloud setup",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloudOnboardingResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, administrator access, invalid input, missing records, conflicts, rate limits, credential storage, and transient failures are returned using the stable error and message fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Tenant-owned session or connection identity."
+          }
+        ]
+      }
+    },
+    "/v1/cloud-onboarding-sessions/{id}/verify": {
+      "post": {
+        "operationId": "verifyCloudOnboarding",
+        "summary": "Verify cloud access and complete setup",
+        "tags": [
+          "Cloud observation"
+        ],
+        "description": "Requires an API key owned by a user who is currently a team administrator. Keys without a user owner do not inherit administrator access. The console uses the same service with its authenticated session. For AWS, derives the exact role from the saved session and submitted account ID. For pending sessions, STS must reject missing and incorrect external IDs, then assume the role and report the expected account, role, and session identity. For Google Cloud, verifies the saved project ID and submitted project number through the approved observer identity, then checks inventory, resource discovery and monitoring reads. A return URL, account ID or project number alone cannot complete setup. Verification has a 25-second deadline and bounded concurrency. Failed access returns 422 cloud_access_unverified, expired pending setup returns 410 cloud_onboarding_expired, and rate limits return 429 cloud_busy. Completion rechecks administrator access, revision, state, and expiry atomically. Concurrent completion and retries for the same verified account return one connection. Billing export access is optional and checked during collection. Completed retries do not reconnect disconnected access.",
+        "responses": {
+          "200": {
+            "description": "Verify cloud access and complete setup",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloudOnboardingResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, administrator access, invalid input, missing records, conflicts, rate limits, credential storage, and transient failures are returned using the stable error and message fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Tenant-owned session or connection identity."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloudOnboardingVerifyRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/cloud-onboarding-sessions/{id}/cancel": {
+      "post": {
+        "operationId": "cancelCloudOnboarding",
+        "summary": "Cancel pending guided cloud setup",
+        "tags": [
+          "Cloud observation"
+        ],
+        "description": "Requires an API key owned by a user who is currently a team administrator. Keys without a user owner do not inherit administrator access. The console uses the same service with its authenticated session. Cancels pending setup and fences later verification. Retrying cancellation is safe. A completed setup returns a conflict. This does not delete a customer-created AWS stack or disconnect an existing connection.",
+        "responses": {
+          "200": {
+            "description": "Cancel pending guided cloud setup",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloudOnboardingResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, administrator access, invalid input, missing records, conflicts, rate limits, credential storage, and transient failures are returned using the stable error and message fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Tenant-owned session or connection identity."
+          }
+        ]
+      }
+    },
+    "/v1/cloud-onboarding/aws/template": {
+      "get": {
+        "operationId": "getAWSObservationTemplate",
+        "summary": "Download the static AWS observation template",
+        "tags": [
+          "Cloud observation"
+        ],
+        "security": [],
+        "description": "Public, credential-free CloudFormation JSON that creates one IAM observation role. It provisions no compute, storage, or networking. Operators must publish this versioned template to an S3 object accessible to customer CloudFormation setup and configure NODUS_CLOUD_AWS_TEMPLATE_URL. This download endpoint itself is not the S3 template URL.",
+        "responses": {
+          "200": {
+            "description": "IAM-only CloudFormation template",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "AWSTemplateFormatVersion",
+                    "Parameters",
+                    "Resources",
+                    "Outputs"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/cloud-connections": {
+      "get": {
+        "operationId": "listCloudConnections",
+        "summary": "List cloud observation connections",
+        "tags": [
+          "Cloud observation"
+        ],
+        "description": "Returns the authenticated team's connections excluding disconnected records. Credentials are never returned. Reading does not require administrator access or a paid pool subscription.",
+        "responses": {
+          "200": {
+            "description": "List cloud observation connections",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloudConnectionList"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, administrator access, invalid input, missing records, conflicts, rate limits, credential storage, and transient failures are returned using the stable error and message fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/cloud-connections/setup": {
+      "get": {
+        "operationId": "getCloudConnectionSetup",
+        "summary": "Get cloud setup availability and AWS trust settings",
+        "tags": [
+          "Cloud observation"
+        ],
+        "description": "Requires an API key owned by a user who is currently a team administrator. Keys without a user owner do not inherit administrator access. The console uses the same service with its authenticated session. Returns the principal ARN, tenant external ID, guided AWS availability, and observation capabilities. Availability checks deployment settings, not live AWS permissions.",
+        "responses": {
+          "200": {
+            "description": "Get cloud setup availability and AWS trust settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloudConnectionSetup"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, administrator access, invalid input, missing records, conflicts, rate limits, credential storage, and transient failures are returned using the stable error and message fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/cloud-connections/{id}": {
+      "get": {
+        "operationId": "getCloudConnectionReport",
+        "summary": "Read observed cloud resources, usage, and spending",
+        "tags": [
+          "Cloud observation"
+        ],
+        "description": "Returns one connected account, project, or subscription and its report. Sources retain independent collection states. Unknown measurements remain unavailable. Provider-reported spending and currencies remain separate from Nodus billing. Invalid report windows return 400 invalid_window. Disconnected records return 404.",
+        "responses": {
+          "200": {
+            "description": "Read observed cloud resources, usage, and spending",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloudConnectionReportResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, administrator access, invalid input, missing records, conflicts, rate limits, credential storage, and transient failures are returned using the stable error and message fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Tenant-owned session or connection identity."
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "enum": [
+                7,
+                30
+              ],
+              "default": 30
+            },
+            "description": "Measured history window in days."
+          },
+          {
+            "name": "horizon",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "enum": [
+                7,
+                30
+              ],
+              "default": 30
+            },
+            "description": "Usage-continuation forecast horizon in days."
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "disconnectCloudConnection",
+        "summary": "Disconnect cloud observation",
+        "tags": [
+          "Cloud observation"
+        ],
+        "description": "Requires an API key owned by a user who is currently a team administrator. Keys without a user owner do not inherit administrator access. The console uses the same service with its authenticated session. Deletes the stored credential and fences collection results. Retains historical snapshots without exposing them through these routes. Does not revoke the cloud role, delete its CloudFormation stack, or terminate customer resources. An already disconnected or missing connection returns 404. Disables future execution routing for its associated pool while retaining active workloads, host credentials and exact cleanup authority.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Tenant-owned session or connection identity."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Disconnected"
+          },
+          "default": {
+            "description": "Authentication, administrator access, invalid input, missing records, conflicts, rate limits, credential storage, and transient failures are returned using the stable error and message fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/cloud-connections/{id}/refresh": {
+      "post": {
+        "operationId": "refreshCloudConnection",
+        "summary": "Request cloud observation collection",
+        "tags": [
+          "Cloud observation"
+        ],
+        "description": "Requires an API key owned by a user who is currently a team administrator. Keys without a user owner do not inherit administrator access. The console uses the same service with its authenticated session. Queues collection when no current collection lease is active and at least ten minutes have passed since the previous attempt. A conflicting request returns 409 cloud_conflict. The regular collection interval is one hour.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Tenant-owned session or connection identity."
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Collection queued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "pending"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, administrator access, invalid input, missing records, conflicts, rate limits, credential storage, and transient failures are returned using the stable error and message fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/cloud-connections/{id}/execution": {
+      "get": {
+        "operationId": "getCloudExecution",
+        "summary": "Read cloud execution setup",
+        "tags": [
+          "Cloud observation"
+        ],
+        "description": "Returns explicit execution authorization and administrator-declared host associations. A read-only cloud connection starts disabled without an execution pool. This response does not establish host readiness. Unavailable deployments and disconnected or foreign connections return 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Tenant-owned Nodus cloud connection identity."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Read cloud execution setup",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloudExecution"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, administrator access, invalid input, missing records, conflicts, rate limits, credential storage, and transient failures are returned using the stable error and message fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "setCloudExecution",
+        "summary": "Enable or pause execution on existing AWS capacity",
+        "tags": [
+          "Cloud observation"
+        ],
+        "description": "Requires an API key owned by a user who is currently a team administrator. The console uses the same service with its authenticated session. Enabling creates or reuses one dedicated Nodus pool for this AWS connection with free private routing and prediction. It does not create or start cloud instances, install software, enroll a host, grant a host execution credentials or authorize paid overflow. Submit through the existing workload API with placement.pool set to the returned pool_id. Disabling blocks new routing while retaining current workload ownership and cleanup. Retries reuse the same pool. Missing enabled returns 400. Initial execution setup currently supports AWS only.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Tenant-owned Nodus cloud connection identity."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Enable or pause execution on existing AWS capacity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloudExecution"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, administrator access, invalid input, missing records, conflicts, rate limits, credential storage, and transient failures are returned using the stable error and message fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloudExecutionUpdate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/cloud-connections/{id}/execution/hosts": {
+      "post": {
+        "operationId": "associateCloudExecutionHost",
+        "summary": "Associate an enrolled host with observed AWS capacity",
+        "tags": [
+          "Cloud observation"
+        ],
+        "description": "Requires an API key owned by a user who is currently a team administrator. The console uses the same service with its authenticated session. Requires execution setup to be enabled and the Nodus host to belong to its dedicated pool. Checks the exact running GPU instance and region against ready account inventory collected within the last two hours. The administrator declares where the host was installed. This does not attest physical host identity or enable execution credentials. Existing associations are immutable, with exact retries returning the same record. Missing hosts return 404. Unavailable inventory and conflicting associations return 409.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Tenant-owned Nodus cloud connection identity."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Associate an enrolled host with observed AWS capacity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloudExecutionHost"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, administrator access, invalid input, missing records, conflicts, rate limits, credential storage, and transient failures are returned using the stable error and message fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloudExecutionHostInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/cloud-google-authorizations": {
+      "post": {
+        "operationId": "startGoogleCloudAuthorization",
+        "summary": "Start Google Cloud sign-in",
+        "tags": [
+          "Cloud observation"
+        ],
+        "description": "Requires a current team administrator. This browser consent flow is completed by the hosted Nodus console. It creates a one-time state and PKCE challenge. The console opens authorization_url in a new window and Google redirects to /clouds/google/callback/ on the configured Nodus console origin. The callback sends state and code only to that same-origin console through postMessage or BroadcastChannel. The console verifies the pending state and calls the authorize endpoint as the same administrator. Keep the console tab open during consent. External applications and CLI clients cannot supply a custom callback URL or receive these credentials. Direct customers to the Compute page at https://console.nodus-compute.ai/console/?view=compute to connect, then list their cloud connections through the API. Requests online cloud-platform access for temporary project setup. No offline refresh token is requested.",
+        "responses": {
+          "201": {
+            "description": "Start Google Cloud sign-in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoogleCloudAuthorizationResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Stable Nodus error and message fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/cloud-google-authorizations/{id}/authorize": {
+      "post": {
+        "operationId": "authorizeGoogleCloudConnection",
+        "summary": "Complete Google consent",
+        "tags": [
+          "Cloud observation"
+        ],
+        "description": "Called by the hosted Nodus console after its /clouds/google/callback/ page returns state and code through the same-origin browser handoff described by startGoogleCloudAuthorization. Requires the same current team administrator who started consent. Exchanges the one-use code with server-held PKCE. State, current administrator and tenant must match the starting authorization. Replays are rejected. The temporary administrator token is encrypted and never returned.",
+        "responses": {
+          "200": {
+            "description": "Complete Google consent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoogleCloudAuthorizationResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Stable Nodus error and message fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "minLength": 32,
+                    "maxLength": 256
+                  },
+                  "code": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  }
+                },
+                "required": [
+                  "state",
+                  "code"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/cloud-google-authorizations/{id}/projects": {
+      "get": {
+        "operationId": "listGoogleCloudProjects",
+        "summary": "List projects available for connection",
+        "tags": [
+          "Cloud observation"
+        ],
+        "description": "Requires the same current team administrator who started consent. Returns up to 100 visible active projects and a continuation token. A selected or completed setup returns its authorization without rediscovering projects.",
+        "responses": {
+          "200": {
+            "description": "List projects available for connection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoogleCloudAuthorizationResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Stable Nodus error and message fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page_token",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          }
+        ]
+      }
+    },
+    "/v1/cloud-google-authorizations/{id}/connect": {
+      "post": {
+        "operationId": "connectGoogleCloudProject",
+        "summary": "Advance Google Cloud project setup",
+        "tags": [
+          "Cloud observation"
+        ],
+        "description": "Requires the same current team administrator who started consent. Binds one project and optional billing location, then advances one resumable setup stage per call. Repeat the identical selection while the response is 202. Existing IAM policies and session ownership are preserved. Billing preparation is optional and can be skipped. Completion requires verified read-only access and returns 200 with the observation connection. Completion erases the temporary administrator token and queues collection. No compute is created.",
+        "responses": {
+          "202": {
+            "description": "Advance Google Cloud project setup",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoogleCloudAuthorizationResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Stable Nodus error and message fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Verified connection completed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoogleCloudAuthorizationResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "project_id": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9-]{4,28}[a-z0-9]$"
+                  },
+                  "billing_location": {
+                    "type": "string",
+                    "enum": [
+                      "",
+                      "US",
+                      "EU"
+                    ]
+                  },
+                  "skip_billing": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "project_id"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/cloud-google-authorizations/{id}": {
+      "delete": {
+        "operationId": "cancelGoogleCloudAuthorization",
+        "summary": "Cancel Google Cloud sign-in or setup",
+        "tags": [
+          "Cloud observation"
+        ],
+        "description": "Requires the same current team administrator who started consent. Erases the temporary credential and fences in-flight completion. Already-created Google access resources remain in place. Completed connections are disconnected using the cloud connection route.",
+        "responses": {
+          "204": {
+            "description": "Cancel Google Cloud sign-in or setup"
+          },
+          "default": {
+            "description": "Stable Nodus error and message fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/cloud-connections/overview": {
+      "get": {
+        "operationId": "getCloudOverview",
+        "summary": "Read aggregate connected-cloud spend and compute",
+        "tags": [
+          "Cloud observation"
+        ],
+        "description": "Aggregates the tenant’s connected accounts and projects. Google legacy whole-export rows are restricted to connected projects. Currencies remain separate, missing days remain unknown, and forecasts require fresh data from every connected scope. Azure onboarding is coming soon.",
+        "responses": {
+          "200": {
+            "description": "Aggregate observation across connected scopes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "report",
+                    "connection_count"
+                  ],
+                  "properties": {
+                    "report": {
+                      "$ref": "#/components/schemas/CloudObservationReport"
+                    },
+                    "connection_count": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, administrator access, invalid input, missing records, conflicts, rate limits, credential storage, and transient failures are returned using the stable error and message fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "enum": [
+                7,
+                30
+              ],
+              "default": 30
+            },
+            "description": "Measured history window in days."
+          },
+          {
+            "name": "horizon",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "enum": [
+                7,
+                30
+              ],
+              "default": 30
+            },
+            "description": "Usage-continuation forecast horizon in days."
+          }
+        ]
+      }
     }
   },
   "security": [
@@ -18433,6 +20572,10 @@
     },
     {
       "name": "Operations"
+    },
+    {
+      "name": "Cloud observation",
+      "description": "Read-only cloud inventory, usage, spending, and guided AWS setup. Connecting does not enroll execution capacity."
     }
   ],
   "x-source-revision": "fd919e576d7300722d687111625114383475fcf4"

@@ -441,7 +441,7 @@ class Pools:
 
     def set_predict(self, pool_id: str, enabled: bool, *, accepted_rate_version: str | None = None,
                           accepted_monthly_micros: int | None = None) -> Pool:
-        """Set Predict with explicit consent to the account-wide monthly rate when enabling."""
+        """Set Predict with explicit consent to the returned subscription rate when enabling."""
         return Pool.from_dict(_predict_result(self._request("PATCH", _path(pool_id),
             json=predict_patch(enabled, accepted_rate_version, accepted_monthly_micros)), pool_id, "id"))
 
@@ -591,7 +591,7 @@ class AsyncPools:
 
     async def set_predict(self, pool_id: str, enabled: bool, *, accepted_rate_version: str | None = None,
                           accepted_monthly_micros: int | None = None) -> Pool:
-        """Set Predict with explicit consent to the account-wide monthly rate when enabling."""
+        """Set Predict with explicit consent to the returned subscription rate when enabling."""
         return Pool.from_dict(_predict_result(await self._request("PATCH", _path(pool_id),
             json=predict_patch(enabled, accepted_rate_version, accepted_monthly_micros)), pool_id, "id"))
 

@@ -393,7 +393,7 @@ def _cmd_pools(args: argparse.Namespace) -> int:
             if args.json:
                 print(json.dumps(forecast.raw, indent=2))
             else:
-                print(_safe_line(f"Refresh: {forecast.refresh_status}. Account monthly rate: {forecast.subscription.monthly_micros} USD micros."))
+                print(_safe_line(f"Refresh: {forecast.refresh_status}. Subscription monthly rate: {forecast.subscription.monthly_micros} USD micros."))
                 if forecast.snapshot is None:
                     print("No forecast cached.")
                 else:
@@ -1116,11 +1116,11 @@ Use nodus COMMAND --help for command options.""",
         route.add_argument("--burst-timeout-behaviour", choices=("keep_waiting", "cancel"), default=None)
     pools_hosts = pools_sub.add_parser("hosts", help="list enrolled hosts and health")
     pools_hosts.add_argument("pool_id")
-    pools_predict = pools_sub.add_parser("predict", help="set paid account-wide Predict with explicit rate consent")
+    pools_predict = pools_sub.add_parser("predict", help="set Predict with explicit rate consent")
     pools_predict.add_argument("pool_id")
     pools_predict.add_argument("setting", choices=("on", "off"))
     pools_predict.add_argument("--accept-rate-version", default=None)
-    pools_predict.add_argument("--accept-monthly-micros", type=int, default=None, help="explicitly accept the full current calendar-month account charge in USD micros")
+    pools_predict.add_argument("--accept-monthly-micros", type=int, default=None, help="explicitly accept the returned subscription monthly rate in USD micros")
     pools_forecast = pools_sub.add_parser("forecast", help="read cached forecast bands and calibration")
     pools_forecast.add_argument("pool_id")
     pools_forecast.add_argument("--horizon", type=int, choices=(7, 30), default=None)
