@@ -1,6 +1,7 @@
 """Shared drafts retain exact edits and reject stale revision writes."""
 
 import json
+from typing import get_type_hints
 
 import httpx
 import pytest
@@ -29,6 +30,10 @@ def test_empty_run_draft_does_not_invent_values(asynchronous):
     ({"command": "python train.py", "max_cost_usd": 2.5},
      {"command": "python train.py", "max_cost_usd": 2.5, "image": "python:3.12"}),
     ({"gpu": None, "max_cost_usd": None}, {"command": "python train.py", "image": "python:3.12"}),
+    ({"vcpus": 2.5, "disk_gb": 80.5, "data_regions": ["us-east-1"]},
+     {"vcpus": 2.5, "disk_gb": 80.5, "data_regions": ["us-east-1"], "image": "python:3.12"}),
+    ({"vcpus": None, "disk_gb": None, "data_regions": []}, {"data_regions": [], "image": "python:3.12"}),
+    ({"data_regions": None}, {"image": "python:3.12"}),
     ({"name": "", "checkpoint_paths": [], "result_paths": ["results/model.bin"]},
      {"name": "", "checkpoint_paths": [], "result_paths": ["results/model.bin"], "image": "python:3.12"}),
 ])
@@ -111,7 +116,8 @@ def test_invalid_local_run_draft_arguments_never_reach_transport(asynchronous, r
     {"max_cost_usd": "3"}, {"max_cost_usd": None}, {"max_cost_usd": True},
     {"gpu_count": True}, {"gpu_count": 1.5}, {"result_paths": "results"},
     {"checkpoint_paths": [None]}, {"name": False}, {"memory_gb": float("inf")},
-    {"max_cost_usd": float("nan")},
+    {"max_cost_usd": float("nan")}, {"vcpus": True}, {"vcpus": float("nan")},
+    {"disk_gb": "80"}, {"disk_gb": float("inf")}, {"data_regions": "us-east-1"}, {"data_regions": [None]},
 ])
 def test_invalid_saved_field_types_are_rejected(asynchronous, values):
     body = json.dumps({"revision": 1, "values": values})
@@ -143,11 +149,15 @@ def test_unknown_saved_fields_cannot_become_typed_draft_receipts(asynchronous, o
 def test_supported_saved_fields_remain_typed_without_defaults(asynchronous):
     values = {"name": "Research run", "command": "python train.py", "image": "python:3.12", "gpu": "H100",
               "gpu_count": 2, "memory_gb": 80, "max_cost_usd": 3.5,
+              "vcpus": 2.5, "disk_gb": 80.5, "data_regions": ["us-east-1", "eu-west-1"],
               "checkpoint_paths": ["state"], "result_paths": ["results/model.bin"]}
     draft = exercise(asynchronous, lambda request: httpx.Response(200, json={"revision": 3, "values": values}),
                      lambda operations: operations.get_run_draft())
     assert isinstance(draft, nodus.RunDraft)
     assert draft.values == values
+    for name, expected in {"vcpus": float, "disk_gb": float, "data_regions": list[str]}.items():
+        assert get_type_hints(nodus.RunDraftValues)[name] == expected
+        assert get_type_hints(nodus.RunDraftPatch)[name] == expected | None
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])

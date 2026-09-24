@@ -66,6 +66,9 @@ class RunDraftValues(TypedDict, total=False):
     gpu: str
     gpu_count: int
     memory_gb: float
+    vcpus: float
+    disk_gb: float
+    data_regions: list[str]
     max_cost_usd: float
     checkpoint_paths: list[str]
     result_paths: list[str]
@@ -80,6 +83,9 @@ class RunDraftPatch(TypedDict, total=False):
     gpu: str | None
     gpu_count: int | None
     memory_gb: float | None
+    vcpus: float | None
+    disk_gb: float | None
+    data_regions: list[str] | None
     max_cost_usd: float | None
     checkpoint_paths: list[str] | None
     result_paths: list[str] | None
@@ -211,9 +217,9 @@ def _run_draft(value: Any) -> RunDraft:
             valid = isinstance(saved, str)
         elif name == "gpu_count":
             valid = type(saved) is int
-        elif name in ("memory_gb", "max_cost_usd"):
+        elif name in ("memory_gb", "max_cost_usd", "vcpus", "disk_gb"):
             valid = type(saved) in (int, float) and (type(saved) is int or math.isfinite(saved))
-        elif name in ("checkpoint_paths", "result_paths"):
+        elif name in ("checkpoint_paths", "result_paths", "data_regions"):
             valid = isinstance(saved, list) and all(isinstance(path, str) for path in saved)
         if not valid:
             raise APIError("Operation returned an invalid run draft field")

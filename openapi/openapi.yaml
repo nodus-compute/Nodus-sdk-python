@@ -8327,7 +8327,7 @@
           },
           "patch": {
             "additionalProperties": false,
-            "maxProperties": 9,
+            "maxProperties": 12,
             "minProperties": 1,
             "properties": {
               "checkpoint_paths": {
@@ -8353,6 +8353,35 @@
                     "description": "At most 4000 UTF-8 bytes. Empty strings are preserved.",
                     "maxLength": 4000,
                     "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "data_regions": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "description": "The server additionally enforces a limit of 128 UTF-8 bytes and rejects whitespace, commas and control characters.",
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "maxItems": 32,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "disk_gb": {
+                "anyOf": [
+                  {
+                    "exclusiveMinimum": 0,
+                    "type": "number"
                   },
                   {
                     "type": "null"
@@ -8447,6 +8476,17 @@
                     "type": "null"
                   }
                 ]
+              },
+              "vcpus": {
+                "anyOf": [
+                  {
+                    "exclusiveMinimum": 0,
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               }
             },
             "type": "object"
@@ -8460,7 +8500,7 @@
       },
       "RunDraftValues": {
         "type": "object",
-        "maxProperties": 9,
+        "maxProperties": 12,
         "additionalProperties": false,
         "description": "Explicitly saved partial form values. Missing fields have no saved value. Reading or editing a draft does not authorize spending.",
         "properties": {
@@ -8518,6 +8558,25 @@
             },
             "maxItems": 8,
             "type": "array"
+          },
+          "vcpus": {
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "disk_gb": {
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "data_regions": {
+            "items": {
+              "description": "The server additionally enforces a limit of 128 UTF-8 bytes and rejects whitespace, commas and control characters.",
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 32,
+            "type": "array",
+            "uniqueItems": true
           }
         }
       },

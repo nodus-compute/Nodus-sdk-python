@@ -388,7 +388,7 @@
           },
           "patch": {
             "additionalProperties": false,
-            "maxProperties": 9,
+            "maxProperties": 12,
             "minProperties": 1,
             "properties": {
               "checkpoint_paths": {
@@ -414,6 +414,35 @@
                     "description": "At most 4000 UTF-8 bytes. Empty strings are preserved.",
                     "maxLength": 4000,
                     "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "data_regions": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "description": "The server additionally enforces a limit of 128 UTF-8 bytes and rejects whitespace, commas and control characters.",
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "maxItems": 32,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "disk_gb": {
+                "anyOf": [
+                  {
+                    "exclusiveMinimum": 0,
+                    "type": "number"
                   },
                   {
                     "type": "null"
@@ -503,6 +532,17 @@
                     },
                     "maxItems": 8,
                     "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "vcpus": {
+                "anyOf": [
+                  {
+                    "exclusiveMinimum": 0,
+                    "type": "number"
                   },
                   {
                     "type": "null"
