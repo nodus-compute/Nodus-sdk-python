@@ -14,7 +14,7 @@ import uuid
 from typing import Any
 
 import httpx
-from .errors import NodusError, ValidationError, StepOutcomeUnknown, StepDefinitionConflict, StepResultExpired, StepFailed
+from .errors import NodusError, ValidationError, StepOutcomeUnknown, StepDefinitionConflict, StepResultExpired, StepFailed, AgentChildrenUnavailable
 
 _ID = re.compile(r'^[A-Za-z0-9:_.-]{1,128}$')
 _MAX = 256 << 10
@@ -97,6 +97,15 @@ class _RPC:
                 if attempt == 2:
                     raise StepOutcomeUnknown('Journal acknowledgement unavailable') from None
                 continue
+            if action in ('child_spawn', 'children_wait', 'child_cancel', 'child_result', 'child_blob_get'):
+                try:
+                    refusal = response.json()
+                except ValueError:
+                    refusal = None
+                code = (refusal.get('code') or refusal.get('error')) if isinstance(refusal, dict) else None
+                if (response.status_code == 503 and code == 'managed_agent_children_unavailable'
+                        or response.status_code == 400 and code == 'agent_bridge_unavailable'):
+                    raise AgentChildrenUnavailable('Durable child operations are unavailable for this managed runtime')
             if response.status_code >= 500:
                 if attempt == 2:
                     raise StepOutcomeUnknown('Journal acknowledgement unavailable')
@@ -112,7 +121,10 @@ class _RPC:
                 if not isinstance(code, str):
                     code = 'unavailable'
                 error = {'step_definition_conflict': StepDefinitionConflict,
+                         'idempotency_conflict': StepDefinitionConflict,
                          'step_result_expired': StepResultExpired,
+                         'managed_agent_child_result_expired': StepResultExpired,
+                         'managed_agent_child_blob_expired': StepResultExpired,
                          'step_failed': StepFailed}.get(code, StepOutcomeUnknown)
                 raise error('Agent journal refused operation: ' + (code if isinstance(code, str) and _ID.fullmatch(code) else 'unavailable'))
             return value
@@ -306,3 +318,9 @@ def get_blob(reference: dict) -> bytes:
     """Read and verify bytes referenced by a committed managed blob."""
     from .agent_runtime import get_blob as get
     return get(reference)
+
+
+from ._agent_children import (
+    ChildReference, ChildOutcome, ChildCompletions, ChildCancellation,
+    spawn_child, await_children, next_child_completions, cancel_child, child_result, get_child_blob,
+)

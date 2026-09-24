@@ -2051,6 +2051,9 @@ class AsyncWorkload(_WorkloadState):
 from . import _agent as agent
 from ._steps import step, step_context
 from .errors import StepOutcomeUnknown, StepDefinitionConflict, StepResultExpired, StepFailed
+from .errors import AgentChildrenUnavailable
+from ._agent_children import ChildReference, ChildOutcome, ChildCompletions, ChildCancellation
+__all__.extend(['AgentChildrenUnavailable', 'ChildReference', 'ChildOutcome', 'ChildCompletions', 'ChildCancellation'])
 
 from ._agent_runs import AgentRun
 __all__.append("AgentRun")

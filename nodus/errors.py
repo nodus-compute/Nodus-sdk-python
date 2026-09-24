@@ -22,6 +22,7 @@ _CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 __all__ = [
     "NodusError",
     "StepOutcomeUnknown", "StepDefinitionConflict", "StepResultExpired", "StepFailed",
+    "AgentChildrenUnavailable",
     "ConfigurationError",
     "AuthenticationError",
     "NotFoundError",
@@ -388,3 +389,7 @@ class StepResultExpired(NodusError):
 
 class StepFailed(NodusError):
     """The journal retains a known failure for this step."""
+
+
+class AgentChildrenUnavailable(NodusError):
+    """The assigned runtime or account has not enabled durable child operations."""
