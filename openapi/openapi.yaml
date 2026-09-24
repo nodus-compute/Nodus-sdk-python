@@ -8907,11 +8907,7 @@
             "description": "Retained attempt and resource evidence. Counts can overlap and do not establish current healthy capacity."
           },
           "productive_active_agents": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "minimum": 0,
+            "type": "null",
             "description": "Null because retained lifecycle records do not independently measure productive agent activity."
           },
           "productive_active_agents_status": {
@@ -9123,11 +9119,7 @@
             "description": "First retained completed step receipt. A completed step does not establish accepted task output."
           },
           "first_useful_command_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time",
+            "type": "null",
             "description": "Null because useful work requires independent workload evidence."
           },
           "first_useful_command_status": {
@@ -19353,6 +19345,16 @@
               }
             }
           },
+          "404": {
+            "description": "The agent definition does not exist or is not owned by the authenticated tenant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          },
           "default": {
             "description": "Operation refused with a diagnostic and next action",
             "content": {
@@ -19364,7 +19366,7 @@
             }
           }
         },
-        "description": "Returns one read-only database snapshot with a paginated run projection. Counts cover all runs of the definition. Missing timestamps and productive activity remain explicitly unmeasured. Available for retained work when new admission is disabled."
+        "description": "Requires authentication and an agent definition owned by the authenticated tenant. Returns 404 when the definition does not exist or belongs to another tenant. Returns one read-only database snapshot with a paginated run projection. Counts cover all runs of the definition. Missing timestamps and productive activity remain explicitly unmeasured. Available for retained work when new admission is disabled."
       }
     },
     "/v1/agents/{id}/runs": {
