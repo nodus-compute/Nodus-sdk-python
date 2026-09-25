@@ -38,3 +38,45 @@ A workspace can select another dedicated top-level mount. System directories can
 Periodic saves preserve the latest useful archive. An empty folder does not replace an earlier useful archive. Hard spending and lifetime cutoffs preserve the last successful save. They cannot guarantee files written after that save. Files must fit the configured workspace capacity.
 
 Storage billing is disabled unless the deployment has a configured price. The metadata reports `disabled_no_approved_storage_rate` or `metered_subject_to_account_limits`. Account and workload spending limits still apply. The asynchronous client exposes the same workspace methods.
+
+## Saved project files
+
+For a stopped interactive GPU workspace created in the console, use its returned
+workspace ID to upload a project directory without starting compute:
+
+```python
+with nodus.Client() as client:
+    transfer = client.workspaces.upload_files(
+        workspace_id,
+        "./project",
+        idempotency_key="project-upload-1",
+    )
+    print(transfer["state"])
+    print(client.workspaces.storage())
+```
+
+An upload can return `queued` or `verifying` while the server checks the files.
+Those states do not mean that saved files have been published. Observe the
+workspace in the console. After an interrupted upload, retry the unchanged
+directory with the same key and `replace_revision`, if supplied. Replacing saved
+files requires their observed revision. Symbolic links and special files are
+refused, and archive preparation uses temporary disk space proportional to the
+project size.
+
+Use the saved revision reported by the workspace when downloading or deleting:
+
+```python
+with nodus.Client() as client:
+    client.workspaces.export_files(
+        workspace_id,
+        "./saved-project.tar",
+        storage_revision=saved_revision,
+    )
+    client.workspaces.delete_files(workspace_id, storage_revision=saved_revision)
+```
+
+Downloads verify every segment and the complete archive before publishing the
+destination. They do not extract files or forward account credentials to the
+download service. Existing destination files are preserved unless
+`overwrite=True` is supplied. Deletion is sent once and remains guarded by the
+observed revision. The asynchronous client supports the same four methods.
