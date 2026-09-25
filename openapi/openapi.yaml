@@ -1216,8 +1216,113 @@
               "any"
             ],
             "description": "No interconnect guarantee. Requests for NVLink or NVSwitch are rejected until topology can be verified."
+          },
+          "node_count": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 256,
+            "description": "Exact machines required. Omission defaults to one or inherits the workload count for a stage. Multi-machine submissions currently return distributed_training_unavailable before allocation. The schema bound is not a qualified production capacity."
+          },
+          "distribution": {
+            "$ref": "#/components/schemas/TrainingDistribution",
+            "description": "Explicit framework and process topology. Submissions containing this field currently return distributed_training_unavailable before allocation."
           }
         }
+      },
+      "TrainingDistribution": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "framework",
+          "processes_per_node"
+        ],
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "",
+              "standard",
+              "low_communication"
+            ],
+            "description": "Omission means standard training with the customer's declared algorithm unchanged."
+          },
+          "framework": {
+            "type": "string",
+            "enum": [
+              "pytorch",
+              "accelerate",
+              "deepspeed",
+              "jax",
+              "tensorflow",
+              "custom"
+            ]
+          },
+          "processes_per_node": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 64
+          },
+          "geography": {
+            "type": "string",
+            "enum": [
+              "",
+              "single_region",
+              "cross_region"
+            ],
+            "description": "Omission permits a single region only. Data-location restrictions still apply."
+          },
+          "config_file": {
+            "type": "string",
+            "maxLength": 1024,
+            "description": "Relative project path to the Accelerate launcher configuration. Required for Accelerate and rejected for other launchers. Must match launch.config_file in nodus.training.json."
+          },
+          "diloco": {
+            "$ref": "#/components/schemas/DiLoCoProfile"
+          }
+        }
+      },
+      "DiLoCoProfile": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "islands",
+          "local_steps",
+          "outer_learning_rate",
+          "outer_momentum",
+          "synchronization_timeout_seconds"
+        ],
+        "properties": {
+          "version": {
+            "type": "integer",
+            "const": 1
+          },
+          "islands": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 256
+          },
+          "local_steps": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000000
+          },
+          "outer_learning_rate": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "outer_momentum": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "exclusiveMaximum": 1
+          },
+          "synchronization_timeout_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3600
+          }
+        },
+        "description": "Explicit fixed-membership DiLoCo configuration. Requires low_communication mode and the PyTorch launcher. This configuration does not establish a qualified training profile."
       },
       "ResourceAttributes": {
         "type": "object",
@@ -9222,6 +9327,65 @@
                   "disk_gb": {
                     "type": "number"
                   },
+                  "distribution": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "config_file": {
+                            "type": "string"
+                          },
+                          "diloco": {
+                            "anyOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "islands": {
+                                    "type": "integer"
+                                  },
+                                  "local_steps": {
+                                    "type": "integer"
+                                  },
+                                  "outer_learning_rate": {
+                                    "type": "number"
+                                  },
+                                  "outer_momentum": {
+                                    "type": "number"
+                                  },
+                                  "synchronization_timeout_seconds": {
+                                    "type": "integer"
+                                  },
+                                  "version": {
+                                    "type": "integer"
+                                  }
+                                },
+                                "type": "object"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "framework": {
+                            "type": "string"
+                          },
+                          "geography": {
+                            "type": "string"
+                          },
+                          "mode": {
+                            "type": "string"
+                          },
+                          "processes_per_node": {
+                            "type": "integer"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "expected_runtime_hours": {
                     "type": "number"
                   },
@@ -9243,6 +9407,16 @@
                   },
                   "model": {
                     "type": "string"
+                  },
+                  "node_count": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "notes": {
                     "type": "string"
@@ -9874,6 +10048,65 @@
                   "disk_gb": {
                     "type": "number"
                   },
+                  "distribution": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "config_file": {
+                            "type": "string"
+                          },
+                          "diloco": {
+                            "anyOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "islands": {
+                                    "type": "integer"
+                                  },
+                                  "local_steps": {
+                                    "type": "integer"
+                                  },
+                                  "outer_learning_rate": {
+                                    "type": "number"
+                                  },
+                                  "outer_momentum": {
+                                    "type": "number"
+                                  },
+                                  "synchronization_timeout_seconds": {
+                                    "type": "integer"
+                                  },
+                                  "version": {
+                                    "type": "integer"
+                                  }
+                                },
+                                "type": "object"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "framework": {
+                            "type": "string"
+                          },
+                          "geography": {
+                            "type": "string"
+                          },
+                          "mode": {
+                            "type": "string"
+                          },
+                          "processes_per_node": {
+                            "type": "integer"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "expected_runtime_hours": {
                     "type": "number"
                   },
@@ -9895,6 +10128,16 @@
                   },
                   "model": {
                     "type": "string"
+                  },
+                  "node_count": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "notes": {
                     "type": "string"
@@ -10103,6 +10346,65 @@
                       "disk_gb": {
                         "type": "number"
                       },
+                      "distribution": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "config_file": {
+                                "type": "string"
+                              },
+                              "diloco": {
+                                "anyOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "islands": {
+                                        "type": "integer"
+                                      },
+                                      "local_steps": {
+                                        "type": "integer"
+                                      },
+                                      "outer_learning_rate": {
+                                        "type": "number"
+                                      },
+                                      "outer_momentum": {
+                                        "type": "number"
+                                      },
+                                      "synchronization_timeout_seconds": {
+                                        "type": "integer"
+                                      },
+                                      "version": {
+                                        "type": "integer"
+                                      }
+                                    },
+                                    "type": "object"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "framework": {
+                                "type": "string"
+                              },
+                              "geography": {
+                                "type": "string"
+                              },
+                              "mode": {
+                                "type": "string"
+                              },
+                              "processes_per_node": {
+                                "type": "integer"
+                              }
+                            },
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "expected_runtime_hours": {
                         "type": "number"
                       },
@@ -10124,6 +10426,16 @@
                       },
                       "model": {
                         "type": "string"
+                      },
+                      "node_count": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
                       },
                       "notes": {
                         "type": "string"
