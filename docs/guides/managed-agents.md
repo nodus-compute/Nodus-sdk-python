@@ -101,7 +101,8 @@ requests and use `async for` with `.iterate()`.
 
 ## Hosted Claude assistant
 
-Accounts admitted to hosted model access can deploy the installed text assistant
+Hosted model methods require SDK 0.7.1 or later. Accounts admitted to hosted
+model access can deploy the installed text assistant
 without uploading a project or providing a model API key. Pass an enabled public
 Nodus model identifier from your account's model catalog:
 

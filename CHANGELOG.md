@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.1
+
+- Add the hosted Claude assistant template with an explicit budget and model selection on qualified deployments.
+- Add `nodus.agent.model` for durable hosted model calls within recorded steps, with bounded polling and actionable uncertain outcomes.
+- Preserve assistant conversation state through committed checkpoints and reuse recorded model responses after recovery.
+
 ## 0.7.0
 
 - Add qualified tools-template sandbox creation, immutable project upload, verified file transfers, setup progress and explicit sleep or wake. These capabilities require deployment qualification and account admission.
