@@ -10614,6 +10614,9 @@
             "additionalProperties": false,
             "description": "Customer managed-agent definition with name, entrypoint, verified source and worker settings.",
             "properties": {
+              "assistant_template": {
+                "type": "string"
+              },
               "bootstrap": {
                 "anyOf": [
                   {
@@ -10665,6 +10668,12 @@
                     "type": "null"
                   }
                 ]
+              },
+              "model": {
+                "type": "string"
+              },
+              "model_max_output_tokens": {
+                "type": "integer"
               },
               "name": {
                 "type": "string"
@@ -10843,6 +10852,9 @@
                 "additionalProperties": false,
                 "description": "The complete new deployment definition.",
                 "properties": {
+                  "assistant_template": {
+                    "type": "string"
+                  },
                   "bootstrap": {
                     "anyOf": [
                       {
@@ -10894,6 +10906,12 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "model": {
+                    "type": "string"
+                  },
+                  "model_max_output_tokens": {
+                    "type": "integer"
                   },
                   "name": {
                     "type": "string"
