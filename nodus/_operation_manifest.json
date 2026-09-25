@@ -838,6 +838,65 @@
                   "disk_gb": {
                     "type": "number"
                   },
+                  "distribution": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "config_file": {
+                            "type": "string"
+                          },
+                          "diloco": {
+                            "anyOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "islands": {
+                                    "type": "integer"
+                                  },
+                                  "local_steps": {
+                                    "type": "integer"
+                                  },
+                                  "outer_learning_rate": {
+                                    "type": "number"
+                                  },
+                                  "outer_momentum": {
+                                    "type": "number"
+                                  },
+                                  "synchronization_timeout_seconds": {
+                                    "type": "integer"
+                                  },
+                                  "version": {
+                                    "type": "integer"
+                                  }
+                                },
+                                "type": "object"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "framework": {
+                            "type": "string"
+                          },
+                          "geography": {
+                            "type": "string"
+                          },
+                          "mode": {
+                            "type": "string"
+                          },
+                          "processes_per_node": {
+                            "type": "integer"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "expected_runtime_hours": {
                     "type": "number"
                   },
@@ -859,6 +918,16 @@
                   },
                   "model": {
                     "type": "string"
+                  },
+                  "node_count": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "notes": {
                     "type": "string"
@@ -1688,6 +1757,65 @@
                   "disk_gb": {
                     "type": "number"
                   },
+                  "distribution": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "config_file": {
+                            "type": "string"
+                          },
+                          "diloco": {
+                            "anyOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "islands": {
+                                    "type": "integer"
+                                  },
+                                  "local_steps": {
+                                    "type": "integer"
+                                  },
+                                  "outer_learning_rate": {
+                                    "type": "number"
+                                  },
+                                  "outer_momentum": {
+                                    "type": "number"
+                                  },
+                                  "synchronization_timeout_seconds": {
+                                    "type": "integer"
+                                  },
+                                  "version": {
+                                    "type": "integer"
+                                  }
+                                },
+                                "type": "object"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "framework": {
+                            "type": "string"
+                          },
+                          "geography": {
+                            "type": "string"
+                          },
+                          "mode": {
+                            "type": "string"
+                          },
+                          "processes_per_node": {
+                            "type": "integer"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "expected_runtime_hours": {
                     "type": "number"
                   },
@@ -1709,6 +1837,16 @@
                   },
                   "model": {
                     "type": "string"
+                  },
+                  "node_count": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "notes": {
                     "type": "string"
@@ -1935,6 +2073,65 @@
                       "disk_gb": {
                         "type": "number"
                       },
+                      "distribution": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "config_file": {
+                                "type": "string"
+                              },
+                              "diloco": {
+                                "anyOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "islands": {
+                                        "type": "integer"
+                                      },
+                                      "local_steps": {
+                                        "type": "integer"
+                                      },
+                                      "outer_learning_rate": {
+                                        "type": "number"
+                                      },
+                                      "outer_momentum": {
+                                        "type": "number"
+                                      },
+                                      "synchronization_timeout_seconds": {
+                                        "type": "integer"
+                                      },
+                                      "version": {
+                                        "type": "integer"
+                                      }
+                                    },
+                                    "type": "object"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "framework": {
+                                "type": "string"
+                              },
+                              "geography": {
+                                "type": "string"
+                              },
+                              "mode": {
+                                "type": "string"
+                              },
+                              "processes_per_node": {
+                                "type": "integer"
+                              }
+                            },
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "expected_runtime_hours": {
                         "type": "number"
                       },
@@ -1956,6 +2153,16 @@
                       },
                       "model": {
                         "type": "string"
+                      },
+                      "node_count": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
                       },
                       "notes": {
                         "type": "string"
