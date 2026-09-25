@@ -3920,6 +3920,11 @@
             "type": "array",
             "maxItems": 100,
             "items": {"$ref": "#/components/schemas/ResearchWorkspace"}
+          },
+          "next_cursor": {
+            "type": "string",
+            "maxLength": 1024,
+            "description": "Opaque continuation for this account and list. Empty when this page has no further records."
           }
         }
       },
@@ -15731,7 +15736,11 @@
         "operationId": "listResearchWorkspaces",
         "summary": "List saved research workspaces",
         "tags": ["Research workspaces"],
-        "description": "Returns the latest 100 workspaces owned by the authenticated account, newest first. Includes compute-session costs, separate retained-storage costs and tool readiness. No pagination cursor is currently exposed.",
+        "description": "Returns a page of workspaces owned by the authenticated account, newest first. The default and maximum page size are 100. Includes compute-session costs, separate retained-storage costs and tool readiness. Continue with next_cursor until it is empty. Pages reflect current records and do not form a snapshot across concurrent changes.",
+        "parameters": [
+          {"name": "limit", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 100, "default": 100}, "description": "Maximum workspaces on this page."},
+          {"name": "cursor", "in": "query", "schema": {"type": "string", "maxLength": 1024}, "description": "Opaque next_cursor from this account's previous research workspace page."}
+        ],
         "responses": {
           "200": {
             "description": "Workspace list",
@@ -16379,8 +16388,13 @@
       "get": {
         "operationId": "listWorkspaces",
         "summary": "List owned workspace metadata",
+        "description": "Returns a page ordered by workspace name and identifier. The default and maximum page size are 1000. Continue with next_cursor until it is empty. Saved workspaces remain visible after compute stops. Pages reflect current records and do not form a snapshot across concurrent changes.",
         "tags": [
           "Workspaces"
+        ],
+        "parameters": [
+          {"name": "limit", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 1000, "default": 1000}, "description": "Maximum workspaces on this page."},
+          {"name": "cursor", "in": "query", "schema": {"type": "string", "maxLength": 1024}, "description": "Opaque next_cursor from this account's previous workspace page."}
         ],
         "responses": {
           "200": {
@@ -16395,9 +16409,15 @@
                   "properties": {
                     "workspaces": {
                       "type": "array",
+                      "maxItems": 1000,
                       "items": {
                         "$ref": "#/components/schemas/WorkspaceRecord"
                       }
+                    },
+                    "next_cursor": {
+                      "type": "string",
+                      "maxLength": 1024,
+                      "description": "Opaque continuation for this account and list. Empty when this page has no further records."
                     }
                   }
                 }
