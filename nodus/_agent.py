@@ -14,7 +14,7 @@ import uuid
 from typing import Any
 
 import httpx
-from .errors import NodusError, ValidationError, StepOutcomeUnknown, StepDefinitionConflict, StepResultExpired, StepFailed, AgentChildrenUnavailable
+from .errors import NodusError, ValidationError, StepOutcomeUnknown, StepDefinitionConflict, StepResultExpired, StepFailed, AgentChildrenUnavailable, AgentBrokerUnavailable
 
 _ID = re.compile(r'^[A-Za-z0-9:_.-]{1,128}$')
 _MAX = 256 << 10
@@ -72,6 +72,10 @@ def decode(value: Any) -> Any:
         raise StepOutcomeUnknown('The durable result could not be verified') from exc
 
 
+class _BrokerMissing(Exception):
+    pass
+
+
 class _RPC:
     def __init__(self):
         path = os.environ.get('NODUS_AGENT_SOCKET', '')
@@ -97,6 +101,18 @@ class _RPC:
                 if attempt == 2:
                     raise StepOutcomeUnknown('Journal acknowledgement unavailable') from None
                 continue
+            if action in ('broker_invoke', 'broker_status'):
+                try:
+                    refusal = response.json()
+                except ValueError:
+                    refusal = None
+                code = (refusal.get('code') or refusal.get('error')) if isinstance(refusal, dict) else None
+                if action == 'broker_status' and response.status_code == 404 and code == 'not_found':
+                    raise _BrokerMissing()
+                if (response.status_code == 400 and code == 'agent_bridge_unavailable'
+                        or response.status_code in (409, 503) and code in (
+                            'managed_broker_unavailable', 'managed_broker_runtime_unqualified', 'managed_broker_profile_unqualified')):
+                    raise AgentBrokerUnavailable('The requested broker is unavailable for this managed runtime or account')
             if action in ('child_spawn', 'children_wait', 'child_cancel', 'child_result', 'child_blob_get'):
                 try:
                     refusal = response.json()
@@ -344,3 +360,5 @@ from ._agent_children import (
     ChildReference, ChildOutcome, ChildCompletions, ChildCancellation,
     spawn_child, await_children, next_child_completions, cancel_child, child_result, get_child_blob,
 )
+
+from ._agent_broker import complete_model, read_blob_chunk

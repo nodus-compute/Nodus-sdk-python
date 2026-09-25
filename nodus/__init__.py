@@ -2057,3 +2057,6 @@ __all__.extend(['AgentChildrenUnavailable', 'ChildReference', 'ChildOutcome', 'C
 
 from ._agent_runs import AgentRun
 __all__.append("AgentRun")
+
+from .errors import AgentBrokerUnavailable, BrokerRefused
+__all__.extend(['AgentBrokerUnavailable', 'BrokerRefused'])

@@ -138,3 +138,26 @@ HTTP 202 confirms the fence, not completed physical cleanup.
 Reads, cancellation and replay of accepted batch receipts remain available when
 new group admission is disabled. Monitor allocation liability until cleanup is
 settled. Do not use a new submission key to work around an uncertain response.
+
+## Bound model and tool usage
+
+On deployments with broker admission enabled for your account, group creation
+can include immutable `broker_limits`. Omit the field to retain the existing
+direct model and tool workflow. The broker requires separate runtime and model
+qualification and is unavailable by default.
+
+The limits contain integer `model_requests`, `input_tokens`, `output_tokens`,
+`tool_requests`, `read_bytes`, `max_concurrent`, `max_retained_invocations` and
+`max_retained_bytes`. They must fit your account's configured ceilings. Request,
+token, read-byte and invocation-history limits cover the group's lifetime.
+Increasing account limits does not reset usage. A model admission reserves its
+profile's full context bound until an authoritative result settles actual usage.
+
+Groups with these limits also expose `broker_usage`. It reports model and tool
+request usage, token and read-byte reservations, dispatched active work, unknown
+outcomes and fixed quota wait reasons. These are integer units, separate from
+`cost_usd` and `reserved_usd`. Unknown effects retain their full reservation.
+Payload expiry does not erase invocation history or grant another attempt.
+
+See [bounded model and blob operations](managed-agents.md#use-bounded-model-and-blob-operations)
+for the assigned-driver calls and replay rules.
