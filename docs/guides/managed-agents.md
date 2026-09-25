@@ -99,6 +99,58 @@ new input. Retrying the same event key with changed input is a conflict.
 `AsyncClient.agents` exposes the same operations. Await methods that perform
 requests and use `async for` with `.iterate()`.
 
+## Hosted Claude assistant
+
+Accounts admitted to hosted model access can deploy the installed text assistant
+without uploading a project or providing a model API key. Pass an enabled public
+Nodus model identifier from your account's model catalog:
+
+```python
+def deploy_assistant(client, model):
+    return client.agents.create(
+        name="report-assistant",
+        assistant_template="nodus:claude-assistant-v1",
+        model=model,
+        budget=20,
+        idempotency_key="report-assistant-001",
+    )
+
+def submit_report(assistant, task):
+    return assistant.submit(
+        {"task": task},
+        session="report-conversation",
+        idempotency_key="report-001",
+    )
+```
+
+The assistant returns `text`, `model`, `stop_reason` and reported `usage` in the
+run result. It saves conversation history in `NODUS_CHECKPOINT_DIR`. Reusing the
+session keeps its ordered conversation. Different sessions have separate state.
+The installed assistant answers text tasks and does not execute tools or browse.
+Its [entrypoint](../../nodus/managed_assistant.py) writes and flushes state before
+the journal commits its answer. It does not restore arbitrary process memory.
+
+Model usage consumes the agent's authorized budget alongside compute. The
+controller supplies the accepted model and output limit. You can set
+`model_max_output_tokens` explicitly at deployment, up to 4096 and the enabled
+model's limit. The SDK does not supply a missing limit or calculate charges.
+
+Custom managed entrypoints can call `nodus.agent.model(messages, call_id=...,
+max_output_tokens=...)` inside a decorated step. Messages contain `role` and text
+`content`. Optional `system` supplies text instructions. The helper uses the
+deployment's accepted model unless `model` is explicitly supplied. The server
+requires that explicit model to match the accepted deployment. Keep each call ID
+and request stable across retries. Request inputs are bounded to 128 KiB and
+responses to 256 KiB.
+
+A pure step may read this durable model response and write application state.
+Reentering that step retrieves the accepted response without making another
+provider call. This property does not apply to direct external API calls, which
+retain the [external effect contract](../durable-steps.md). Short status polls
+allow session renewal while a hosted request runs. Unknown outcomes block for
+reconciliation. Keep the existing call identity and inspect the run instead of
+submitting the same work under a new ID.
+
 ## Wait without keeping a worker busy
 
 Inside `main`, call `nodus.agent.wait_for_event("approval", wait_id="approval:1")`
