@@ -1040,6 +1040,11 @@
             "default": 0,
             "description": "Settled saved-file charges earned in this UTC billing month in an account meter. Already included in settled_usd. Zero in workload and workspace compute-session meters."
           },
+          "model_settled_usd": {
+            "type": "number",
+            "default": 0,
+            "description": "Settled managed model charges in this billing period in an account meter. Already included in settled_usd. Zero in workload and workspace compute-session meters."
+          },
           "compute_accruing_usd": {
             "type": "number",
             "default": 0,
@@ -3647,6 +3652,7 @@
           "platform_fee_settled_usd": {"type": "number"},
           "subscription_settled_usd": {"type": "number", "description": "Zero for workspace compute sessions."},
           "storage_settled_usd": {"type": "number", "default": 0, "description": "Zero for workspace compute sessions. Saved-file charges belong to the account meter."},
+          "model_settled_usd": {"type": "number", "default": 0, "description": "Zero for workspace compute sessions. Managed model charges belong to the account meter."},
           "compute_accruing_usd": {"type": "number"},
           "platform_fee_accruing_usd": {"type": "number"}
         }
@@ -8610,7 +8616,8 @@
         "additionalProperties": false,
         "properties": {
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Deployment name. An omitted built-in assistant name is generated from the idempotency key."
           },
           "entrypoint": {
             "type": "string",
@@ -8618,7 +8625,8 @@
           },
           "budget_usd": {
             "type": "number",
-            "exclusiveMinimum": 0
+            "exclusiveMinimum": 0,
+            "description": "Shared compute spending limit. Defaults to 20 for the built-in assistant. Model and retained storage charges are separate and use the account balance and spending controls."
           },
           "template": {
             "type": "string"
@@ -8678,13 +8686,844 @@
           },
           "policy": {
             "$ref": "#/components/schemas/SandboxPolicy"
+          },
+          "assistant_template": {
+            "type": "string",
+            "enum": [
+              "nodus:claude-assistant-v1"
+            ],
+            "description": "Qualified built-in assistant from assistant_templates in the managed model catalog. Supplies its installed entrypoint and environment. No project, setup command or provider credential is required."
+          },
+          "model": {
+            "type": "string",
+            "pattern": "^nodus:[A-Za-z0-9._:-]+$",
+            "maxLength": 128,
+            "description": "Qualified Messages model accepted for this revision. Provider credentials stay in Nodus."
+          },
+          "model_max_output_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4096,
+            "default": 1024,
+            "description": "Per-call output bound for hosted model access. Must fit the selected model qualification."
           }
         },
+        "allOf": [
+          {
+            "if": {
+              "required": [
+                "assistant_template"
+              ]
+            },
+            "then": {
+              "required": [
+                "model"
+              ]
+            },
+            "else": {
+              "required": [
+                "name",
+                "entrypoint",
+                "budget_usd"
+              ]
+            }
+          }
+        ],
+        "description": "Custom code supplies a name, entrypoint and compute budget. A qualified built-in assistant supplies assistant_template and model, with optional name and compute limits. The built-in assistant rejects source, bootstrap, setup, secrets, network permissions and policy overrides."
+      },
+      "ManagedModelRates": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "input_micros_per_million",
+          "output_micros_per_million"
+        ],
+        "properties": {
+          "input_micros_per_million": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "description": "Customer price for uncached input, in USD micros per million tokens."
+          },
+          "output_micros_per_million": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "description": "Customer price for output including reasoning, in USD micros per million tokens."
+          },
+          "cache_read_micros_per_million": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Customer price for cached input reads. Omission means this cache bucket is not qualified, not free."
+          },
+          "cache_write_5m_micros_per_million": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Customer price for five-minute cache creation. Omission means this bucket is not qualified."
+          },
+          "cache_write_1h_micros_per_million": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Customer price for one-hour cache creation. Omission means this bucket is not qualified."
+          }
+        },
+        "description": "Published customer rates already include the service markup. One USD micro is 0.000001 USD. Each token belongs to one billing bucket. Charges round upward to integer USD micros after summing usage at these rates."
+      },
+      "ManagedModelPublic": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "label",
+          "protocol",
+          "price_version",
+          "rates",
+          "max_output_tokens",
+          "streaming"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^nodus:[A-Za-z0-9._:-]+$",
+            "minLength": 7,
+            "maxLength": 128,
+            "description": "Model ID returned by this account’s managed model catalog."
+          },
+          "label": {
+            "type": "string"
+          },
+          "protocol": {
+            "type": "string",
+            "enum": [
+              "messages",
+              "chat_completions"
+            ]
+          },
+          "price_version": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+            "maxLength": 128
+          },
+          "rates": {
+            "$ref": "#/components/schemas/ManagedModelRates"
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200000
+          },
+          "streaming": {
+            "type": "boolean",
+            "const": false
+          }
+        },
+        "description": "An account-qualified model and its published customer pricing. No credentials or private routing configuration are returned."
+      },
+      "ManagedModelCatalog": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "enabled",
+          "models",
+          "billing",
+          "currency",
+          "assistant_templates"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "True when at least one model is granted to this account."
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ManagedModelPublic"
+            },
+            "description": "Qualified models sorted by ID. Empty for accounts without a configured grant."
+          },
+          "billing": {
+            "type": "string",
+            "const": "nodus_credits"
+          },
+          "currency": {
+            "type": "string",
+            "const": "USD"
+          },
+          "assistant_templates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ManagedAssistantTemplate"
+            },
+            "description": "Built-in assistants available on the qualified runtime. Empty until account, compute, model and exact image qualifications all pass."
+          }
+        }
+      },
+      "ManagedAssistantTemplate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "label",
+          "protocol",
+          "model_ids",
+          "default_output_tokens"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "const": "nodus:claude-assistant-v1"
+          },
+          "label": {
+            "type": "string"
+          },
+          "protocol": {
+            "type": "string",
+            "const": "messages"
+          },
+          "model_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "description": "Models qualified for this installed assistant and its default output bound."
+          },
+          "default_output_tokens": {
+            "type": "integer",
+            "const": 1024
+          }
+        },
+        "description": "An assistant qualified for the account and the exact tools image. Empty discovery prevents launching into incompatible runtimes."
+      },
+      "ManagedModelUsage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "input_tokens",
+          "output_tokens",
+          "cached_input_tokens",
+          "cache_creation_5m_input_tokens",
+          "cache_creation_1h_input_tokens"
+        ],
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Total input including all cache buckets. Uncached input is the remainder after subtracting the cache buckets."
+          },
+          "output_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Total output including reasoning tokens."
+          },
+          "cached_input_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Input tokens read from cache."
+          },
+          "cache_creation_5m_input_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Input tokens written with a five-minute cache lifetime."
+          },
+          "cache_creation_1h_input_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Input tokens written with a one-hour cache lifetime."
+          }
+        },
+        "description": "Normalized, verified accounting counters. These receipt counters differ from the native usage object returned by a completion request."
+      },
+      "ManagedModelReceipt": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "model",
+          "price_version",
+          "state",
+          "reserved_micros",
+          "charge_micros",
+          "usage",
+          "created_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string",
+            "pattern": "^nodus:[A-Za-z0-9._:-]+$",
+            "minLength": 7,
+            "maxLength": 128,
+            "description": "Model ID returned by this account’s managed model catalog."
+          },
+          "price_version": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+            "maxLength": 128
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "running",
+              "succeeded",
+              "failed",
+              "unknown"
+            ],
+            "description": "Running and unknown keep their reservation. Succeeded posts the verified charge. Failed records a definitive rejection without a model charge."
+          },
+          "reserved_micros": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "description": "Original spending reservation in USD micros. It is held only while state is running or unknown."
+          },
+          "charge_micros": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Settled customer charge in USD micros. Zero until successful settlement. Model charges are separate from compute and saved storage."
+          },
+          "usage": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ManagedModelUsage"
+              },
+              {
+                "type": "object",
+                "maxProperties": 0
+              }
+            ],
+            "description": "Verified normalized usage after successful settlement. Empty for running, unknown and failed requests."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finished_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Present for succeeded and failed requests."
+          }
+        },
+        "description": "Durable billing evidence scoped to the authenticated account. Prompts, model answers, credentials and private pricing are not included."
+      },
+      "ManagedModelReplay": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "error",
+          "receipt"
+        ],
+        "properties": {
+          "error": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "code",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "const": "model_request_already_accepted"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/ManagedModelReceipt"
+          }
+        },
+        "description": "The original request is not executed again. This response does not replay the generated answer."
+      },
+      "ManagedModelChatMessage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "role"
+        ],
+        "anyOf": [
+          {
+            "required": [
+              "content"
+            ]
+          },
+          {
+            "required": [
+              "tool_calls"
+            ]
+          }
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "system",
+              "developer",
+              "user",
+              "assistant",
+              "tool"
+            ]
+          },
+          "content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "text"
+                  ],
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "text"
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            ],
+            "description": "Text or text blocks only. Null is used for an assistant function call without text. Images and audio are not supported."
+          },
+          "name": {
+            "type": "string"
+          },
+          "tool_calls": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "type",
+                "function"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string",
+                  "const": "function"
+                },
+                "function": {
+                  "type": "object",
+                  "required": [
+                    "name",
+                    "arguments"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "arguments": {
+                      "type": "string",
+                      "description": "Function arguments encoded as a JSON string."
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "tool_call_id": {
+            "type": "string"
+          }
+        },
+        "description": "Native chat-completions message. Use role and content combinations supported by the catalog model."
+      },
+      "ManagedModelFunctionTool": {
+        "type": "object",
+        "required": [
+          "type",
+          "function"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "function"
+          },
+          "function": {
+            "type": "object",
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "parameters": {
+                "type": "object",
+                "additionalProperties": true
+              },
+              "strict": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true,
+        "description": "Customer-defined function only. The response can request a function call. Nodus does not execute the function through this endpoint."
+      },
+      "ManagedModelMessagesContent": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "type"
+              ],
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "text",
+                    "tool_use",
+                    "tool_result",
+                    "thinking",
+                    "redacted_thinking"
+                  ]
+                },
+                "text": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "input": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "tool_use_id": {
+                  "type": "string"
+                },
+                "content": {
+                  "$ref": "#/components/schemas/ManagedModelMessagesContent"
+                },
+                "is_error": {
+                  "type": "boolean"
+                },
+                "thinking": {
+                  "type": "string"
+                },
+                "signature": {
+                  "type": "string"
+                },
+                "data": {
+                  "type": "string"
+                },
+                "cache_control": {
+                  "type": "object",
+                  "description": "Native cache settings for eligible blocks. Cache usage must have qualified catalog prices.",
+                  "additionalProperties": true
+                }
+              },
+              "additionalProperties": true,
+              "description": "Use the selected model’s native fields for this block type. Only text, customer function calls/results and reasoning blocks are supported. Nested tool results have the same text-only restriction."
+            }
+          }
+        ],
+        "description": "Text or native text/function/reasoning blocks. Media and provider-hosted tool blocks are not supported."
+      },
+      "ManagedModelMessagesMessage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant"
+            ]
+          },
+          "content": {
+            "$ref": "#/components/schemas/ManagedModelMessagesContent"
+          }
+        },
+        "description": "Native Messages turn. Supply system instructions through the top-level system field."
+      },
+      "ManagedModelMessagesTool": {
+        "type": "object",
         "required": [
           "name",
-          "entrypoint",
-          "budget_usd"
-        ]
+          "input_schema"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "custom"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "input_schema": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "cache_control": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true,
+        "description": "Customer-defined tool. Omit type or use custom. Provider-hosted tools are not admitted."
+      },
+      "ManagedModelChatCompletionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "model",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "pattern": "^nodus:[A-Za-z0-9._:-]+$",
+            "minLength": 7,
+            "maxLength": 128,
+            "description": "Model ID returned by this account’s managed model catalog."
+          },
+          "messages": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1024,
+            "items": {
+              "$ref": "#/components/schemas/ManagedModelChatMessage"
+            }
+          },
+          "max_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200000,
+            "description": "Must not exceed max_output_tokens from the model catalog. Omission uses that catalog limit."
+          },
+          "stream": {
+            "type": "boolean",
+            "const": false,
+            "default": false,
+            "description": "Only nonstreaming requests are admitted."
+          },
+          "temperature": {
+            "type": "number",
+            "description": "Native model sampling setting. Model-specific validation still applies."
+          },
+          "top_p": {
+            "type": "number"
+          },
+          "tools": {
+            "type": "array",
+            "maxItems": 128,
+            "items": {
+              "$ref": "#/components/schemas/ManagedModelFunctionTool"
+            }
+          },
+          "tool_choice": {
+            "description": "Native selection of a customer-defined function tool. Provider-hosted tools are not supported.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object",
+                "additionalProperties": true
+              }
+            ]
+          },
+          "max_completion_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200000,
+            "description": "Must not exceed max_output_tokens from the model catalog. Omission uses that catalog limit."
+          },
+          "stop": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "presence_penalty": {
+            "type": "number"
+          },
+          "frequency_penalty": {
+            "type": "number"
+          },
+          "seed": {
+            "type": "integer"
+          },
+          "response_format": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Native text response formatting. This does not enable media output."
+          },
+          "reasoning_effort": {
+            "type": "string"
+          },
+          "parallel_tool_calls": {
+            "type": "boolean"
+          }
+        },
+        "not": {
+          "required": [
+            "max_tokens",
+            "max_completion_tokens"
+          ]
+        },
+        "description": "Bounded native chat-completions request for a catalog model using chat_completions. The JSON body is limited to 1 MiB. Choose max_tokens or max_completion_tokens, not both. Unsupported top-level fields, streaming, media and provider-hosted tools are refused. Native model-specific validation also applies."
+      },
+      "ManagedModelMessagesRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "model",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "pattern": "^nodus:[A-Za-z0-9._:-]+$",
+            "minLength": 7,
+            "maxLength": 128,
+            "description": "Model ID returned by this account’s managed model catalog."
+          },
+          "messages": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1024,
+            "items": {
+              "$ref": "#/components/schemas/ManagedModelMessagesMessage"
+            }
+          },
+          "max_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200000,
+            "description": "Must not exceed max_output_tokens from the model catalog. Omission uses that catalog limit."
+          },
+          "stream": {
+            "type": "boolean",
+            "const": false,
+            "default": false,
+            "description": "Only nonstreaming requests are admitted."
+          },
+          "temperature": {
+            "type": "number",
+            "description": "Native model sampling setting. Model-specific validation still applies."
+          },
+          "top_p": {
+            "type": "number"
+          },
+          "tools": {
+            "type": "array",
+            "maxItems": 128,
+            "items": {
+              "$ref": "#/components/schemas/ManagedModelMessagesTool"
+            }
+          },
+          "tool_choice": {
+            "description": "Native selection of a customer-defined function tool. Provider-hosted tools are not supported.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object",
+                "additionalProperties": true
+              }
+            ]
+          },
+          "system": {
+            "$ref": "#/components/schemas/ManagedModelMessagesContent"
+          },
+          "stop_sequences": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "thinking": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Native reasoning configuration within the catalog output limit. Reasoning tokens count toward billed output."
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "description": "Bounded native Messages request for a catalog model using messages. The JSON body is limited to 1 MiB. An omitted max_tokens uses the catalog output limit. Unsupported top-level fields, streaming, media and provider-hosted tools are refused. Native model-specific validation also applies."
+      },
+      "ManagedModelCompletionResponse": {
+        "type": "object",
+        "required": [
+          "model",
+          "usage"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "pattern": "^nodus:[A-Za-z0-9._:-]+$",
+            "minLength": 7,
+            "maxLength": 128,
+            "description": "Model ID returned by this account’s managed model catalog."
+          },
+          "usage": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Verified usage in the selected model’s native response format. Read the billing receipt for normalized counters and the settled charge."
+          }
+        },
+        "additionalProperties": true,
+        "description": "Nonstreaming native response with its model field replaced by the Nodus catalog ID. Other fields follow the selected protocol, such as content or choices. The caller must save the answer. It is not retained or replayed by the billing ledger."
       },
       "ManagedAgent": {
         "type": "object",
@@ -8769,6 +9608,26 @@
             "type": "integer",
             "minimum": 0,
             "description": "Accepted queued or recovering runs."
+          },
+          "assistant_template": {
+            "type": "string",
+            "enum": [
+              "nodus:claude-assistant-v1"
+            ],
+            "description": "Qualified built-in assistant from assistant_templates in the managed model catalog. Supplies its installed entrypoint and environment. No project, setup command or provider credential is required."
+          },
+          "model": {
+            "type": "string",
+            "pattern": "^nodus:[A-Za-z0-9._:-]+$",
+            "maxLength": 128,
+            "description": "Qualified Messages model accepted for this revision. Provider credentials stay in Nodus."
+          },
+          "model_max_output_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4096,
+            "default": 1024,
+            "description": "Per-call output bound for hosted model access. Must fit the selected model qualification."
           }
         },
         "required": [
@@ -11733,7 +12592,7 @@
   "info": {
     "title": "Nodus Infrastructure Execution API",
     "version": "1.1.0",
-    "description": "Provider-neutral infrastructure execution for AI workloads. This contract describes customer API-key workload, sandbox, research workspace, asset, webhook, and cloud observation operations. Console sign-in, operator, runner, and supplier protocols are outside its scope. Obtain a key using nodus login or the console. Use the deployment API origin as the base URL. No paid workload is executed by viewing this contract."
+    "description": "Provider-neutral infrastructure execution for AI workloads. This contract describes customer API-key workload, sandbox, managed model, research workspace, asset, webhook, and cloud observation operations. Console sign-in, operator, runner, and supplier protocols are outside its scope. Obtain a key using nodus login or the console. Use the deployment API origin as the base URL. No paid workload is executed by viewing this contract."
   },
   "openapi": "3.1.0",
   "paths": {
@@ -18355,6 +19214,474 @@
         }
       }
     },
+    "/v1/managed-models/catalog": {
+      "get": {
+        "operationId": "listManagedModelCatalog",
+        "summary": "Discover account-qualified managed models and prices",
+        "tags": [
+          "Managed models"
+        ],
+        "description": "Requires a Nodus API key or console session. Returns only models explicitly granted to this account. Accounts without configured access receive enabled false and an empty models array. Discovery does not start compute or make a model call. Prices are customer USD micros per million tokens and include the service markup. Managed model access does not install agent harnesses or inject credentials into hosted workers.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Qualified catalog, including an empty catalog when access is not enabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedModelCatalog"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, request-rate or transient failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/managed-models/requests/{id}": {
+      "get": {
+        "operationId": "getManagedModelRequest",
+        "summary": "Read a durable managed model billing receipt",
+        "tags": [
+          "Managed models"
+        ],
+        "description": "Returns a receipt owned by the authenticated account. Running or unknown requests keep their spending reservation until reconciled. The receipt contains usage and charge evidence without the prompt or generated answer. It is not a response replay endpoint.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Receipt ID from X-Nodus-Request-ID or an accepted replay response."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Durable request accounting state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedModelReceipt"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The receipt does not exist in this account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication or accounting access failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/managed-models/messages": {
+      "post": {
+        "operationId": "createManagedModelMessage",
+        "summary": "Generate a nonstreaming managed model message",
+        "tags": [
+          "Managed models"
+        ],
+        "description": "Requires a Nodus API key or console session and an account-qualified catalog model. No customer model-provider key is required. Send JSON without query parameters or Content-Encoding. New requests reserve prepaid Nodus credits under account spending limits before dispatch. The reservation covers the full qualified input window and requested output limit, so it can exceed the final charge. Unused credit is released after settlement. Model usage is billed separately from compute and saved storage. Every logical call requires a stable Idempotency-Key. Preserve the key and body after an uncertain response. An accepted replay returns 409 with the existing billing receipt and never executes again or replays the answer. A different body using the same key returns an idempotency conflict. Persist received answers in your application. Unknown outcomes retain reserved funds and do not authorize a new-key retry. This endpoint does not install agent harnesses or inject credentials into hosted workers.",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+              "maxLength": 128
+            },
+            "description": "Stable identifier for one logical model call. Reuse the same key and exact body after an uncertain response. A retry never authorizes another paid model call."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "At most 1 MiB of JSON. Native model limits still apply.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManagedModelMessagesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Model response received and its verified usage charge committed.",
+            "headers": {
+              "X-Nodus-Request-ID": {
+                "description": "Durable request receipt ID, returned after reservation is accepted.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Nodus-Price-Version": {
+                "description": "Immutable customer price version used for this request.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedModelCompletionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or invalid stable idempotency key, unsupported request format, or request outside the bounded nonstreaming text/function-tool contract.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A valid Nodus API key or console session is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient unreserved prepaid credits or account spending allowance. No new model request is dispatched.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated user no longer has account write access.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Model is not in this account’s qualified catalog or uses a different protocol.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Previously accepted request returns its durable receipt without another model call or answer replay. A conflicting key, request or price version returns an ordinary error.",
+            "headers": {
+              "X-Nodus-Request-ID": {
+                "description": "Durable request receipt ID, returned after reservation is accepted.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Nodus-Price-Version": {
+                "description": "Immutable customer price version used for this request.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ManagedModelReplay"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The model request exceeds the supported body size.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Nodus account request rate limit reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Definitive rejection posts no model charge and releases the reservation. A missing response or uncertain usage returns model_outcome_unknown and keeps its reservation. Inspect the receipt and preserve the request identity.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Model access or accounting admission is unavailable, or model_accounting_pending means a received response could not be durably settled. Inspect an accepted request receipt before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, accounting and transient failures use the standard error shape.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/managed-models/chat/completions": {
+      "post": {
+        "operationId": "createManagedModelChatCompletion",
+        "summary": "Generate a nonstreaming managed chat completion",
+        "tags": [
+          "Managed models"
+        ],
+        "description": "Requires a Nodus API key or console session and an account-qualified catalog model. No customer model-provider key is required. Send JSON without query parameters or Content-Encoding. New requests reserve prepaid Nodus credits under account spending limits before dispatch. The reservation covers the full qualified input window and requested output limit, so it can exceed the final charge. Unused credit is released after settlement. Model usage is billed separately from compute and saved storage. Every logical call requires a stable Idempotency-Key. Preserve the key and body after an uncertain response. An accepted replay returns 409 with the existing billing receipt and never executes again or replays the answer. A different body using the same key returns an idempotency conflict. Persist received answers in your application. Unknown outcomes retain reserved funds and do not authorize a new-key retry. This endpoint does not install agent harnesses or inject credentials into hosted workers.",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+              "maxLength": 128
+            },
+            "description": "Stable identifier for one logical model call. Reuse the same key and exact body after an uncertain response. A retry never authorizes another paid model call."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "At most 1 MiB of JSON. Native model limits still apply.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManagedModelChatCompletionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Model response received and its verified usage charge committed.",
+            "headers": {
+              "X-Nodus-Request-ID": {
+                "description": "Durable request receipt ID, returned after reservation is accepted.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Nodus-Price-Version": {
+                "description": "Immutable customer price version used for this request.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedModelCompletionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or invalid stable idempotency key, unsupported request format, or request outside the bounded nonstreaming text/function-tool contract.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A valid Nodus API key or console session is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient unreserved prepaid credits or account spending allowance. No new model request is dispatched.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated user no longer has account write access.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Model is not in this account’s qualified catalog or uses a different protocol.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Previously accepted request returns its durable receipt without another model call or answer replay. A conflicting key, request or price version returns an ordinary error.",
+            "headers": {
+              "X-Nodus-Request-ID": {
+                "description": "Durable request receipt ID, returned after reservation is accepted.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Nodus-Price-Version": {
+                "description": "Immutable customer price version used for this request.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ManagedModelReplay"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The model request exceeds the supported body size.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Nodus account request rate limit reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Definitive rejection posts no model charge and releases the reservation. A missing response or uncertain usage returns model_outcome_unknown and keeps its reservation. Inspect the receipt and preserve the request identity.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Model access or accounting admission is unavailable, or model_accounting_pending means a received response could not be durably settled. Inspect an accepted request receipt before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, accounting and transient failures use the standard error shape.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/sandbox-templates": {
       "get": {
         "operationId": "sandboxTemplates",
@@ -20617,6 +21944,10 @@
     },
     {
       "name": "Sandboxes"
+    },
+    {
+      "name": "Managed models",
+      "description": "Account-qualified text and function-tool model access billed to Nodus credits."
     },
     {
       "name": "Workspaces",
