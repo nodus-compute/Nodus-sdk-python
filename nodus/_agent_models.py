@@ -10,8 +10,12 @@ from . import _agent
 from .errors import StepOutcomeUnknown, ValidationError
 
 
+_MAX_INPUT = 128 << 10
+_MAX_MESSAGES = 1024
+
+
 def text_messages(messages):
-    if not isinstance(messages, list) or not 1 <= len(messages) <= 1024:
+    if not isinstance(messages, list) or not 1 <= len(messages) <= _MAX_MESSAGES:
         raise ValidationError('Hosted models require 1 to 1024 text messages')
     for message in messages:
         if (not isinstance(message, dict) or set(message) != {'role', 'content'}
@@ -38,7 +42,7 @@ def request(messages, *, call_id, max_output_tokens, model=None, system=None):
     if system is not None:
         payload['system'] = system
     raw = base64.b64decode(_agent.encode(payload))
-    if len(raw) > 128 << 10:
+    if len(raw) > _MAX_INPUT:
         raise ValidationError('Hosted model input exceeds 128 KiB')
     payload = json.loads(raw)
     body = {**scope, 'call_id': call_id}
@@ -74,9 +78,12 @@ def request(messages, *, call_id, max_output_tokens, model=None, system=None):
                 raise StepOutcomeUnknown('Hosted model request ' + identity + ' was rejected. Inspect the run before submitting new work')
             if status != 'running':
                 raise StepOutcomeUnknown('Hosted model receipt has an unsupported state')
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise StepOutcomeUnknown('Hosted model request ' + identity + ' did not finish. Inspect the run and retain call ID ' + call_id)
+            session.stopped.wait(min(.25, remaining))
             if time.monotonic() >= deadline:
                 raise StepOutcomeUnknown('Hosted model request ' + identity + ' did not finish. Inspect the run and retain call ID ' + call_id)
-            session.stopped.wait(.25)
             result = session.rpc.call('model_status', body)
     except BaseException:
         session.failed.set()

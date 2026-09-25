@@ -116,23 +116,33 @@ def deploy_assistant(client, model):
         idempotency_key="report-assistant-001",
     )
 
-def submit_report(assistant, task):
+def submit_report(assistant, task, *, idempotency_key):
     return assistant.submit(
         {"task": task},
         session="report-conversation",
-        idempotency_key="report-001",
+        idempotency_key=idempotency_key,
     )
 ```
 
-The assistant returns `text`, `model`, `stop_reason` and reported `usage` in the
-run result. It saves conversation history in `NODUS_CHECKPOINT_DIR`. Reusing the
-session keeps its ordered conversation. Different sessions have separate state.
+Give each new task a unique idempotency key. Reuse that key only when retrying
+the same task.
+
+The assistant returns `text`, `model`, `stop_reason`, `truncated` and reported
+`usage` in the run result. `truncated` is true when the model reaches its output
+limit. The partial answer is saved and charged once. Submit a follow-up task to
+continue when needed. The assistant does not automatically make another call.
+It saves recent conversation history in `NODUS_CHECKPOINT_DIR`. Reusing the
+session keeps its ordered recent turns. Older complete turns are dropped when
+needed to fit the 128 KiB request and 1024 message limits. The current task is
+never shortened. An oversized task is rejected before a model call. Different
+sessions have separate state.
 The installed assistant answers text tasks and does not execute tools or browse.
 Its [entrypoint](https://github.com/nodus-compute/Nodus-sdk-python/blob/main/nodus/managed_assistant.py) writes and flushes state before
 the journal commits its answer. It does not restore arbitrary process memory.
 
-Model usage consumes the agent's authorized budget alongside compute. The
-controller supplies the accepted model and output limit. You can set
+The agent budget limits compute spending. Model and retained storage charges
+are separate and use the account balance and spending controls. The controller
+supplies the accepted model and output limit. You can set
 `model_max_output_tokens` explicitly at deployment, up to 4096 and the enabled
 model's limit. The SDK does not supply a missing limit or calculate charges.
 
@@ -151,6 +161,10 @@ retain the [external effect contract](../durable-steps.md). Short status polls
 allow session renewal while a hosted request runs. Unknown outcomes block for
 reconciliation. Keep the existing call identity and inspect the run instead of
 submitting the same work under a new ID.
+
+The helper stops scheduling new status polls after 240 seconds. An in-flight
+broker request may finish later under its transport timeout and retry limits.
+This polling limit is not a total wall-clock execution deadline.
 
 ## Wait without keeping a worker busy
 

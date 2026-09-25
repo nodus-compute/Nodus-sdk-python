@@ -75,6 +75,108 @@ def test_hosted_model_running_receipt_has_bounded_polling(journal_socket, monkey
     assert not any(action == 'finish' for action, _ in state['requests'])
 
 
+def test_hosted_model_does_not_start_status_after_poll_delay_reaches_limit(journal_socket, monkeypatch):
+    from nodus import _agent_models
+    _, state = journal_socket
+    state.update(input={'task': 'Keep the accepted identity'}, model_pending_polls=1)
+    observed = iter((0, 239.9, 240.1))
+    monkeypatch.setattr(_agent_models, 'time', SimpleNamespace(monotonic=lambda: next(observed)))
+    with pytest.raises(nodus.StepOutcomeUnknown, match='mdl_.*answer'):
+        run(model_entrypoint(), run_id='cycle-42', version='1')
+    assert len(state['model_effects']) == 1
+    assert not any(action == 'model_status' for action, _ in state['requests'])
+
+
+@pytest.mark.parametrize('case', ['messages', 'bytes', 'large_task'])
+def test_owned_assistant_retains_recent_complete_turns_within_request_limit(journal_socket, tmp_path, monkeypatch, case):
+    from nodus.managed_assistant import main
+    _, state = journal_socket
+    if case == 'messages':
+        history = [message for i in range(512) for message in (
+            {'role': 'user', 'content': 'question ' + str(i)},
+            {'role': 'assistant', 'content': 'answer ' + str(i)})]
+        task, first_retained = 'Next report', 2
+    elif case == 'bytes':
+        history = [message for i in range(4) for message in (
+            {'role': 'user', 'content': str(i) + 'é' * 20000},
+            {'role': 'assistant', 'content': 'answer ' + str(i)})]
+        task, first_retained = 'Next report', 2
+    else:
+        history = [{'role': 'user', 'content': 'old' * 20000},
+                   {'role': 'assistant', 'content': 'old answer'}]
+        task, first_retained = 'latest task ' + 'x' * 112000, 2
+    directory = tmp_path / 'state'
+    directory.mkdir()
+    saved = directory / 'conversation.json'
+    saved.write_text(json.dumps({'version': 1, 'messages': history}, ensure_ascii=False), encoding='utf-8')
+    monkeypatch.setenv('NODUS_CHECKPOINT_DIR', str(directory))
+    monkeypatch.setenv('NODUS_AGENT_MODEL', 'nodus:claude-test')
+    monkeypatch.setenv('NODUS_AGENT_MODEL_MAX_OUTPUT_TOKENS', '128')
+    state.update(input={'task': task}, recovery_policy='checkpoint-v1', checkpoint_id='cp_saved')
+    assert run(main, run_id='cycle-42', version='1')['text'] == 'Saved answer'
+    request, = state['model_effects']
+    assert request['messages'] == [*history[first_retained:], {'role': 'user', 'content': task}]
+    assert len(json.dumps(request, ensure_ascii=False, separators=(',', ':')).encode()) <= 128 << 10
+    assert json.loads(saved.read_text(encoding='utf-8'))['messages'] == [*request['messages'], {'role': 'assistant', 'content': 'Saved answer'}]
+
+
+@pytest.mark.parametrize('stop_reason,truncated', [('end_turn', False), ('max_tokens', True)])
+def test_owned_assistant_labels_and_replays_partial_answer_without_more_spend(journal_socket, tmp_path, monkeypatch, stop_reason, truncated):
+    from nodus.managed_assistant import main
+    _, state = journal_socket
+    directory = tmp_path / 'state'
+    directory.mkdir()
+    monkeypatch.setenv('NODUS_CHECKPOINT_DIR', str(directory))
+    monkeypatch.setenv('NODUS_AGENT_MODEL', 'nodus:claude-test')
+    monkeypatch.setenv('NODUS_AGENT_MODEL_MAX_OUTPUT_TOKENS', '128')
+    response = {'model': 'nodus:claude-test', 'content': [{'type': 'text', 'text': 'Saved partial text'}],
+                'stop_reason': stop_reason, 'usage': {'input_tokens': 10, 'output_tokens': 128}}
+    state.update(input={'task': 'Answer the report'}, recovery_policy='checkpoint-v1', model_response=response)
+    first = run(main, run_id='cycle-42', version='1')
+    assert first['text'] == 'Saved partial text' and first['truncated'] is truncated
+    assert first['stop_reason'] == stop_reason
+    saved = (directory / 'conversation.json').read_bytes()
+    assert json.loads(saved)['messages'][-1] == {'role': 'assistant', 'content': 'Saved partial text'}
+    assert run(main, run_id='cycle-42', version='1') == first
+    assert (directory / 'conversation.json').read_bytes() == saved
+    assert len(state['model_effects']) == 1
+
+
+def test_owned_assistant_rejects_oversized_current_task_before_paid_call(journal_socket, tmp_path, monkeypatch):
+    from nodus.managed_assistant import main
+    _, state = journal_socket
+    directory = tmp_path / 'state'
+    directory.mkdir()
+    monkeypatch.setenv('NODUS_CHECKPOINT_DIR', str(directory))
+    monkeypatch.setenv('NODUS_AGENT_MODEL', 'nodus:claude-test')
+    monkeypatch.setenv('NODUS_AGENT_MODEL_MAX_OUTPUT_TOKENS', '128')
+    state.update(input={'task': 'x' * (128 << 10)}, recovery_policy='checkpoint-v1')
+    with pytest.raises(nodus.ValidationError, match='Shorten'):
+        run(main, run_id='cycle-42', version='1')
+    assert not state.get('model_effects')
+
+
+@pytest.mark.parametrize('history', [[{'role': 'user', 'content': 'unfinished turn'}],
+                                     [{'role': 'assistant', 'content': 'wrong first role'},
+                                      {'role': 'user', 'content': 'wrong second role'}]])
+def test_owned_assistant_does_not_spend_with_unpaired_saved_turns(journal_socket, tmp_path, monkeypatch, history):
+    from nodus.managed_assistant import main
+    _, state = journal_socket
+    directory = tmp_path / 'state'
+    directory.mkdir()
+    saved = directory / 'conversation.json'
+    original = json.dumps({'version': 1, 'messages': history}).encode()
+    saved.write_bytes(original)
+    monkeypatch.setenv('NODUS_CHECKPOINT_DIR', str(directory))
+    monkeypatch.setenv('NODUS_AGENT_MODEL', 'nodus:claude-test')
+    monkeypatch.setenv('NODUS_AGENT_MODEL_MAX_OUTPUT_TOKENS', '128')
+    state.update(input={'task': 'Next report'}, recovery_policy='checkpoint-v1')
+    with pytest.raises(nodus.StepOutcomeUnknown):
+        run(main, run_id='cycle-42', version='1')
+    assert not state.get('model_effects')
+    assert saved.read_bytes() == original
+
+
 @pytest.mark.parametrize('mode', ['changed_identity', 'oversized_response'])
 def test_hosted_model_rejects_unbound_or_oversized_response(journal_socket, mode):
     _, state = journal_socket
