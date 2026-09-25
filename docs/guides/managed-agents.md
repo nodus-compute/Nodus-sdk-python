@@ -250,6 +250,10 @@ not committed yet. Empty baselines have no `last_checkpoint_at`. The console
 shows the last useful save separately from pending saves and gives a next action
 when a capture fails. CLI run output includes the same fields.
 
+The driver uses bounded checkpoint waits when the server supports them and the
+session has enough time for renewal. Older servers retain periodic polling.
+Both paths require the same durable acknowledgement before a step continues.
+
 Project files, recovery state and downloadable outputs serve different purposes.
 Files outside `NODUS_CHECKPOINT_DIR` are not part of these state commits. Rebuild
 dependencies on replacement compute. Revisions without `checkpoint-v1` retain
