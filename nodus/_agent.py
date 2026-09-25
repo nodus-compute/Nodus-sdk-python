@@ -209,8 +209,23 @@ class _Session:
                 raise StepOutcomeUnknown('State checkpoint failed: ' + code)
             if status not in ('pending', 'ready') or time.monotonic() >= deadline:
                 raise StepOutcomeUnknown('State checkpoint was not durably acknowledged')
-            self.stopped.wait(.25)
-            receipt = self.rpc.call('checkpoint_status', {**self.scope, 'checkpoint_id': checkpoint_id})
+            # Keep a pause when an older or saturated server returns immediately.
+            if self.stopped.wait(.25):
+                raise StepOutcomeUnknown('Checkpoint observation stopped')
+            request = {**self.scope, 'checkpoint_id': checkpoint_id}
+            wait_max = receipt.get('status_wait_max_ms')
+            if type(wait_max) is int and 0 < wait_max <= 4000:
+                try:
+                    expiry = datetime.fromisoformat(self.expiry.replace('Z', '+00:00'))
+                    remaining = (expiry - datetime.now(timezone.utc)).total_seconds()
+                except (AttributeError, TypeError, ValueError):
+                    remaining = 0
+                # The private transport serializes renewal and up to three
+                # ten-second attempts. Leave renewal headroom after all of them.
+                wait_ms = min(wait_max, max(0, int((deadline - time.monotonic()) * 1000)))
+                if remaining >= 40 and wait_ms > 0:
+                    request.update(wait_ms=wait_ms, known_status=status)
+            receipt = self.rpc.call('checkpoint_status', request)
 
     def close(self):
         self.stopped.set()
