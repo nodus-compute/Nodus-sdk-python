@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.2
+
+- Advertise hosted assistant template, model and output limits in MCP creation and update tools.
+- Synchronize the public operation schemas and current installation commands with this release.
+
 ## 0.7.1
 
 - Add the hosted Claude assistant template with an explicit budget and model selection on qualified deployments.
