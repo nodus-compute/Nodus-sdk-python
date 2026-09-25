@@ -8625,6 +8625,13 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
+          "attempt_budget_usd": {
+            "type": ["number", "null"],
+            "minimum": 0.000001,
+            "maximum": 1000000,
+            "multipleOf": 0.000001,
+            "description": "Optional fixed reservation for each new attempt in USD, in whole microdollars. Omission preserves the legacy allocation policy. Increasing worker concurrency does not reduce this amount."
+          },
           "name": {
             "type": "string"
           },
@@ -8706,6 +8713,13 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
+          "attempt_budget_usd": {
+            "type": ["number", "null"],
+            "minimum": 0.000001,
+            "maximum": 1000000,
+            "multipleOf": 0.000001,
+            "description": "Fixed attempt reservation from the current accepted revision. Absent for the legacy allocation policy."
+          },
           "id": {
             "type": "string"
           },
@@ -8802,6 +8816,13 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
+          "attempt_budget_usd": {
+            "type": ["number", "null"],
+            "minimum": 0.000001,
+            "maximum": 1000000,
+            "multipleOf": 0.000001,
+            "description": "Immutable attempt reservation accepted for this logical run. Absent for the legacy allocation policy."
+          },
           "recovery_policy": {
             "type": "string",
             "enum": [
@@ -12267,6 +12288,13 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
+          "attempt_budget_usd": {
+            "type": ["number", "null"],
+            "minimum": 0.000001,
+            "maximum": 1000000,
+            "multipleOf": 0.000001,
+            "description": "Optional fixed attempt reservation in whole microdollars. It can narrow the selected revision cap. Omission inherits that revision cap."
+          },
           "name": {
             "type": "string",
             "pattern": "^[A-Za-z0-9:_.-]{1,128}$"
@@ -12412,6 +12440,13 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
+          "attempt_budget_usd": {
+            "type": ["number", "null"],
+            "minimum": 0.000001,
+            "maximum": 1000000,
+            "multipleOf": 0.000001,
+            "description": "Immutable fixed attempt reservation accepted for this group and its child runs. Absent for the legacy allocation policy."
+          },
           "id": {
             "type": "string",
             "pattern": "^[A-Za-z0-9:_.-]{1,128}$"
