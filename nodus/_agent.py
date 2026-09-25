@@ -125,6 +125,7 @@ class _RPC:
                          'step_result_expired': StepResultExpired,
                          'managed_agent_child_result_expired': StepResultExpired,
                          'managed_agent_child_blob_expired': StepResultExpired,
+                         'managed_artifact_expired': StepResultExpired,
                          'step_failed': StepFailed}.get(code, StepOutcomeUnknown)
                 raise error('Agent journal refused operation: ' + (code if isinstance(code, str) and _ID.fullmatch(code) else 'unavailable'))
             return value
@@ -312,10 +313,10 @@ def continue_as_new(input: Any, *, continuation_id: str):
     raise _YieldExecution()
 
 
-def put_blob(data: bytes) -> dict:
+def put_blob(data: bytes, *, storage: str = 'database') -> dict:
     """Commit large bytes and return an immutable reference suitable for a step result."""
     from .agent_runtime import put_blob as put
-    return put(data)
+    return put(data, storage=storage)
 
 
 def get_blob(reference: dict) -> bytes:
