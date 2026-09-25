@@ -280,7 +280,10 @@
           },
           "checkpoint_status": {
             "type": "string",
-            "enum": ["ready", "committed"],
+            "enum": [
+              "ready",
+              "committed"
+            ],
             "description": "Publication status of the matching checkpoint candidate. Ready files are verified but do not yet replace committed recovery state."
           },
           "step_id": {
@@ -1040,6 +1043,11 @@
             "default": 0,
             "description": "Settled saved-file charges earned in this UTC billing month in an account meter. Already included in settled_usd. Zero in workload and workspace compute-session meters."
           },
+          "model_settled_usd": {
+            "type": "number",
+            "default": 0,
+            "description": "Settled managed model charges in this billing period in an account meter. Already included in settled_usd. Zero in workload and workspace compute-session meters."
+          },
           "compute_accruing_usd": {
             "type": "number",
             "default": 0,
@@ -1544,7 +1552,11 @@
           "startup": {
             "$ref": "#/components/schemas/SandboxStartup"
           },
-          "started_at": {"type": "string", "format": "date-time", "description": "First observed tool readiness for the current direct workspace compute session. Absent while starting and on legacy sessions without this timestamp. This is separate from creation time and changes with a replacement session."}
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "First observed tool readiness for the current direct workspace compute session. Absent while starting and on legacy sessions without this timestamp. This is separate from creation time and changes with a replacement session."
+          }
         }
       },
       "SandboxBootstrap": {
@@ -3213,7 +3225,15 @@
       "ResearchWorkspaceConfiguration": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["name", "environment", "gpu", "gpu_count", "gpu_memory_gb", "max_hours", "size_gb"],
+        "required": [
+          "name",
+          "environment",
+          "gpu",
+          "gpu_count",
+          "gpu_memory_gb",
+          "max_hours",
+          "size_gb"
+        ],
         "properties": {
           "name": {
             "type": "string",
@@ -3224,12 +3244,19 @@
           },
           "environment": {
             "type": "string",
-            "enum": ["pytorch-cuda"],
+            "enum": [
+              "pytorch-cuda"
+            ],
             "description": "Operator-qualified PyTorch and CUDA image with the selected development tool. Customers cannot override its image digest."
           },
           "editor": {
             "type": "string",
-            "enum": ["", "vscode", "jupyter", "ssh"],
+            "enum": [
+              "",
+              "vscode",
+              "jupyter",
+              "ssh"
+            ],
             "description": "Development-tool preference retained for compatibility with existing configurations. Direct sessions offer browser VS Code and SSH on the same compute. Use the response connections flags to determine current access. On legacy sessions, omission or an empty value preserves both browser tools, and ssh requires ssh_authorized_key."
           },
           "repository": {
@@ -3248,7 +3275,12 @@
           },
           "gpu_count": {
             "type": "integer",
-            "enum": [1, 2, 4, 8],
+            "enum": [
+              1,
+              2,
+              4,
+              8
+            ],
             "description": "Exact GPU count on one machine. These accepted request values do not establish hardware qualification or current availability."
           },
           "gpu_memory_gb": {
@@ -3270,7 +3302,7 @@
           },
           "size_gb": {
             "type": "number",
-            "minimum": 0.00000095367431640625,
+            "minimum": 9.5367431640625e-07,
             "maximum": 10,
             "description": "Project capacity within capabilities.storage_limit_bytes. With storage_policy_version included-10gb-v1 or r2-standard-10gb-account-v1, send exactly 10 for the 10,000,000,000-byte per-workspace capacity. The account policy shares its free allowance across workspaces. Other deployments use GiB and their displayed capacity limit."
           },
@@ -3351,10 +3383,24 @@
             "description": "Canonical GPU model and count pairs qualified for the deployment's exact active image and runtime artifacts. An empty array means no configuration is currently qualified. This is not live capacity or a price quote. Older servers may omit this field. Existing saved configurations remain readable even when absent from this list.",
             "items": {
               "type": "object",
-              "required": ["gpu", "gpu_count"],
+              "required": [
+                "gpu",
+                "gpu_count"
+              ],
               "properties": {
-                "gpu": {"type": "string", "description": "Qualified canonical GPU model."},
-                "gpu_count": {"type": "integer", "enum": [1, 2, 4, 8]}
+                "gpu": {
+                  "type": "string",
+                  "description": "Qualified canonical GPU model."
+                },
+                "gpu_count": {
+                  "type": "integer",
+                  "enum": [
+                    1,
+                    2,
+                    4,
+                    8
+                  ]
+                }
               },
               "additionalProperties": false
             }
@@ -3384,100 +3430,301 @@
             "format": "int64",
             "description": "Maximum saved-project payload bytes supported by workspace source preparation. The full-capacity path supports 10,000,000,000 bytes with separate bounded archive metadata. Ordinary asset import limits are unchanged."
           },
-          "account_funded_sessions": {"type": "boolean", "description": "Whether new sessions may omit budget_usd or set it to zero to use account funding without a per-session spending cap. Account credit, spending controls and maximum duration still apply. Older servers may omit this capability, which clients must treat as false."}
+          "account_funded_sessions": {
+            "type": "boolean",
+            "description": "Whether new sessions may omit budget_usd or set it to zero to use account funding without a per-session spending cap. Account credit, spending controls and maximum duration still apply. Older servers may omit this capability, which clients must treat as false."
+          }
         }
       },
       "WorkspaceWorkloadRequest": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["command"],
+        "required": [
+          "command"
+        ],
         "properties": {
-          "command": {"type": "string", "minLength": 1, "maxLength": 8192, "description": "Command run from the captured project directory through the environment shell. Whitespace-only commands, NUL characters and commands longer than 8192 UTF-8 bytes are rejected."},
-          "budget_usd": {"type": "number", "minimum": 0, "description": "Optional independent workload spending limit in USD. Omission or zero uses account funding without a workload cap. Positive limits below one microdollar are rejected. Account spending controls still apply. This does not change any existing workspace session limit."},
-          "gpu": {"type": "string", "maxLength": 64, "description": "Optional GPU model override. Omit or send an empty string to inherit the workspace configuration."},
-          "gpu_count": {"type": "integer", "enum": [0, 1, 2, 4, 8], "description": "Exact GPUs on one machine. Omitted or zero inherits the workspace configuration."},
-          "gpu_memory_gb": {"type": "number", "minimum": 0, "maximum": 1024, "description": "Memory per GPU in GB. Omitted or zero inherits the workspace configuration."}
+          "command": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192,
+            "description": "Command run from the captured project directory through the environment shell. Whitespace-only commands, NUL characters and commands longer than 8192 UTF-8 bytes are rejected."
+          },
+          "budget_usd": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Optional independent workload spending limit in USD. Omission or zero uses account funding without a workload cap. Positive limits below one microdollar are rejected. Account spending controls still apply. This does not change any existing workspace session limit."
+          },
+          "gpu": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "Optional GPU model override. Omit or send an empty string to inherit the workspace configuration."
+          },
+          "gpu_count": {
+            "type": "integer",
+            "enum": [
+              0,
+              1,
+              2,
+              4,
+              8
+            ],
+            "description": "Exact GPUs on one machine. Omitted or zero inherits the workspace configuration."
+          },
+          "gpu_memory_gb": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1024,
+            "description": "Memory per GPU in GB. Omitted or zero inherits the workspace configuration."
+          }
         }
       },
       "WorkspaceArchiveSegment": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["sha256", "offset", "bytes"],
+        "required": [
+          "sha256",
+          "offset",
+          "bytes"
+        ],
         "properties": {
-          "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-          "offset": {"type": "integer", "format": "int64", "minimum": 0, "multipleOf": 512},
-          "bytes": {"type": "integer", "format": "int64", "minimum": 512, "maximum": 67108864, "multipleOf": 512}
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "multipleOf": 512
+          },
+          "bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 512,
+            "maximum": 67108864,
+            "multipleOf": 512
+          }
         },
         "description": "One contiguous segment of the canonical archive. Offsets begin at zero with no gaps or overlap, and lengths sum to archive_bytes."
       },
       "WorkspaceArchiveInventory": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["sha256", "payload_bytes", "entries"],
+        "required": [
+          "sha256",
+          "payload_bytes",
+          "entries"
+        ],
         "properties": {
-          "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$", "description": "Versioned inventory digest derived from ordered paths, file bytes and metadata. The server verifies it against the uploaded archive."},
-          "payload_bytes": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 10000000000},
-          "entries": {"type": "integer", "minimum": 1, "maximum": 100000}
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "description": "Versioned inventory digest derived from ordered paths, file bytes and metadata. The server verifies it against the uploaded archive."
+          },
+          "payload_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "maximum": 10000000000
+          },
+          "entries": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100000
+          }
         }
       },
       "WorkspaceArchiveManifest": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["version", "archive_sha256", "archive_bytes", "inventory", "segments"],
+        "required": [
+          "version",
+          "archive_sha256",
+          "archive_bytes",
+          "inventory",
+          "segments"
+        ],
         "properties": {
-          "version": {"type": "integer", "const": 3},
-          "archive_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-          "archive_bytes": {"type": "integer", "format": "int64", "minimum": 1024, "maximum": 10536870912, "multipleOf": 512},
-          "inventory": {"$ref": "#/components/schemas/WorkspaceArchiveInventory"},
-          "segments": {"type": "array", "minItems": 1, "maxItems": 100160, "items": {"$ref": "#/components/schemas/WorkspaceArchiveSegment"}}
+          "version": {
+            "type": "integer",
+            "const": 3
+          },
+          "archive_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "archive_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1024,
+            "maximum": 10536870912,
+            "multipleOf": 512
+          },
+          "inventory": {
+            "$ref": "#/components/schemas/WorkspaceArchiveInventory"
+          },
+          "segments": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100160,
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceArchiveSegment"
+            }
+          }
         },
         "description": "Version 3 canonical workspace archive commitment, limited to 16 MiB of manifest JSON. Requires a qualified archive writer. Arbitrary tar, zip or compressed bytes are not accepted. The archive permits ordered regular files, directories and confined symbolic links, with at most 10 GB of payload and 512 MiB of archive metadata. Verification checks the complete archive and inventory before replacing saved files."
       },
       "WorkspaceTransferRequest": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["idempotency_key", "manifest"],
+        "required": [
+          "idempotency_key",
+          "manifest"
+        ],
         "properties": {
-          "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 128, "description": "Caller-retained key without leading or trailing whitespace. Retain the same manifest and replacement revision when retrying."},
-          "manifest": {"$ref": "#/components/schemas/WorkspaceArchiveManifest"},
-          "replace_revision": {"type": "integer", "format": "int64", "minimum": 0, "description": "Observed storage_revision required to replace previously saved files. A changed revision conflicts instead of overwriting newer files."}
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Caller-retained key without leading or trailing whitespace. Retain the same manifest and replacement revision when retrying."
+          },
+          "manifest": {
+            "$ref": "#/components/schemas/WorkspaceArchiveManifest"
+          },
+          "replace_revision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Observed storage_revision required to replace previously saved files. A changed revision conflicts instead of overwriting newer files."
+          }
         }
       },
       "WorkspacePricePreview": {
         "type": "object",
-        "required": ["hourly_usd", "currency", "gpu_count", "observed_at", "expires_at", "estimate_only"],
+        "required": [
+          "hourly_usd",
+          "currency",
+          "gpu_count",
+          "observed_at",
+          "expires_at",
+          "estimate_only"
+        ],
         "properties": {
-          "hourly_usd": {"type": "number", "exclusiveMinimum": 0, "description": "Estimated USD per hour for the entire machine. Do not multiply by gpu_count."},
-          "currency": {"type": "string", "const": "USD"},
-          "gpu_count": {"type": "integer", "enum": [1, 2, 4, 8]},
-          "observed_at": {"type": "string", "format": "date-time"},
-          "expires_at": {"type": "string", "format": "date-time", "description": "Refresh the estimate after this timestamp."},
-          "estimate_only": {"type": "boolean", "const": true}
+          "hourly_usd": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "Estimated USD per hour for the entire machine. Do not multiply by gpu_count."
+          },
+          "currency": {
+            "type": "string",
+            "const": "USD"
+          },
+          "gpu_count": {
+            "type": "integer",
+            "enum": [
+              1,
+              2,
+              4,
+              8
+            ]
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Refresh the estimate after this timestamp."
+          },
+          "estimate_only": {
+            "type": "boolean",
+            "const": true
+          }
         },
         "description": "Read-only current price estimate for an exact workspace configuration. Does not allocate compute, reserve capacity or lock a price. Admission refreshes price and availability within the customer's spending controls."
       },
       "WorkspaceTransfer": {
         "type": "object",
-        "required": ["id", "workspace_id", "state", "base_revision", "manifest_sha256", "manifest_bytes", "uploaded_segments"],
+        "required": [
+          "id",
+          "workspace_id",
+          "state",
+          "base_revision",
+          "manifest_sha256",
+          "manifest_bytes",
+          "uploaded_segments"
+        ],
         "properties": {
-          "id": {"type": "string", "format": "uuid"},
-          "workspace_id": {"type": "string"},
-          "failure_code": {"type": "string", "description": "Recorded verification failure when present. Inspect state before retrying or beginning a replacement transfer."},
-          "state": {"type": "string", "enum": ["uploading", "queued", "verifying", "committed", "abandoned"]},
-          "base_revision": {"type": "integer", "format": "int64", "minimum": 0},
-          "manifest_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-          "manifest_bytes": {"type": "integer", "format": "int64", "minimum": 1, "maximum": 16777216},
-          "uploaded_segments": {"type": "array", "items": {"type": "integer", "minimum": 0}, "description": "Zero-based indexes already verified for this transfer. Empty when no segment is present."}
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workspace_id": {
+            "type": "string"
+          },
+          "failure_code": {
+            "type": "string",
+            "description": "Recorded verification failure when present. Inspect state before retrying or beginning a replacement transfer."
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "uploading",
+              "queued",
+              "verifying",
+              "committed",
+              "abandoned"
+            ]
+          },
+          "base_revision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "manifest_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "manifest_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "maximum": 16777216
+          },
+          "uploaded_segments": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Zero-based indexes already verified for this transfer. Empty when no segment is present."
+          }
         }
       },
       "WorkspaceWorkload": {
         "type": "object",
-        "required": ["id", "status", "created_at", "source_revision"],
+        "required": [
+          "id",
+          "status",
+          "created_at",
+          "source_revision"
+        ],
         "properties": {
-          "id": {"type": "string"},
-          "status": {"type": "string"},
-          "created_at": {"type": "string", "format": "date-time"},
-          "source_revision": {"type": "string", "description": "Digest identifying the immutable saved project revision used for this workload."}
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "source_revision": {
+            "type": "string",
+            "description": "Digest identifying the immutable saved project revision used for this workload."
+          }
         }
       },
       "WorkspaceSourceStorage": {
@@ -3636,19 +3883,65 @@
       "ResearchWorkspaceMeter": {
         "type": "object",
         "description": "Lifetime charges for the current compute session, including platform fees and excluding retained workspace storage. Settled and unposted accrued amounts are consistent as of the same time. Values are for the whole machine and must not be multiplied by gpu_count.",
-        "required": ["settled_usd", "accruing_usd", "accruing_rate_usd_hour", "total_now_usd", "as_of", "compute_settled_usd", "platform_fee_settled_usd", "subscription_settled_usd", "compute_accruing_usd", "platform_fee_accruing_usd"],
+        "required": [
+          "settled_usd",
+          "accruing_usd",
+          "accruing_rate_usd_hour",
+          "total_now_usd",
+          "as_of",
+          "compute_settled_usd",
+          "platform_fee_settled_usd",
+          "subscription_settled_usd",
+          "compute_accruing_usd",
+          "platform_fee_accruing_usd"
+        ],
         "properties": {
-          "settled_usd": {"type": "number", "description": "Posted compute and platform charges across this session's entire lifetime, including prior billing months."},
-          "accruing_usd": {"type": "number", "description": "Unposted compute and platform charges through as_of."},
-          "accruing_rate_usd_hour": {"type": "number", "description": "Current whole-node hourly charge rate. Zero when no charge is growing."},
-          "total_now_usd": {"type": "number", "description": "settled_usd plus accruing_usd at as_of."},
-          "as_of": {"type": "string", "format": "date-time"},
-          "compute_settled_usd": {"type": "number"},
-          "platform_fee_settled_usd": {"type": "number"},
-          "subscription_settled_usd": {"type": "number", "description": "Zero for workspace compute sessions."},
-          "storage_settled_usd": {"type": "number", "default": 0, "description": "Zero for workspace compute sessions. Saved-file charges belong to the account meter."},
-          "compute_accruing_usd": {"type": "number"},
-          "platform_fee_accruing_usd": {"type": "number"}
+          "settled_usd": {
+            "type": "number",
+            "description": "Posted compute and platform charges across this session's entire lifetime, including prior billing months."
+          },
+          "accruing_usd": {
+            "type": "number",
+            "description": "Unposted compute and platform charges through as_of."
+          },
+          "accruing_rate_usd_hour": {
+            "type": "number",
+            "description": "Current whole-node hourly charge rate. Zero when no charge is growing."
+          },
+          "total_now_usd": {
+            "type": "number",
+            "description": "settled_usd plus accruing_usd at as_of."
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "compute_settled_usd": {
+            "type": "number"
+          },
+          "platform_fee_settled_usd": {
+            "type": "number"
+          },
+          "subscription_settled_usd": {
+            "type": "number",
+            "description": "Zero for workspace compute sessions."
+          },
+          "storage_settled_usd": {
+            "type": "number",
+            "default": 0,
+            "description": "Zero for workspace compute sessions. Saved-file charges belong to the account meter."
+          },
+          "model_settled_usd": {
+            "type": "number",
+            "default": 0,
+            "description": "Zero for workspace compute sessions. Managed model charges belong to the account meter."
+          },
+          "compute_accruing_usd": {
+            "type": "number"
+          },
+          "platform_fee_accruing_usd": {
+            "type": "number"
+          }
         }
       },
       "ResearchWorkspaceAccountStorage": {
@@ -3848,78 +4141,216 @@
       },
       "ResearchWorkspaceStorage": {
         "type": "object",
-        "required": ["rate_usd_gib_month", "price_version", "retained_bytes", "charged_usd", "as_of"],
+        "required": [
+          "rate_usd_gib_month",
+          "price_version",
+          "retained_bytes",
+          "charged_usd",
+          "as_of"
+        ],
         "properties": {
-          "rate_usd_gib_month": {"type": "number", "description": "Approved retained-storage rate in USD per GiB-month, separate from compute. Zero when storage billing is disabled."},
-          "price_version": {"type": "string", "description": "Approved storage price version, or an empty string when billing is disabled."},
-          "retained_bytes": {"type": "integer", "format": "int64", "description": "Total retained storage for this workspace, including data needed to restore saved files. May exceed the latest save's stored_bytes."},
-          "charged_usd": {"type": "number", "description": "Lifetime posted storage charges for this workspace, not a compute-session charge."},
-          "as_of": {"type": "string", "format": "date-time"}
+          "rate_usd_gib_month": {
+            "type": "number",
+            "description": "Approved retained-storage rate in USD per GiB-month, separate from compute. Zero when storage billing is disabled."
+          },
+          "price_version": {
+            "type": "string",
+            "description": "Approved storage price version, or an empty string when billing is disabled."
+          },
+          "retained_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Total retained storage for this workspace, including data needed to restore saved files. May exceed the latest save's stored_bytes."
+          },
+          "charged_usd": {
+            "type": "number",
+            "description": "Lifetime posted storage charges for this workspace, not a compute-session charge."
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date-time"
+          }
         }
       },
       "WorkspacePendingUpload": {
         "type": "object",
         "description": "An unfinished customer folder upload. Use its ID with the existing transfer status, segment, finalize and discard routes. Available from any authenticated browser for this account. Reselecting files requires the same manifest commitment. Runtime saves are excluded.",
-        "required": ["id", "workspace_id", "state", "base_revision", "manifest_sha256", "manifest_bytes"],
+        "required": [
+          "id",
+          "workspace_id",
+          "state",
+          "base_revision",
+          "manifest_sha256",
+          "manifest_bytes"
+        ],
         "properties": {
-          "id": {"type": "string", "format": "uuid"},
-          "workspace_id": {"type": "string"},
-          "state": {"type": "string", "enum": ["uploading", "queued", "verifying"]},
-          "base_revision": {"type": "integer", "minimum": 0},
-          "manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-          "manifest_bytes": {"type": "integer", "minimum": 1, "maximum": 16777216}
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workspace_id": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "uploading",
+              "queued",
+              "verifying"
+            ]
+          },
+          "base_revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "manifest_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "manifest_bytes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 16777216
+          }
         }
       },
       "ResearchWorkspace": {
         "description": "A durable named project and its saved configuration, with a replaceable compute session. Only saved files under /workspace are restored, not process memory.",
         "allOf": [
-          {"$ref": "#/components/schemas/WorkspaceRecord"},
+          {
+            "$ref": "#/components/schemas/WorkspaceRecord"
+          },
           {
             "type": "object",
-            "required": ["holder_id", "saved_at", "stored_bytes", "last_error", "saving_for_termination", "configuration", "configuration_revision", "pending_upload", "storage_revision", "storage_policy_version", "session", "meter", "state", "status_message", "connections", "storage"],
+            "required": [
+              "holder_id",
+              "saved_at",
+              "stored_bytes",
+              "last_error",
+              "saving_for_termination",
+              "configuration",
+              "configuration_revision",
+              "pending_upload",
+              "storage_revision",
+              "storage_policy_version",
+              "session",
+              "meter",
+              "state",
+              "status_message",
+              "connections",
+              "storage"
+            ],
             "properties": {
-              "configuration": {"$ref": "#/components/schemas/ResearchWorkspaceConfiguration"},
-              "pending_upload": {"oneOf": [{"$ref": "#/components/schemas/WorkspacePendingUpload"}, {"type": "null"}]},
-              "configuration_revision": {"type": "string", "pattern": "^[0-9a-f]{64}$", "description": "Saved configuration identity. Send this observed value when editing settings. Independent from the saved-file revision."},
-              "storage_revision": {"type": "integer", "format": "int64", "minimum": 0, "description": "Current saved-file revision used to guard a stopped-workspace replacement."},
-              "storage_policy_version": {"type": "string", "description": "Storage policy recorded for this workspace. Transfer endpoints require a compatible versioned storage policy on the workspace and deployment."},
+              "configuration": {
+                "$ref": "#/components/schemas/ResearchWorkspaceConfiguration"
+              },
+              "pending_upload": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/WorkspacePendingUpload"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "configuration_revision": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+                "description": "Saved configuration identity. Send this observed value when editing settings. Independent from the saved-file revision."
+              },
+              "storage_revision": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0,
+                "description": "Current saved-file revision used to guard a stopped-workspace replacement."
+              },
+              "storage_policy_version": {
+                "type": "string",
+                "description": "Storage policy recorded for this workspace. Transfer endpoints require a compatible versioned storage policy on the workspace and deployment."
+              },
               "session": {
-                "oneOf": [{"$ref": "#/components/schemas/Sandbox"}, {"type": "null"}],
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/Sandbox"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
                 "description": "Current associated compute session, or null before one is available. Use session.id in the stop request."
               },
               "meter": {
-                "oneOf": [{"$ref": "#/components/schemas/ResearchWorkspaceMeter"}, {"type": "null"}],
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ResearchWorkspaceMeter"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
                 "description": "Current session's lifetime compute charges, or null without a session."
               },
               "state": {
                 "type": "string",
-                "enum": ["stopped", "creating", "ready", "running", "idle", "suspended", "resuming", "recovering", "stopping", "failed", "freezing", "frozen"],
+                "enum": [
+                  "stopped",
+                  "creating",
+                  "ready",
+                  "running",
+                  "idle",
+                  "suspended",
+                  "resuming",
+                  "recovering",
+                  "stopping",
+                  "failed",
+                  "freezing",
+                  "frozen"
+                ],
                 "description": "Workspace lifecycle view. stopping includes a pending final save or unconfirmed compute release. Tool access also requires its connections flag."
               },
-              "status_message": {"type": "string"},
+              "status_message": {
+                "type": "string"
+              },
               "connections": {
                 "type": "object",
-                "required": ["editor", "notebook", "ssh"],
+                "required": [
+                  "editor",
+                  "notebook",
+                  "ssh"
+                ],
                 "properties": {
-                  "editor": {"type": "boolean"},
-                  "notebook": {"type": "boolean"},
-                  "ssh": {"type": "boolean"}
+                  "editor": {
+                    "type": "boolean"
+                  },
+                  "notebook": {
+                    "type": "boolean"
+                  },
+                  "ssh": {
+                    "type": "boolean"
+                  }
                 },
                 "description": "Current tool readiness for the authorized compute session. Compute may continue to accrue charges while these flags are false."
               },
-              "storage": {"$ref": "#/components/schemas/ResearchWorkspaceStorage"}
+              "storage": {
+                "$ref": "#/components/schemas/ResearchWorkspaceStorage"
+              }
             }
           }
         ]
       },
       "ResearchWorkspaceList": {
         "type": "object",
-        "required": ["workspaces"],
+        "required": [
+          "workspaces"
+        ],
         "properties": {
           "workspaces": {
             "type": "array",
             "maxItems": 100,
-            "items": {"$ref": "#/components/schemas/ResearchWorkspace"}
+            "items": {
+              "$ref": "#/components/schemas/ResearchWorkspace"
+            }
           },
           "next_cursor": {
             "type": "string",
@@ -3931,7 +4362,9 @@
       "ResearchWorkspaceStopRequest": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["session_id"],
+        "required": [
+          "session_id"
+        ],
         "properties": {
           "session_id": {
             "type": "string",
@@ -3944,14 +4377,25 @@
       "ResearchWorkspaceConnectionRequest": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["tool"],
+        "required": [
+          "tool"
+        ],
         "properties": {
-          "tool": {"type": "string", "enum": ["editor", "notebook", "ssh"]}
+          "tool": {
+            "type": "string",
+            "enum": [
+              "editor",
+              "notebook",
+              "ssh"
+            ]
+          }
         }
       },
       "ResearchWorkspaceBrowserConnection": {
         "type": "object",
-        "required": ["url"],
+        "required": [
+          "url"
+        ],
         "properties": {
           "url": {
             "type": "string",
@@ -3963,40 +4407,93 @@
       "ResearchWorkspaceConnectionRetryRequest": {
         "type": "object",
         "additionalProperties": true,
-        "required": ["tool"],
+        "required": [
+          "tool"
+        ],
         "description": "Select one browser tool. Unknown fields are ignored. The complete JSON body must not exceed 512 bytes.",
         "properties": {
-          "tool": {"type": "string", "enum": ["editor", "notebook"]}
+          "tool": {
+            "type": "string",
+            "enum": [
+              "editor",
+              "notebook"
+            ]
+          }
         }
       },
       "ResearchWorkspaceConnectionRetry": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["status"],
+        "required": [
+          "status"
+        ],
         "properties": {
-          "status": {"type": "string", "const": "retry_scheduled"}
+          "status": {
+            "type": "string",
+            "const": "retry_scheduled"
+          }
         }
       },
       "ResearchWorkspaceSSHConnection": {
         "type": "object",
-        "required": ["host", "ssh_config", "gateway_fingerprint", "gateway_known_hosts"],
+        "required": [
+          "host",
+          "ssh_config",
+          "gateway_fingerprint",
+          "gateway_known_hosts"
+        ],
         "properties": {
-          "host": {"type": "string", "description": "SSH configuration alias to open in a local SSH client or VS Code Remote SSH."},
-          "ssh_config": {"type": "string", "description": "OpenSSH configuration using the workspace gateway as ProxyJump. Requires the private key corresponding to the saved public key. Do not disable host-key checking."},
-          "gateway_fingerprint": {"type": "string", "description": "SHA256 fingerprint of the deployment's stable SSH gateway host key."},
-          "gateway_known_hosts": {"type": "string", "description": "OpenSSH known_hosts entry for the gateway, to install before connecting. The guest has a separate project-persisted host key and first-use confirmation."}
+          "host": {
+            "type": "string",
+            "description": "SSH configuration alias to open in a local SSH client or VS Code Remote SSH."
+          },
+          "ssh_config": {
+            "type": "string",
+            "description": "OpenSSH configuration using the workspace gateway as ProxyJump. Requires the private key corresponding to the saved public key. Do not disable host-key checking."
+          },
+          "gateway_fingerprint": {
+            "type": "string",
+            "description": "SHA256 fingerprint of the deployment's stable SSH gateway host key."
+          },
+          "gateway_known_hosts": {
+            "type": "string",
+            "description": "OpenSSH known_hosts entry for the gateway, to install before connecting. The guest has a separate project-persisted host key and first-use confirmation."
+          }
         }
       },
       "WorkspaceWebSocketSSHConnection": {
         "type": "object",
-        "required": ["host", "ssh_config", "transport", "workspace_id", "session_id", "generation"],
+        "required": [
+          "host",
+          "ssh_config",
+          "transport",
+          "workspace_id",
+          "session_id",
+          "generation"
+        ],
         "properties": {
-          "host": {"type": "string", "description": "OpenSSH configuration alias to open from a terminal or VS Code Remote SSH."},
-          "ssh_config": {"type": "string", "description": "OpenSSH configuration using nodus workspaces ssh-proxy as ProxyCommand. The command reads the existing Nodus sign-in and contains no credential. The matching SSH private key is still required. Confirm the project host key on first use."},
-          "transport": {"type": "string", "const": "websocket"},
-          "workspace_id": {"type": "string"},
-          "session_id": {"type": "string"},
-          "generation": {"type": "integer", "minimum": 1}
+          "host": {
+            "type": "string",
+            "description": "OpenSSH configuration alias to open from a terminal or VS Code Remote SSH."
+          },
+          "ssh_config": {
+            "type": "string",
+            "description": "OpenSSH configuration using nodus workspaces ssh-proxy as ProxyCommand. The command reads the existing Nodus sign-in and contains no credential. The matching SSH private key is still required. Confirm the project host key on first use."
+          },
+          "transport": {
+            "type": "string",
+            "const": "websocket"
+          },
+          "workspace_id": {
+            "type": "string"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "integer",
+            "minimum": 1
+          }
         }
       },
       "WorkspaceCreateRequest": {
@@ -4051,7 +4548,10 @@
             "format": "date-time"
           },
           "expired_at": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time",
             "default": null,
             "description": "Time the tenant retention policy expired saved workspace state. The namespace remains listed."
@@ -7396,7 +7896,9 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "held_out_measures": {"type": "string"},
+          "held_out_measures": {
+            "type": "string"
+          },
           "id": {
             "type": "string"
           },
@@ -7845,8 +8347,7 @@
         "required": [
           "kind",
           "url"
-        ],
-        "x-go-package": "internal/models"
+        ]
       },
       "OutputDeclaration": {
         "type": "object",
@@ -8626,14 +9127,18 @@
         "additionalProperties": false,
         "properties": {
           "attempt_budget_usd": {
-            "type": ["number", "null"],
-            "minimum": 0.000001,
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 1e-06,
             "maximum": 1000000,
-            "multipleOf": 0.000001,
+            "multipleOf": 1e-06,
             "description": "Optional fixed reservation for each new attempt in USD, in whole microdollars. Omission preserves the legacy allocation policy. Increasing worker concurrency does not reduce this amount."
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Deployment name. An omitted built-in assistant name is generated from the idempotency key."
           },
           "entrypoint": {
             "type": "string",
@@ -8641,7 +9146,8 @@
           },
           "budget_usd": {
             "type": "number",
-            "exclusiveMinimum": 0
+            "exclusiveMinimum": 0,
+            "description": "Shared compute spending limit. Defaults to 20 for the built-in assistant. Model and retained storage charges are separate and use the account balance and spending controls."
           },
           "template": {
             "type": "string"
@@ -8701,23 +9207,857 @@
           },
           "policy": {
             "$ref": "#/components/schemas/SandboxPolicy"
+          },
+          "assistant_template": {
+            "type": "string",
+            "enum": [
+              "nodus:claude-assistant-v1"
+            ],
+            "description": "Qualified built-in assistant from assistant_templates in the managed model catalog. Supplies its installed entrypoint and environment. No project, setup command or provider credential is required."
+          },
+          "model": {
+            "type": "string",
+            "pattern": "^nodus:[A-Za-z0-9._:-]+$",
+            "maxLength": 128,
+            "description": "Qualified Messages model accepted for this revision. Provider credentials stay in Nodus."
+          },
+          "model_max_output_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4096,
+            "default": 1024,
+            "description": "Per-call output bound for hosted model access. Must fit the selected model qualification."
           }
         },
+        "allOf": [
+          {
+            "if": {
+              "required": [
+                "assistant_template"
+              ]
+            },
+            "then": {
+              "required": [
+                "model"
+              ]
+            },
+            "else": {
+              "required": [
+                "name",
+                "entrypoint",
+                "budget_usd"
+              ]
+            }
+          }
+        ],
+        "description": "Custom code supplies a name, entrypoint and compute budget. A qualified built-in assistant supplies assistant_template and model, with optional name and compute limits. The built-in assistant rejects source, bootstrap, setup, secrets, network permissions and policy overrides."
+      },
+      "ManagedModelRates": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "input_micros_per_million",
+          "output_micros_per_million"
+        ],
+        "properties": {
+          "input_micros_per_million": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "description": "Customer price for uncached input, in USD micros per million tokens."
+          },
+          "output_micros_per_million": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "description": "Customer price for output including reasoning, in USD micros per million tokens."
+          },
+          "cache_read_micros_per_million": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Customer price for cached input reads. Omission means this cache bucket is not qualified, not free."
+          },
+          "cache_write_5m_micros_per_million": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Customer price for five-minute cache creation. Omission means this bucket is not qualified."
+          },
+          "cache_write_1h_micros_per_million": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Customer price for one-hour cache creation. Omission means this bucket is not qualified."
+          }
+        },
+        "description": "Published customer rates already include the service markup. One USD micro is 0.000001 USD. Each token belongs to one billing bucket. Charges round upward to integer USD micros after summing usage at these rates."
+      },
+      "ManagedModelPublic": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "label",
+          "protocol",
+          "price_version",
+          "rates",
+          "max_output_tokens",
+          "streaming"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^nodus:[A-Za-z0-9._:-]+$",
+            "minLength": 7,
+            "maxLength": 128,
+            "description": "Model ID returned by this account\u2019s managed model catalog."
+          },
+          "label": {
+            "type": "string"
+          },
+          "protocol": {
+            "type": "string",
+            "enum": [
+              "messages",
+              "chat_completions"
+            ]
+          },
+          "price_version": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+            "maxLength": 128
+          },
+          "rates": {
+            "$ref": "#/components/schemas/ManagedModelRates"
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200000
+          },
+          "streaming": {
+            "type": "boolean",
+            "const": false
+          }
+        },
+        "description": "An account-qualified model and its published customer pricing. No credentials or private routing configuration are returned."
+      },
+      "ManagedModelCatalog": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "enabled",
+          "models",
+          "billing",
+          "currency",
+          "assistant_templates"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "True when at least one model is granted to this account."
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ManagedModelPublic"
+            },
+            "description": "Qualified models sorted by ID. Empty for accounts without a configured grant."
+          },
+          "billing": {
+            "type": "string",
+            "const": "nodus_credits"
+          },
+          "currency": {
+            "type": "string",
+            "const": "USD"
+          },
+          "assistant_templates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ManagedAssistantTemplate"
+            },
+            "description": "Built-in assistants available on the qualified runtime. Empty until account, compute, model and exact image qualifications all pass."
+          }
+        }
+      },
+      "ManagedAssistantTemplate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "label",
+          "protocol",
+          "model_ids",
+          "default_output_tokens"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "const": "nodus:claude-assistant-v1"
+          },
+          "label": {
+            "type": "string"
+          },
+          "protocol": {
+            "type": "string",
+            "const": "messages"
+          },
+          "model_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "description": "Models qualified for this installed assistant and its default output bound."
+          },
+          "default_output_tokens": {
+            "type": "integer",
+            "const": 1024
+          }
+        },
+        "description": "An assistant qualified for the account and the exact tools image. Empty discovery prevents launching into incompatible runtimes."
+      },
+      "ManagedModelUsage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "input_tokens",
+          "output_tokens",
+          "cached_input_tokens",
+          "cache_creation_5m_input_tokens",
+          "cache_creation_1h_input_tokens"
+        ],
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Total input including all cache buckets. Uncached input is the remainder after subtracting the cache buckets."
+          },
+          "output_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Total output including reasoning tokens."
+          },
+          "cached_input_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Input tokens read from cache."
+          },
+          "cache_creation_5m_input_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Input tokens written with a five-minute cache lifetime."
+          },
+          "cache_creation_1h_input_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Input tokens written with a one-hour cache lifetime."
+          }
+        },
+        "description": "Normalized, verified accounting counters. These receipt counters differ from the native usage object returned by a completion request."
+      },
+      "ManagedModelReceipt": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "model",
+          "price_version",
+          "state",
+          "reserved_micros",
+          "charge_micros",
+          "usage",
+          "created_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string",
+            "pattern": "^nodus:[A-Za-z0-9._:-]+$",
+            "minLength": 7,
+            "maxLength": 128,
+            "description": "Model ID returned by this account\u2019s managed model catalog."
+          },
+          "price_version": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+            "maxLength": 128
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "running",
+              "succeeded",
+              "failed",
+              "unknown"
+            ],
+            "description": "Running and unknown keep their reservation. Succeeded posts the verified charge. Failed records a definitive rejection without a model charge."
+          },
+          "reserved_micros": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "description": "Original spending reservation in USD micros. It is held only while state is running or unknown."
+          },
+          "charge_micros": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "Settled customer charge in USD micros. Zero until successful settlement. Model charges are separate from compute and saved storage."
+          },
+          "usage": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ManagedModelUsage"
+              },
+              {
+                "type": "object",
+                "maxProperties": 0
+              }
+            ],
+            "description": "Verified normalized usage after successful settlement. Empty for running, unknown and failed requests."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finished_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Present for succeeded and failed requests."
+          }
+        },
+        "description": "Durable billing evidence scoped to the authenticated account. Prompts, model answers, credentials and private pricing are not included."
+      },
+      "ManagedModelReplay": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "error",
+          "receipt"
+        ],
+        "properties": {
+          "error": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "code",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "const": "model_request_already_accepted"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/ManagedModelReceipt"
+          }
+        },
+        "description": "The original request is not executed again. This response does not replay the generated answer."
+      },
+      "ManagedModelChatMessage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "role"
+        ],
+        "anyOf": [
+          {
+            "required": [
+              "content"
+            ]
+          },
+          {
+            "required": [
+              "tool_calls"
+            ]
+          }
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "system",
+              "developer",
+              "user",
+              "assistant",
+              "tool"
+            ]
+          },
+          "content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "text"
+                  ],
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "text"
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            ],
+            "description": "Text or text blocks only. Null is used for an assistant function call without text. Images and audio are not supported."
+          },
+          "name": {
+            "type": "string"
+          },
+          "tool_calls": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "type",
+                "function"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string",
+                  "const": "function"
+                },
+                "function": {
+                  "type": "object",
+                  "required": [
+                    "name",
+                    "arguments"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "arguments": {
+                      "type": "string",
+                      "description": "Function arguments encoded as a JSON string."
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "tool_call_id": {
+            "type": "string"
+          }
+        },
+        "description": "Native chat-completions message. Use role and content combinations supported by the catalog model."
+      },
+      "ManagedModelFunctionTool": {
+        "type": "object",
+        "required": [
+          "type",
+          "function"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "function"
+          },
+          "function": {
+            "type": "object",
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "parameters": {
+                "type": "object",
+                "additionalProperties": true
+              },
+              "strict": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true,
+        "description": "Customer-defined function only. The response can request a function call. Nodus does not execute the function through this endpoint."
+      },
+      "ManagedModelMessagesContent": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "type"
+              ],
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "text",
+                    "tool_use",
+                    "tool_result",
+                    "thinking",
+                    "redacted_thinking"
+                  ]
+                },
+                "text": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "input": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "tool_use_id": {
+                  "type": "string"
+                },
+                "content": {
+                  "$ref": "#/components/schemas/ManagedModelMessagesContent"
+                },
+                "is_error": {
+                  "type": "boolean"
+                },
+                "thinking": {
+                  "type": "string"
+                },
+                "signature": {
+                  "type": "string"
+                },
+                "data": {
+                  "type": "string"
+                },
+                "cache_control": {
+                  "type": "object",
+                  "description": "Native cache settings for eligible blocks. Cache usage must have qualified catalog prices.",
+                  "additionalProperties": true
+                }
+              },
+              "additionalProperties": true,
+              "description": "Use the selected model\u2019s native fields for this block type. Only text, customer function calls/results and reasoning blocks are supported. Nested tool results have the same text-only restriction."
+            }
+          }
+        ],
+        "description": "Text or native text/function/reasoning blocks. Media and provider-hosted tool blocks are not supported."
+      },
+      "ManagedModelMessagesMessage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "role",
+          "content"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant"
+            ]
+          },
+          "content": {
+            "$ref": "#/components/schemas/ManagedModelMessagesContent"
+          }
+        },
+        "description": "Native Messages turn. Supply system instructions through the top-level system field."
+      },
+      "ManagedModelMessagesTool": {
+        "type": "object",
         "required": [
           "name",
-          "entrypoint",
-          "budget_usd"
-        ]
+          "input_schema"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "custom"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "input_schema": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "cache_control": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true,
+        "description": "Customer-defined tool. Omit type or use custom. Provider-hosted tools are not admitted."
+      },
+      "ManagedModelChatCompletionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "model",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "pattern": "^nodus:[A-Za-z0-9._:-]+$",
+            "minLength": 7,
+            "maxLength": 128,
+            "description": "Model ID returned by this account\u2019s managed model catalog."
+          },
+          "messages": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1024,
+            "items": {
+              "$ref": "#/components/schemas/ManagedModelChatMessage"
+            }
+          },
+          "max_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200000,
+            "description": "Must not exceed max_output_tokens from the model catalog. Omission uses that catalog limit."
+          },
+          "stream": {
+            "type": "boolean",
+            "const": false,
+            "default": false,
+            "description": "Only nonstreaming requests are admitted."
+          },
+          "temperature": {
+            "type": "number",
+            "description": "Native model sampling setting. Model-specific validation still applies."
+          },
+          "top_p": {
+            "type": "number"
+          },
+          "tools": {
+            "type": "array",
+            "maxItems": 128,
+            "items": {
+              "$ref": "#/components/schemas/ManagedModelFunctionTool"
+            }
+          },
+          "tool_choice": {
+            "description": "Native selection of a customer-defined function tool. Provider-hosted tools are not supported.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object",
+                "additionalProperties": true
+              }
+            ]
+          },
+          "max_completion_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200000,
+            "description": "Must not exceed max_output_tokens from the model catalog. Omission uses that catalog limit."
+          },
+          "stop": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "presence_penalty": {
+            "type": "number"
+          },
+          "frequency_penalty": {
+            "type": "number"
+          },
+          "seed": {
+            "type": "integer"
+          },
+          "response_format": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Native text response formatting. This does not enable media output."
+          },
+          "reasoning_effort": {
+            "type": "string"
+          },
+          "parallel_tool_calls": {
+            "type": "boolean"
+          }
+        },
+        "not": {
+          "required": [
+            "max_tokens",
+            "max_completion_tokens"
+          ]
+        },
+        "description": "Bounded native chat-completions request for a catalog model using chat_completions. The JSON body is limited to 1 MiB. Choose max_tokens or max_completion_tokens, not both. Unsupported top-level fields, streaming, media and provider-hosted tools are refused. Native model-specific validation also applies."
+      },
+      "ManagedModelMessagesRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "model",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "pattern": "^nodus:[A-Za-z0-9._:-]+$",
+            "minLength": 7,
+            "maxLength": 128,
+            "description": "Model ID returned by this account\u2019s managed model catalog."
+          },
+          "messages": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1024,
+            "items": {
+              "$ref": "#/components/schemas/ManagedModelMessagesMessage"
+            }
+          },
+          "max_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200000,
+            "description": "Must not exceed max_output_tokens from the model catalog. Omission uses that catalog limit."
+          },
+          "stream": {
+            "type": "boolean",
+            "const": false,
+            "default": false,
+            "description": "Only nonstreaming requests are admitted."
+          },
+          "temperature": {
+            "type": "number",
+            "description": "Native model sampling setting. Model-specific validation still applies."
+          },
+          "top_p": {
+            "type": "number"
+          },
+          "tools": {
+            "type": "array",
+            "maxItems": 128,
+            "items": {
+              "$ref": "#/components/schemas/ManagedModelMessagesTool"
+            }
+          },
+          "tool_choice": {
+            "description": "Native selection of a customer-defined function tool. Provider-hosted tools are not supported.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object",
+                "additionalProperties": true
+              }
+            ]
+          },
+          "system": {
+            "$ref": "#/components/schemas/ManagedModelMessagesContent"
+          },
+          "stop_sequences": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "thinking": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Native reasoning configuration within the catalog output limit. Reasoning tokens count toward billed output."
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "description": "Bounded native Messages request for a catalog model using messages. The JSON body is limited to 1 MiB. An omitted max_tokens uses the catalog output limit. Unsupported top-level fields, streaming, media and provider-hosted tools are refused. Native model-specific validation also applies."
+      },
+      "ManagedModelCompletionResponse": {
+        "type": "object",
+        "required": [
+          "model",
+          "usage"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "pattern": "^nodus:[A-Za-z0-9._:-]+$",
+            "minLength": 7,
+            "maxLength": 128,
+            "description": "Model ID returned by this account\u2019s managed model catalog."
+          },
+          "usage": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Verified usage in the selected model\u2019s native response format. Read the billing receipt for normalized counters and the settled charge."
+          }
+        },
+        "additionalProperties": true,
+        "description": "Nonstreaming native response with its model field replaced by the Nodus catalog ID. Other fields follow the selected protocol, such as content or choices. The caller must save the answer. It is not retained or replayed by the billing ledger."
       },
       "ManagedAgent": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
           "attempt_budget_usd": {
-            "type": ["number", "null"],
-            "minimum": 0.000001,
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 1e-06,
             "maximum": 1000000,
-            "multipleOf": 0.000001,
+            "multipleOf": 1e-06,
             "description": "Fixed attempt reservation from the current accepted revision. Absent for the legacy allocation policy."
           },
           "id": {
@@ -8799,6 +10139,26 @@
             "type": "integer",
             "minimum": 0,
             "description": "Accepted queued or recovering runs."
+          },
+          "assistant_template": {
+            "type": "string",
+            "enum": [
+              "nodus:claude-assistant-v1"
+            ],
+            "description": "Qualified built-in assistant from assistant_templates in the managed model catalog. Supplies its installed entrypoint and environment. No project, setup command or provider credential is required."
+          },
+          "model": {
+            "type": "string",
+            "pattern": "^nodus:[A-Za-z0-9._:-]+$",
+            "maxLength": 128,
+            "description": "Qualified Messages model accepted for this revision. Provider credentials stay in Nodus."
+          },
+          "model_max_output_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4096,
+            "default": 1024,
+            "description": "Per-call output bound for hosted model access. Must fit the selected model qualification."
           }
         },
         "required": [
@@ -8817,10 +10177,13 @@
         "additionalProperties": false,
         "properties": {
           "attempt_budget_usd": {
-            "type": ["number", "null"],
-            "minimum": 0.000001,
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 1e-06,
             "maximum": 1000000,
-            "multipleOf": 0.000001,
+            "multipleOf": 1e-06,
             "description": "Immutable attempt reservation accepted for this logical run. Absent for the legacy allocation policy."
           },
           "recovery_policy": {
@@ -10126,6 +11489,9 @@
             "additionalProperties": false,
             "description": "Customer managed-agent definition with name, entrypoint, verified source and worker settings.",
             "properties": {
+              "assistant_template": {
+                "type": "string"
+              },
               "bootstrap": {
                 "anyOf": [
                   {
@@ -10177,6 +11543,12 @@
                     "type": "null"
                   }
                 ]
+              },
+              "model": {
+                "type": "string"
+              },
+              "model_max_output_tokens": {
+                "type": "integer"
               },
               "name": {
                 "type": "string"
@@ -10355,6 +11727,9 @@
                 "additionalProperties": false,
                 "description": "The complete new deployment definition.",
                 "properties": {
+                  "assistant_template": {
+                    "type": "string"
+                  },
                   "bootstrap": {
                     "anyOf": [
                       {
@@ -10406,6 +11781,12 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "model": {
+                    "type": "string"
+                  },
+                  "model_max_output_tokens": {
+                    "type": "integer"
                   },
                   "name": {
                     "type": "string"
@@ -12289,10 +13670,13 @@
         "additionalProperties": false,
         "properties": {
           "attempt_budget_usd": {
-            "type": ["number", "null"],
-            "minimum": 0.000001,
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 1e-06,
             "maximum": 1000000,
-            "multipleOf": 0.000001,
+            "multipleOf": 1e-06,
             "description": "Optional fixed attempt reservation in whole microdollars. It can narrow the selected revision cap. Omission inherits that revision cap."
           },
           "name": {
@@ -12441,10 +13825,13 @@
         "additionalProperties": false,
         "properties": {
           "attempt_budget_usd": {
-            "type": ["number", "null"],
-            "minimum": 0.000001,
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 1e-06,
             "maximum": 1000000,
-            "multipleOf": 0.000001,
+            "multipleOf": 1e-06,
             "description": "Immutable fixed attempt reservation accepted for this group and its child runs. Absent for the legacy allocation policy."
           },
           "id": {
@@ -12656,7 +14043,7 @@
   "info": {
     "title": "Nodus Infrastructure Execution API",
     "version": "1.1.0",
-    "description": "Provider-neutral infrastructure execution for AI workloads. This contract describes customer API-key workload, sandbox, research workspace, asset, webhook, and cloud observation operations. Console sign-in, operator, runner, and supplier protocols are outside its scope. Obtain a key using nodus login or the console. Use the deployment API origin as the base URL. No paid workload is executed by viewing this contract."
+    "description": "Provider-neutral infrastructure execution for AI workloads. This contract describes customer API-key workload, sandbox, managed model, research workspace, asset, webhook, and cloud observation operations. Console sign-in, operator, runner, and supplier protocols are outside its scope. Obtain a key using nodus login or the console. Use the deployment API origin as the base URL. No paid workload is executed by viewing this contract."
   },
   "openapi": "3.1.0",
   "paths": {
@@ -15113,7 +16500,7 @@
             "schema": {
               "type": "integer"
             },
-            "description": "Page size. 1–100. Omitted, nonpositive, or over 100 defaults to 50."
+            "description": "Page size. 1\u2013100. Omitted, nonpositive, or over 100 defaults to 50."
           },
           {
             "name": "offset",
@@ -15997,19 +17384,29 @@
       "get": {
         "operationId": "getResearchWorkspaceCapabilities",
         "summary": "Read workspace environment and storage limits",
-        "tags": ["Research workspaces"],
+        "tags": [
+          "Research workspaces"
+        ],
         "description": "Requires a Bearer API key or console session. Reports deployment configuration and accepted request counts, not qualified GPU inventory, live capacity or a price quote.",
         "responses": {
           "200": {
             "description": "Workspace configuration capabilities",
             "content": {
-              "application/json": {"schema": {"$ref": "#/components/schemas/ResearchWorkspaceCapabilities"}}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchWorkspaceCapabilities"
+                }
+              }
             }
           },
           "default": {
             "description": "Authentication, rate limits and transient failures apply.",
             "content": {
-              "application/json": {"schema": {"$ref": "#/components/schemas/SandboxError"}}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
             }
           }
         }
@@ -16019,25 +17416,39 @@
       "post": {
         "operationId": "createResearchWorkspace",
         "summary": "Create a saved GPU research workspace",
-        "tags": ["Research workspaces"],
+        "tags": [
+          "Research workspaces"
+        ],
         "description": "Saves a unique named project and its environment configuration without starting compute. Requires a Bearer API key or console session. Duplicate names are rejected. This operation does not require an Idempotency-Key and is not an idempotent create. Use start to admit a compute session.",
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": {"schema": {"$ref": "#/components/schemas/ResearchWorkspaceConfiguration"}}
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchWorkspaceConfiguration"
+              }
+            }
           }
         },
         "responses": {
           "201": {
             "description": "Saved workspace created, with compute stopped",
             "content": {
-              "application/json": {"schema": {"$ref": "#/components/schemas/ResearchWorkspace"}}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchWorkspace"
+                }
+              }
             }
           },
           "default": {
             "description": "400 for invalid configuration, duplicate name or exceeded storage limits. 503 workspace_unavailable when disabled. Authentication, quotas, rate limits and transient failures also apply.",
             "content": {
-              "application/json": {"schema": {"$ref": "#/components/schemas/SandboxError"}}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
             }
           }
         }
@@ -16045,23 +17456,51 @@
       "get": {
         "operationId": "listResearchWorkspaces",
         "summary": "List saved research workspaces",
-        "tags": ["Research workspaces"],
+        "tags": [
+          "Research workspaces"
+        ],
         "description": "Returns a page of workspaces owned by the authenticated account, newest first. The default and maximum page size are 100. Includes compute-session costs, separate retained-storage costs and tool readiness. Continue with next_cursor until it is empty. Pages reflect current records and do not form a snapshot across concurrent changes.",
         "parameters": [
-          {"name": "limit", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 100, "default": 100}, "description": "Maximum workspaces on this page."},
-          {"name": "cursor", "in": "query", "schema": {"type": "string", "maxLength": 1024}, "description": "Opaque next_cursor from this account's previous research workspace page."}
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 100
+            },
+            "description": "Maximum workspaces on this page."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 1024
+            },
+            "description": "Opaque next_cursor from this account's previous research workspace page."
+          }
         ],
         "responses": {
           "200": {
             "description": "Workspace list",
             "content": {
-              "application/json": {"schema": {"$ref": "#/components/schemas/ResearchWorkspaceList"}}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchWorkspaceList"
+                }
+              }
             }
           },
           "default": {
             "description": "Authentication, rate limits and transient failures apply.",
             "content": {
-              "application/json": {"schema": {"$ref": "#/components/schemas/SandboxError"}}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
             }
           }
         }
@@ -16071,13 +17510,51 @@
       "post": {
         "operationId": "quoteWorkspacePrice",
         "summary": "Preview the whole-machine hourly price",
-        "tags": ["Research workspaces"],
+        "tags": [
+          "Research workspaces"
+        ],
         "description": "Read-only estimate for the supplied configuration, including exact GPU count and per-device memory. Send the same configuration used for workspace creation. A successful estimate does not reserve capacity, lock the price or start compute. Refresh expired estimates before starting. Launch checks price and capacity again against session and account spending controls.",
-        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ResearchWorkspaceConfiguration"}}}},
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchWorkspaceConfiguration"
+              }
+            }
+          }
+        },
         "responses": {
-          "200": {"description": "Current exact-configuration estimate", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/WorkspacePricePreview"}}}},
-          "503": {"description": "quote_unavailable when a current eligible price cannot be confirmed. No compute is allocated.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SandboxError"}}}},
-          "default": {"description": "400 for invalid configuration. Authentication, rate limits and transient failures apply.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SandboxError"}}}}
+          "200": {
+            "description": "Current exact-configuration estimate",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspacePricePreview"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "quote_unavailable when a current eligible price cannot be confirmed. No compute is allocated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "400 for invalid configuration. Authentication, rate limits and transient failures apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -16085,44 +17562,103 @@
       "patch": {
         "operationId": "updateResearchWorkspaceConfiguration",
         "summary": "Change settings for the next workspace session",
-        "tags": ["Research workspaces"],
+        "tags": [
+          "Research workspaces"
+        ],
         "description": "Requires stopped compute with confirmed release and no active file transfer. Send the complete configuration and its observed configuration_revision. Allows editor, SSH public key, GPU resources, session budget and duration changes. Name, environment, project capacity and repository bootstrap remain fixed. Saved files and previous workloads are preserved. An exact retry of already applied settings succeeds. Conflicting changes require reloading and reviewing the current configuration.",
         "parameters": [
-          {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}, "description": "Saved workspace identifier."}
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Saved workspace identifier."
+          }
         ],
         "requestBody": {
           "required": true,
-          "content": {"application/json": {"schema": {
-            "type": "object", "required": ["configuration_revision", "configuration"],
-            "properties": {
-              "configuration_revision": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-              "configuration": {"$ref": "#/components/schemas/ResearchWorkspaceConfiguration"}
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "configuration_revision",
+                  "configuration"
+                ],
+                "properties": {
+                  "configuration_revision": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "configuration": {
+                    "$ref": "#/components/schemas/ResearchWorkspaceConfiguration"
+                  }
+                }
+              }
             }
-          }}}
+          }
         },
         "responses": {
-          "200": {"description": "Current workspace with saved settings", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ResearchWorkspace"}}}},
-          "default": {"description": "400 for invalid settings or revision. 404 for another account or missing workspace. 409 workspace_configuration_changed requires review of current settings. 409 workspace_configuration_busy requires compute and transfers to finish. Authentication and rate limits apply.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SandboxError"}}}}
+          "200": {
+            "description": "Current workspace with saved settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchWorkspace"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "400 for invalid settings or revision. 404 for another account or missing workspace. 409 workspace_configuration_changed requires review of current settings. 409 workspace_configuration_busy requires compute and transfers to finish. Authentication and rate limits apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
         }
       },
       "get": {
         "operationId": "getResearchWorkspace",
         "summary": "Read workspace state, costs and tool readiness",
-        "tags": ["Research workspaces"],
+        "tags": [
+          "Research workspaces"
+        ],
         "parameters": [
-          {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}, "description": "Saved workspace identifier."}
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Saved workspace identifier."
+          }
         ],
         "responses": {
           "200": {
             "description": "Current workspace view",
             "content": {
-              "application/json": {"schema": {"$ref": "#/components/schemas/ResearchWorkspace"}}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchWorkspace"
+                }
+              }
             }
           },
           "default": {
             "description": "404 if this account does not own the workspace. Authentication, rate limits and transient failures also apply.",
             "content": {
-              "application/json": {"schema": {"$ref": "#/components/schemas/SandboxError"}}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
             }
           }
         }
@@ -16436,39 +17972,136 @@
       "post": {
         "operationId": "submitWorkspaceWorkload",
         "summary": "Submit an independent workload from this project",
-        "tags": ["Research workspaces"],
+        "tags": [
+          "Research workspaces"
+        ],
         "description": "Captures current project files from ready compute, or pins the last successful saved revision while stopped. The command uses that immutable project revision and the workspace environment image. Optional GPU overrides apply only to the submitted workload. Running workspace capture returns 409 workspace_save_pending until saving finishes. Source preparation returns 409 workspace_source_pending until its verified copy is ready. Saving has a 45-minute deadline. Each source preparation attempt has a 45-minute deadline, with up to three automatic attempts. Cleanup waits may extend total preparation. Console and SDK waiting pause local observation after 95 minutes by default while retaining the submission intent. Reuse the exact body and Idempotency-Key to check progress or retry an uncertain reply. Identical captured revisions reuse a source copy within the included account source pool. Exports exclude .nodus and .git. Regular files, empty directories and safe relative symbolic links within the project are preserved. Unsafe links and unsupported file types are rejected before admission. A 202 response means ordinary workload admission succeeded. It does not establish execution or completion. Later edits and stopping workspace compute do not stop an admitted workload. Both incur charges while running.",
         "parameters": [
-          {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}, "description": "Workspace identifier owned by this account."},
-          {"name": "Idempotency-Key", "in": "header", "required": true, "schema": {"type": "string", "minLength": 1}, "description": "Stable key for this logical submission and its captured source revision. Reuse the same body and key after saving is pending or the reply is uncertain."}
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Workspace identifier owned by this account."
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "Stable key for this logical submission and its captured source revision. Reuse the same body and key after saving is pending or the reply is uncertain."
+          }
         ],
-        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/WorkspaceWorkloadRequest"}}}},
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceWorkloadRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "202": {
             "description": "Independent workload admitted or replayed",
-            "headers": {"Idempotent-Replayed": {"description": "true when workload admission replays the original result.", "schema": {"type": "string"}}},
-            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SubmitResult"}}}
+            "headers": {
+              "Idempotent-Replayed": {
+                "description": "true when workload admission replays the original result.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmitResult"
+                }
+              }
+            }
           },
           "409": {
             "description": "workspace_save_pending and workspace_source_pending request the same key and body again after Retry-After. workspace_source_quota requires freeing included source space through Assets and using a new submission key. workspace_capture_failed requires correcting the save failure and beginning a new submission. workspace_source_rejected requires correcting the project source and using a new submission key. workspace_source_failed requires resolving the reported preparation failure and using a new submission key after cleanup. workspace_source_removed means its reference was deleted and a new submission must prepare a new copy. workspace_no_saved_files requires adding project files. workspace_source_unavailable reports a source preparation failure. idempotency_conflict indicates a changed body for an existing key. Other state conflicts can also occur.",
-            "headers": {"Retry-After": {"description": "Seconds until the next progress check when workspace_save_pending or workspace_source_pending is returned.", "schema": {"type": "string"}}},
-            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until the next progress check when workspace_save_pending or workspace_source_pending is returned.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "default": {
             "description": "400 for invalid command, budget or GPU configuration. 402 for payment, credit or spending limits. 404 for a workspace outside this account. 503 when submission is unavailable. Ordinary workload admission checks, authentication, rate limits and transient failures also apply.",
-            "content": {"application/json": {"schema": {"oneOf": [{"$ref": "#/components/schemas/Error"}, {"$ref": "#/components/schemas/SandboxError"}]}}}
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SandboxError"
+                    }
+                  ]
+                }
+              }
+            }
           }
         }
       },
       "get": {
         "operationId": "listWorkspaceWorkloads",
         "summary": "List workloads submitted from this workspace",
-        "tags": ["Research workspaces"],
+        "tags": [
+          "Research workspaces"
+        ],
         "description": "Returns up to 100 admitted workloads, newest first, with the captured source revision. Recoverable pending_submissions preserve their exact original request and retry key for explicit resume after reconnecting. Old submissions without a stored request descriptor may be absent from pending_submissions. source_storage reports the separate included source pool. Use the ordinary workload endpoints for logs, results, costs and cancellation.",
-        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}, "description": "Workspace identifier owned by this account."}],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Workspace identifier owned by this account."
+          }
+        ],
         "responses": {
-          "200": {"description": "Admitted workspace workloads", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/WorkspaceWorkloadList"}}}},
-          "default": {"description": "404 for a workspace outside this account. Authentication, rate limits and transient failures also apply.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+          "200": {
+            "description": "Admitted workspace workloads",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceWorkloadList"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "404 for a workspace outside this account. Authentication, rate limits and transient failures also apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -16476,20 +18109,48 @@
       "post": {
         "operationId": "startResearchWorkspace",
         "summary": "Start compute or reconnect to the current session",
-        "tags": ["Research workspaces"],
+        "tags": [
+          "Research workspaces"
+        ],
         "description": "Uses the saved configuration and an operator-qualified immutable environment. Reconnects to an eligible existing named session or admits a replacement after the previous writer releases the project. No request body is required. 202 means accepted, not ready or guaranteed capacity. Read connections before opening tools. A restart restores saved files only, not process memory.",
         "parameters": [
-          {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}, "description": "Saved workspace identifier."},
-          {"name": "Idempotency-Key", "in": "header", "required": true, "schema": {"type": "string", "minLength": 1}, "description": "Stable key for this logical start. Reuse it after an uncertain response. Use a new key for a new start after stopping a previous session."}
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Saved workspace identifier."
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "Stable key for this logical start. Reuse it after an uncertain response. Use a new key for a new start after stopping a previous session."
+          }
         ],
         "responses": {
           "202": {
             "description": "Start accepted or replayed",
             "headers": {
-              "Idempotent-Replayed": {"description": "true when the original start is replayed.", "schema": {"type": "string"}}
+              "Idempotent-Replayed": {
+                "description": "true when the original start is replayed.",
+                "schema": {
+                  "type": "string"
+                }
+              }
             },
             "content": {
-              "application/json": {"schema": {"$ref": "#/components/schemas/ResearchWorkspace"}}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchWorkspace"
+                }
+              }
             }
           },
           "default": {
@@ -16497,7 +18158,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "oneOf": [{"$ref": "#/components/schemas/SandboxError"}, {"$ref": "#/components/schemas/Error"}]
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/SandboxError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    }
+                  ]
                 }
               }
             }
@@ -16509,59 +18177,198 @@
       "post": {
         "operationId": "scheduleResearchWorkspace",
         "summary": "Schedule workspace readiness",
-        "tags": ["Research workspaces"],
+        "tags": [
+          "Research workspaces"
+        ],
         "description": "Begins preparation 15 minutes before ready_by. Customer compute metering begins when readiness is observed. stop_at is optional.",
-        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}, {"name": "Idempotency-Key", "in": "header", "required": true, "schema": {"type": "string", "minLength": 1}}],
-        "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "required": ["ready_by"], "properties": {"ready_by": {"type": "string", "format": "date-time"}, "stop_at": {"type": "string", "format": "date-time"}}}}}},
-        "responses": {"201": {"description": "Wake plan created", "content": {"application/json": {"schema": {"type": "object"}}}}, "default": {"description": "Invalid schedule, active schedule, authentication or transient failure.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ready_by"
+                ],
+                "properties": {
+                  "ready_by": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "stop_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Wake plan created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Invalid schedule, active schedule, authentication or transient failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
       },
       "delete": {
         "operationId": "cancelResearchWorkspaceSchedule",
         "summary": "Cancel workspace readiness schedule",
-        "tags": ["Research workspaces"],
-        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}, {"name": "Idempotency-Key", "in": "header", "required": true, "schema": {"type": "string", "minLength": 1}}],
-        "responses": {"200": {"description": "Schedule cancelled", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ResearchWorkspace"}}}}}
+        "tags": [
+          "Research workspaces"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Schedule cancelled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchWorkspace"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/v1/research-workspaces/{id}/stop": {
       "post": {
         "operationId": "stopResearchWorkspace",
         "summary": "Save project files and stop the specified compute session",
-        "tags": ["Research workspaces"],
+        "tags": [
+          "Research workspaces"
+        ],
         "description": "Stops the original session_id, not whichever replacement session exists when a retry arrives. Preserve both session_id and Idempotency-Key for every retry. A new stop targeting a replacement requires a new pair. Returns the current workspace view, which may refer to a newer session during a delayed replay. Poll state and saving_for_termination to observe final-save and compute-release progress. A 200 response alone does not confirm supplier resource release. Retained storage is not deleted.",
         "parameters": [
-          {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}, "description": "Saved workspace identifier."},
-          {"name": "Idempotency-Key", "in": "header", "required": true, "schema": {"type": "string", "minLength": 1}, "description": "Stable retry key paired with the original session_id in the request body."}
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Saved workspace identifier."
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "Stable retry key paired with the original session_id in the request body."
+          }
         ],
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": {"schema": {"$ref": "#/components/schemas/ResearchWorkspaceStopRequest"}}
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchWorkspaceStopRequest"
+              }
+            }
           }
         },
         "responses": {
           "200": {
             "description": "Stop handled or replayed without a pending final save. Inspect workspace state for compute-release progress.",
             "headers": {
-              "Idempotent-Replayed": {"description": "true when the original stop is replayed.", "schema": {"type": "string"}}
+              "Idempotent-Replayed": {
+                "description": "true when the original stop is replayed.",
+                "schema": {
+                  "type": "string"
+                }
+              }
             },
             "content": {
-              "application/json": {"schema": {"$ref": "#/components/schemas/ResearchWorkspace"}}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchWorkspace"
+                }
+              }
             }
           },
           "202": {
             "description": "Final project save remains pending before compute release",
             "headers": {
-              "Idempotent-Replayed": {"description": "true when the original stop is replayed.", "schema": {"type": "string"}}
+              "Idempotent-Replayed": {
+                "description": "true when the original stop is replayed.",
+                "schema": {
+                  "type": "string"
+                }
+              }
             },
             "content": {
-              "application/json": {"schema": {"$ref": "#/components/schemas/ResearchWorkspace"}}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchWorkspace"
+                }
+              }
             }
           },
           "default": {
             "description": "400 for a missing retry key, missing body or invalid session_id. 404 for a workspace or session outside this account, or a session belonging to another workspace. 409 for a state or idempotency conflict. Authentication, rate limits and transient failures also apply.",
             "content": {
-              "application/json": {"schema": {"$ref": "#/components/schemas/SandboxError"}}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
             }
           }
         }
@@ -16571,15 +18378,29 @@
       "post": {
         "operationId": "connectResearchWorkspace",
         "summary": "Open a ready browser tool or get desktop SSH configuration",
-        "tags": ["Research workspaces"],
+        "tags": [
+          "Research workspaces"
+        ],
         "description": "Requires a current authorized compute session with reachable, healthy tools. editor and notebook return a one-time HTTPS URL. ssh requires a saved SSH public key and returns OpenSSH configuration, using either the authenticated HTTPS proxy command or a direct gateway with a known_hosts entry. Browser tools use isolated per-tool origins, not the API or console origin. Account credentials never reach the guest. Revocation, session replacement or expired authorization closes access, including active browser streams. Closing a client does not stop compute.",
         "parameters": [
-          {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}, "description": "Saved workspace identifier."}
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Saved workspace identifier."
+          }
         ],
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": {"schema": {"$ref": "#/components/schemas/ResearchWorkspaceConnectionRequest"}}
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchWorkspaceConnectionRequest"
+              }
+            }
           }
         },
         "responses": {
@@ -16588,7 +18409,17 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "oneOf": [{"$ref": "#/components/schemas/ResearchWorkspaceBrowserConnection"}, {"$ref": "#/components/schemas/ResearchWorkspaceSSHConnection"}, {"$ref": "#/components/schemas/WorkspaceWebSocketSSHConnection"}]
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ResearchWorkspaceBrowserConnection"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ResearchWorkspaceSSHConnection"
+                    },
+                    {
+                      "$ref": "#/components/schemas/WorkspaceWebSocketSSHConnection"
+                    }
+                  ]
                 }
               }
             }
@@ -16596,7 +18427,11 @@
           "default": {
             "description": "400 for an invalid tool. 404 for a workspace not owned by this account. 409 workspace_not_ready until the session and tools are ready. 503 if browser access or SSH configuration is unavailable. Authentication, rate limits and transient failures also apply.",
             "content": {
-              "application/json": {"schema": {"$ref": "#/components/schemas/SandboxError"}}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
             }
           }
         }
@@ -16606,17 +18441,62 @@
       "get": {
         "operationId": "streamWorkspaceSSH",
         "summary": "Connect an authenticated SSH stream to the current workspace session",
-        "tags": ["Research workspaces"],
+        "tags": [
+          "Research workspaces"
+        ],
         "description": "Upgrades an authenticated request to a WebSocket using nodus-workspace-ssh-v1. Binary messages carry the SSH byte stream. Use the session and generation from a fresh SSH connection response. Query strings, Origin and Cookie headers are rejected. Authorization must contain one current Bearer credential. Nodus checks workspace ownership and the pinned session before connecting and while forwarding. The guest still authenticates the customer's SSH public key. Either side closing or authorization expiry closes the stream. The CLI proxy opens this endpoint without a browser or credential in its command line.",
         "parameters": [
-          {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}},
-          {"name": "X-Nodus-Workspace-Session", "in": "header", "required": true, "schema": {"type": "string"}, "description": "Pinned compute session identifier from the SSH connection response."},
-          {"name": "X-Nodus-Workspace-Generation", "in": "header", "required": true, "schema": {"type": "string", "pattern": "^[1-9][0-9]*$"}, "description": "Exact positive decimal session generation from the SSH connection response."},
-          {"name": "Sec-WebSocket-Protocol", "in": "header", "required": true, "schema": {"type": "string", "const": "nodus-workspace-ssh-v1"}}
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Nodus-Workspace-Session",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Pinned compute session identifier from the SSH connection response."
+          },
+          {
+            "name": "X-Nodus-Workspace-Generation",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*$"
+            },
+            "description": "Exact positive decimal session generation from the SSH connection response."
+          },
+          {
+            "name": "Sec-WebSocket-Protocol",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "const": "nodus-workspace-ssh-v1"
+            }
+          }
         ],
         "responses": {
-          "101": {"description": "Authenticated binary SSH stream. The standard WebSocket handshake headers apply."},
-          "default": {"description": "400 invalid_ssh_connection for an invalid handshake identity. 409 workspace_not_ready for a stale or unavailable session. 503 ssh_unavailable when the stream or guest is unavailable. Authentication and rate limits also apply.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SandboxError"}}}}
+          "101": {
+            "description": "Authenticated binary SSH stream. The standard WebSocket handshake headers apply."
+          },
+          "default": {
+            "description": "400 invalid_ssh_connection for an invalid handshake identity. 409 workspace_not_ready for a stale or unavailable session. 503 ssh_unavailable when the stream or guest is unavailable. Authentication and rate limits also apply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -16624,31 +18504,58 @@
       "post": {
         "operationId": "retryResearchWorkspaceConnection",
         "summary": "Retry one browser connection without restarting compute",
-        "tags": ["Research workspaces"],
+        "tags": [
+          "Research workspaces"
+        ],
         "description": "Explicitly schedules a safe retry for the selected tool on the current workspace session. It does not issue a connection URL, start compute or guarantee that the tool is ready. An uncertain remote operation cannot be retried until its outcome is reconciled. After acceptance, read the workspace again and use its connection readiness before opening the tool. A rejected retry does not prevent stopping compute. Available only when the deployment enables connection retry.",
         "parameters": [
-          {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}, "description": "Research workspace identifier owned by this account."}
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Research workspace identifier owned by this account."
+          }
         ],
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": {"schema": {"$ref": "#/components/schemas/ResearchWorkspaceConnectionRetryRequest"}}
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchWorkspaceConnectionRetryRequest"
+              }
+            }
           }
         },
         "responses": {
           "202": {
             "description": "Retry scheduled. This is not a ready connection or browser grant.",
             "headers": {
-              "Cache-Control": {"schema": {"type": "string", "const": "no-store"}}
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
             },
             "content": {
-              "application/json": {"schema": {"$ref": "#/components/schemas/ResearchWorkspaceConnectionRetry"}}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchWorkspaceConnectionRetry"
+                }
+              }
             }
           },
           "default": {
             "description": "400 invalid_tool, invalid_json or invalid_body for invalid input. 404 not_found for an unavailable owned workspace. 409 connection_not_retryable when a safe retry cannot be scheduled. 503 connection_unavailable when disabled or gateway authority is unavailable. 500 connection_retry_failed for an unexpected internal failure. Authentication and rate limits also apply.",
             "content": {
-              "application/json": {"schema": {"$ref": "#/components/schemas/SandboxError"}}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxError"
+                }
+              }
             }
           }
         }
@@ -16703,8 +18610,26 @@
           "Workspaces"
         ],
         "parameters": [
-          {"name": "limit", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 1000, "default": 1000}, "description": "Maximum workspaces on this page."},
-          {"name": "cursor", "in": "query", "schema": {"type": "string", "maxLength": 1024}, "description": "Opaque next_cursor from this account's previous workspace page."}
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 1000
+            },
+            "description": "Maximum workspaces on this page."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 1024
+            },
+            "description": "Opaque next_cursor from this account's previous workspace page."
+          }
         ],
         "responses": {
           "200": {
@@ -19293,6 +21218,474 @@
         }
       }
     },
+    "/v1/managed-models/catalog": {
+      "get": {
+        "operationId": "listManagedModelCatalog",
+        "summary": "Discover account-qualified managed models and prices",
+        "tags": [
+          "Managed models"
+        ],
+        "description": "Requires a Nodus API key or console session. Returns only models explicitly granted to this account. Accounts without configured access receive enabled false and an empty models array. Discovery does not start compute or make a model call. Prices are customer USD micros per million tokens and include the service markup. Managed model access does not install agent harnesses or inject credentials into hosted workers.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Qualified catalog, including an empty catalog when access is not enabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedModelCatalog"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, request-rate or transient failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/managed-models/requests/{id}": {
+      "get": {
+        "operationId": "getManagedModelRequest",
+        "summary": "Read a durable managed model billing receipt",
+        "tags": [
+          "Managed models"
+        ],
+        "description": "Returns a receipt owned by the authenticated account. Running or unknown requests keep their spending reservation until reconciled. The receipt contains usage and charge evidence without the prompt or generated answer. It is not a response replay endpoint.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Receipt ID from X-Nodus-Request-ID or an accepted replay response."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Durable request accounting state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedModelReceipt"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The receipt does not exist in this account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication or accounting access failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/managed-models/messages": {
+      "post": {
+        "operationId": "createManagedModelMessage",
+        "summary": "Generate a nonstreaming managed model message",
+        "tags": [
+          "Managed models"
+        ],
+        "description": "Requires a Nodus API key or console session and an account-qualified catalog model. No customer model-provider key is required. Send JSON without query parameters or Content-Encoding. New requests reserve prepaid Nodus credits under account spending limits before dispatch. The reservation covers the full qualified input window and requested output limit, so it can exceed the final charge. Unused credit is released after settlement. Model usage is billed separately from compute and saved storage. Every logical call requires a stable Idempotency-Key. Preserve the key and body after an uncertain response. An accepted replay returns 409 with the existing billing receipt and never executes again or replays the answer. A different body using the same key returns an idempotency conflict. Persist received answers in your application. Unknown outcomes retain reserved funds and do not authorize a new-key retry. This endpoint does not install agent harnesses or inject credentials into hosted workers.",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+              "maxLength": 128
+            },
+            "description": "Stable identifier for one logical model call. Reuse the same key and exact body after an uncertain response. A retry never authorizes another paid model call."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "At most 1 MiB of JSON. Native model limits still apply.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManagedModelMessagesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Model response received and its verified usage charge committed.",
+            "headers": {
+              "X-Nodus-Request-ID": {
+                "description": "Durable request receipt ID, returned after reservation is accepted.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Nodus-Price-Version": {
+                "description": "Immutable customer price version used for this request.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedModelCompletionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or invalid stable idempotency key, unsupported request format, or request outside the bounded nonstreaming text/function-tool contract.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A valid Nodus API key or console session is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient unreserved prepaid credits or account spending allowance. No new model request is dispatched.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated user no longer has account write access.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Model is not in this account\u2019s qualified catalog or uses a different protocol.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Previously accepted request returns its durable receipt without another model call or answer replay. A conflicting key, request or price version returns an ordinary error.",
+            "headers": {
+              "X-Nodus-Request-ID": {
+                "description": "Durable request receipt ID, returned after reservation is accepted.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Nodus-Price-Version": {
+                "description": "Immutable customer price version used for this request.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ManagedModelReplay"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The model request exceeds the supported body size.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Nodus account request rate limit reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Definitive rejection posts no model charge and releases the reservation. A missing response or uncertain usage returns model_outcome_unknown and keeps its reservation. Inspect the receipt and preserve the request identity.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Model access or accounting admission is unavailable, or model_accounting_pending means a received response could not be durably settled. Inspect an accepted request receipt before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, accounting and transient failures use the standard error shape.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/managed-models/chat/completions": {
+      "post": {
+        "operationId": "createManagedModelChatCompletion",
+        "summary": "Generate a nonstreaming managed chat completion",
+        "tags": [
+          "Managed models"
+        ],
+        "description": "Requires a Nodus API key or console session and an account-qualified catalog model. No customer model-provider key is required. Send JSON without query parameters or Content-Encoding. New requests reserve prepaid Nodus credits under account spending limits before dispatch. The reservation covers the full qualified input window and requested output limit, so it can exceed the final charge. Unused credit is released after settlement. Model usage is billed separately from compute and saved storage. Every logical call requires a stable Idempotency-Key. Preserve the key and body after an uncertain response. An accepted replay returns 409 with the existing billing receipt and never executes again or replays the answer. A different body using the same key returns an idempotency conflict. Persist received answers in your application. Unknown outcomes retain reserved funds and do not authorize a new-key retry. This endpoint does not install agent harnesses or inject credentials into hosted workers.",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+              "maxLength": 128
+            },
+            "description": "Stable identifier for one logical model call. Reuse the same key and exact body after an uncertain response. A retry never authorizes another paid model call."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "At most 1 MiB of JSON. Native model limits still apply.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManagedModelChatCompletionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Model response received and its verified usage charge committed.",
+            "headers": {
+              "X-Nodus-Request-ID": {
+                "description": "Durable request receipt ID, returned after reservation is accepted.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Nodus-Price-Version": {
+                "description": "Immutable customer price version used for this request.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedModelCompletionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or invalid stable idempotency key, unsupported request format, or request outside the bounded nonstreaming text/function-tool contract.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A valid Nodus API key or console session is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient unreserved prepaid credits or account spending allowance. No new model request is dispatched.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated user no longer has account write access.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Model is not in this account\u2019s qualified catalog or uses a different protocol.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Previously accepted request returns its durable receipt without another model call or answer replay. A conflicting key, request or price version returns an ordinary error.",
+            "headers": {
+              "X-Nodus-Request-ID": {
+                "description": "Durable request receipt ID, returned after reservation is accepted.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Nodus-Price-Version": {
+                "description": "Immutable customer price version used for this request.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ManagedModelReplay"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The model request exceeds the supported body size.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Nodus account request rate limit reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Definitive rejection posts no model charge and releases the reservation. A missing response or uncertain usage returns model_outcome_unknown and keeps its reservation. Inspect the receipt and preserve the request identity.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Model access or accounting admission is unavailable, or model_accounting_pending means a received response could not be durably settled. Inspect an accepted request receipt before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, accounting and transient failures use the standard error shape.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/sandbox-templates": {
       "get": {
         "operationId": "sandboxTemplates",
@@ -21532,7 +23925,7 @@
         "tags": [
           "Cloud observation"
         ],
-        "description": "Aggregates the tenant’s connected accounts and projects. Google legacy whole-export rows are restricted to connected projects. Currencies remain separate, missing days remain unknown, and forecasts require fresh data from every connected scope. Azure onboarding is coming soon.",
+        "description": "Aggregates the tenant\u2019s connected accounts and projects. Google legacy whole-export rows are restricted to connected projects. Currencies remain separate, missing days remain unknown, and forecasts require fresh data from every connected scope. Azure onboarding is coming soon.",
         "responses": {
           "200": {
             "description": "Aggregate observation across connected scopes",
@@ -21954,6 +24347,10 @@
     },
     {
       "name": "Sandboxes"
+    },
+    {
+      "name": "Managed models",
+      "description": "Account-qualified text and function-tool model access billed to Nodus credits."
     },
     {
       "name": "Workspaces",

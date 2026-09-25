@@ -75,11 +75,19 @@ def step(*, name: str, version: str, effect: str = 'external', dedupe_seconds: i
                     context_token = _agent._step_context.set(context)
                     previous_owner = getattr(session, '_step_owner', None)
                     session._step_owner = (threading.get_ident(), context)
+                    authority_token = _agent._step_authority.set(scoped)
                     try:
                         executed = True
                         result = function(*args, **kwargs)
                     except BaseException as error:
-                        session.rpc.call('unknown', {**scoped, 'request_id': uuid.uuid4().hex, 'code': 'outcome_unknown'})
+                        try:
+                            session.rpc.call('unknown', {**scoped, 'request_id': uuid.uuid4().hex, 'code': 'outcome_unknown'})
+                        except BaseException:
+                            if session.failed.is_set() and isinstance(error, StepOutcomeUnknown):
+                                raise error from None
+                            raise
+                        if session.failed.is_set() and isinstance(error, StepOutcomeUnknown):
+                            raise
                         if session.recovery_policy:
                             session.failed.set()
                             raise StepOutcomeUnknown('Step state must be restored before another attempt') from None
@@ -88,6 +96,7 @@ def step(*, name: str, version: str, effect: str = 'external', dedupe_seconds: i
                         raise StepOutcomeUnknown('The external step outcome is unknown') from None
                     finally:
                         session._step_owner = previous_owner
+                        _agent._step_authority.reset(authority_token)
                         _agent._step_context.reset(context_token)
                     try:
                         if inspect.isawaitable(result):
