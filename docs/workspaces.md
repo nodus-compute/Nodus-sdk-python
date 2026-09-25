@@ -45,6 +45,10 @@ For a stopped interactive GPU workspace created in the console, use its returned
 workspace ID to upload a project directory without starting compute:
 
 ```python
+import nodus
+
+workspace_id = "YOUR_WORKSPACE_ID"
+
 with nodus.Client() as client:
     transfer = client.workspaces.upload_files(
         workspace_id,
@@ -66,6 +70,11 @@ project size.
 Use the saved revision reported by the workspace when downloading or deleting:
 
 ```python
+import nodus
+
+workspace_id = "YOUR_WORKSPACE_ID"
+saved_revision = 1  # Replace with the saved revision shown in the console.
+
 with nodus.Client() as client:
     client.workspaces.export_files(
         workspace_id,
