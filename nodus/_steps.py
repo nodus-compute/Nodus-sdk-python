@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import functools
 import inspect
+import threading
 import uuid
 
 from . import _agent
@@ -70,7 +71,10 @@ def step(*, name: str, version: str, effect: str = 'external', dedupe_seconds: i
                     if not isinstance(token, str) or not token or not isinstance(external, str) or not external:
                         raise StepOutcomeUnknown('Journal execution grant is incomplete')
                     scoped = {**session.scope, 'step_id': step_id, 'claim_token': token}
-                    context_token = _agent._step_context.set(StepContext(external))
+                    context = StepContext(external)
+                    context_token = _agent._step_context.set(context)
+                    previous_owner = getattr(session, '_step_owner', None)
+                    session._step_owner = (threading.get_ident(), context)
                     try:
                         executed = True
                         result = function(*args, **kwargs)
@@ -83,6 +87,7 @@ def step(*, name: str, version: str, effect: str = 'external', dedupe_seconds: i
                             continue
                         raise StepOutcomeUnknown('The external step outcome is unknown') from None
                     finally:
+                        session._step_owner = previous_owner
                         _agent._step_context.reset(context_token)
                     try:
                         if inspect.isawaitable(result):

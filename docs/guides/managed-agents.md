@@ -264,6 +264,16 @@ to the logical run and remain usable across worker replacement and continuations
 Run and account storage limits still apply. Blob operations commit independently.
 Record their verified references in step results when they are needed for replay.
 
+On deployments with object artifact storage enabled, pass `storage="object"`
+to `nodus.agent.put_blob(data)`. The call waits for complete verification and
+returns a versioned reference. The default remains `storage="database"`, and
+`get_blob` accepts both reference formats. Object uploads also support use
+inside a serial step. A lost acknowledgement preserves the deterministic
+reference, so resume with the same bytes to recover that upload. The 32 MiB
+limit and account storage allowance still apply. Unsupported deployments
+refuse this option without switching storage formats. Direct-child reads
+accept the versioned reference through `child.get_blob(reference)`.
+
 Unknown external effects remain blocked for explicit resolution. File recovery
 cannot determine whether a remote API call succeeded when its response was lost.
 Inspect `run.steps()` and independently verify the remote effect, then use

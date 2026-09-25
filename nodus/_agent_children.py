@@ -305,9 +305,19 @@ def get_child_blob(child: ChildReference | ChildOutcome | dict, reference: dict)
         while True:
             offset = len(output)
             receipt = _call(session, 'child_blob_get', {'child_run_id': child_id, 'blob_id': reference['id'],
-                'sha256': reference['sha256'], 'bytes': reference['bytes'], 'offset': offset})
+                'sha256': reference['sha256'], 'bytes': reference['bytes'], 'offset': offset,
+                **({'version': reference['version']} if 'version' in reference else {})})
             if receipt.get('child_run_id') != child_id or receipt.get('reference') != reference:
                 raise StepOutcomeUnknown('Child blob identity differs from its scoped reference')
+            if 'version' in reference:
+                from ._agent_artifacts import checked_chunk
+                chunk, eof = checked_chunk(receipt, reference, offset)
+                output.extend(chunk)
+                if eof:
+                    if hashlib.sha256(output).hexdigest() != reference['sha256']:
+                        raise StepOutcomeUnknown('Child artifact content hash differs from its reference')
+                    return bytes(output)
+                continue
             try:
                 encoded = receipt.get('data', '')
                 if not isinstance(encoded, str) or len(encoded) > ((_BLOB_CHUNK + 2) // 3) * 4:
