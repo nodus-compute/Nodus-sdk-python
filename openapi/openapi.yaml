@@ -4051,18 +4051,15 @@
             "format": "date-time"
           },
           "expired_at": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "format": "date-time",
             "default": null,
-            "description": "When the saved workspace contents expired, if reported by the server. The named workspace remains available."
+            "description": "Time the tenant retention policy expired saved workspace state. The namespace remains listed."
           },
           "cleanup_pending": {
             "type": "boolean",
             "default": false,
-            "description": "Whether cleanup of expired workspace contents remains pending, if reported by the server."
+            "description": "Expired workspace objects still require cleanup. An empty namespace can be reused after cleanup settles."
           },
           "stored_bytes": {
             "type": [
@@ -12321,6 +12318,23 @@
               "cancelling"
             ],
             "description": "Read-only summary of the current logical runs, independent of group admission and remaining cleanup."
+          },
+          "blocked_reasons": {
+            "type": "array",
+            "maxItems": 19,
+            "items": {
+              "$ref": "#/components/schemas/ManagedAgentGroupBlockedReason"
+            },
+            "description": "Sorted public categories counting each waiting or blocked logical run once. Active running work is excluded unless group cancellation fences it. Empty groups return an empty array."
+          },
+          "cleanup_status": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "pending",
+              "unresolved"
+            ],
+            "description": "Separate from useful task completion. Unresolved resource or accounting evidence takes precedence, then any unsettled attempt is pending. Complete means no assigned attempt currently retains cleanup liability."
           }
         },
         "required": [
@@ -12342,7 +12356,47 @@
           "cost_usd",
           "reserved_usd",
           "active_authorized_attempts",
-          "work_status"
+          "work_status",
+          "blocked_reasons",
+          "cleanup_status"
+        ]
+      },
+      "ManagedAgentGroupBlockedReason": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "type": "string",
+            "enum": [
+              "admission_rejected",
+              "admission_retry",
+              "allocation_cleanup",
+              "attention_required",
+              "budget",
+              "cancelling",
+              "children",
+              "dependencies",
+              "dependency_blocked",
+              "execution_capacity",
+              "external_outcome_unknown",
+              "queued",
+              "recovering",
+              "session",
+              "signal",
+              "starting",
+              "timer",
+              "waiting",
+              "workspace_capacity"
+            ]
+          },
+          "runs": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "reason",
+          "runs"
         ]
       }
     },
