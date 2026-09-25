@@ -22,7 +22,7 @@ _CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 __all__ = [
     "NodusError",
     "StepOutcomeUnknown", "StepDefinitionConflict", "StepResultExpired", "StepFailed",
-    "AgentChildrenUnavailable",
+    "AgentChildrenUnavailable", "AgentBrokerUnavailable", "BrokerRefused",
     "ConfigurationError",
     "AuthenticationError",
     "NotFoundError",
@@ -393,3 +393,15 @@ class StepFailed(NodusError):
 
 class AgentChildrenUnavailable(NodusError):
     """The assigned runtime or account has not enabled durable child operations."""
+
+
+class AgentBrokerUnavailable(NodusError):
+    """The assigned runtime or account has not enabled the requested broker."""
+
+
+class BrokerRefused(NodusError):
+    """A definitive refusal before an external effect, with retry guidance."""
+
+    def __init__(self, code: str, *, retryable: bool):
+        super().__init__('Broker invocation was refused: ' + code, body={'code': code})
+        self.retryable = retryable

@@ -294,3 +294,50 @@ The CLI provides `nodus agent steps` and `nodus agent resolve --checkpoint-id`
 with the same evidence requirements. The console requires an explicit saved-state
 selection and confirmation for completed effects. Finite tests do not guarantee
 completion of every run.
+
+## Use bounded model and blob operations
+
+The fixed broker calls require separate account admission, group limits and a
+qualified model and runtime integration. They are unavailable by default.
+`nodus.AgentBrokerUnavailable` reports disabled or unsupported broker transport.
+Your existing direct model and tool workflows keep their existing behavior.
+
+Within an assigned grouped entrypoint, outside decorated steps, request one
+completion using an available profile ID supplied for your account:
+
+```python
+import nodus
+
+def main(event):
+    result = nodus.agent.complete_model(
+        "Summarize the observed experiment results.",
+        profile_id=event["completion_profile"],
+        invocation_key="summarize:1",
+        max_output_tokens=256,
+    )
+    return {"summary": result["text"]}
+```
+
+Keep the invocation key, prompt, profile and output limit identical on replay.
+A repeated key returns its recorded result. Changed input is a conflict.
+`finish_reason` is `stop` or `length`. The call accepts no destination URL or
+provider credential. It uses the assigned private session, so never put your
+account API key in the agent project.
+
+`nodus.agent.read_blob_chunk(reference, invocation_key="read:1", offset=0)`
+reads up to 256 KiB from a committed database blob reference with `id`, `sha256`
+and `bytes` fields. Add `child_run_id` to read a completed direct child's blob.
+Other runs and grandchildren are outside this scope. Offsets are multiples of
+256 KiB. Use a distinct stable invocation key for each chunk.
+
+The SDK verifies each result's identity and hash. Both methods poll within a
+bounded `timeout`, which defaults to 900 seconds and cannot exceed that value.
+Polling continues session renewal. Waiting for broker quota keeps the current
+compute allocation held.
+
+`nodus.BrokerRefused` means a definitive refusal and exposes `code` and
+`retryable`. A local capacity refusal uses one request attempt and releases its
+unused token reservation. Replaying that key returns the same refusal. An
+explicit new attempt uses a new key and consumes the remaining allowance.
+`nodus.StepOutcomeUnknown` means the outcome could not be established. Do not
+catch it to create a new invocation key or resend the model request.

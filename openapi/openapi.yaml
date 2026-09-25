@@ -8625,6 +8625,13 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
+          "attempt_budget_usd": {
+            "type": ["number", "null"],
+            "minimum": 0.000001,
+            "maximum": 1000000,
+            "multipleOf": 0.000001,
+            "description": "Optional fixed reservation for each new attempt in USD, in whole microdollars. Omission preserves the legacy allocation policy. Increasing worker concurrency does not reduce this amount."
+          },
           "name": {
             "type": "string"
           },
@@ -8706,6 +8713,13 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
+          "attempt_budget_usd": {
+            "type": ["number", "null"],
+            "minimum": 0.000001,
+            "maximum": 1000000,
+            "multipleOf": 0.000001,
+            "description": "Fixed attempt reservation from the current accepted revision. Absent for the legacy allocation policy."
+          },
           "id": {
             "type": "string"
           },
@@ -8802,6 +8816,13 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
+          "attempt_budget_usd": {
+            "type": ["number", "null"],
+            "minimum": 0.000001,
+            "maximum": 1000000,
+            "multipleOf": 0.000001,
+            "description": "Immutable attempt reservation accepted for this logical run. Absent for the legacy allocation policy."
+          },
           "recovery_policy": {
             "type": "string",
             "enum": [
@@ -12068,10 +12089,212 @@
           "authorization"
         ]
       },
+      "ManagedBrokerLimits": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Immutable lifetime request, token, read-byte and invocation-history ceilings. At least one operation kind must have a positive request allowance. Model requests require positive input and output allowances. Zero model or tool requests require their matching unit allowances to be zero. Limits must fit an independently configured account policy. Waiting and unknown outcomes retain their counted liabilities. These units do not represent model prices.",
+        "properties": {
+          "model_requests": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "input_tokens": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000000000
+          },
+          "output_tokens": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000000000
+          },
+          "tool_requests": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "read_bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1099511627776
+          },
+          "max_concurrent": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1024
+          },
+          "max_retained_invocations": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100000
+          },
+          "max_retained_bytes": {
+            "type": "integer",
+            "minimum": 4096,
+            "maximum": 1073741824
+          }
+        },
+        "required": [
+          "model_requests",
+          "input_tokens",
+          "output_tokens",
+          "tool_requests",
+          "read_bytes",
+          "max_concurrent",
+          "max_retained_invocations",
+          "max_retained_bytes"
+        ]
+      },
+      "ManagedBrokerModelUsage": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Active counts dispatched requests. Unresolved counts dispatched effects whose results remain unknown. Both retain concurrency and reserved units until authoritative settlement.",
+        "properties": {
+          "requests_used": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "requests_reserved": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "active": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "unresolved": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "input_tokens_used": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "output_tokens_used": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "input_tokens_reserved": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "output_tokens_reserved": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "requests_used",
+          "requests_reserved",
+          "active",
+          "unresolved",
+          "input_tokens_used",
+          "output_tokens_used",
+          "input_tokens_reserved",
+          "output_tokens_reserved"
+        ]
+      },
+      "ManagedBrokerToolUsage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "requests_used": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "requests_reserved": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "active": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "unresolved": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "read_bytes_used": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "read_bytes_reserved": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "requests_used",
+          "requests_reserved",
+          "active",
+          "unresolved",
+          "read_bytes_used",
+          "read_bytes_reserved"
+        ]
+      },
+      "ManagedBrokerWait": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "type": "string",
+            "enum": [
+              "model_request_limit",
+              "model_token_limit",
+              "tool_request_limit",
+              "tool_byte_limit",
+              "broker_concurrency_limit",
+              "broker_outcome_unknown",
+              "broker_unavailable"
+            ]
+          },
+          "requests": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000
+          }
+        },
+        "required": [
+          "reason",
+          "requests"
+        ]
+      },
+      "ManagedBrokerUsage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "model": {
+            "$ref": "#/components/schemas/ManagedBrokerModelUsage"
+          },
+          "tools": {
+            "$ref": "#/components/schemas/ManagedBrokerToolUsage"
+          },
+          "waits": {
+            "type": "array",
+            "maxItems": 7,
+            "items": {
+              "$ref": "#/components/schemas/ManagedBrokerWait"
+            }
+          }
+        },
+        "required": [
+          "model",
+          "tools",
+          "waits"
+        ]
+      },
       "ManagedAgentGroupCreate": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
+          "attempt_budget_usd": {
+            "type": ["number", "null"],
+            "minimum": 0.000001,
+            "maximum": 1000000,
+            "multipleOf": 0.000001,
+            "description": "Optional fixed attempt reservation in whole microdollars. It can narrow the selected revision cap. Omission inherits that revision cap."
+          },
           "name": {
             "type": "string",
             "pattern": "^[A-Za-z0-9:_.-]{1,128}$"
@@ -12109,6 +12332,10 @@
             "minimum": 0,
             "maximum": 10000,
             "description": "All nonterminal tasks, including active, waiting and blocked work. Omit or use zero for the smaller of 1000 and the account entitlement."
+          },
+          "broker_limits": {
+            "$ref": "#/components/schemas/ManagedBrokerLimits",
+            "description": "Optional independently enabled broker enrollment. Omission preserves existing direct model and tool workflows. Accepted limits are immutable."
           }
         },
         "required": [
@@ -12213,6 +12440,13 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
+          "attempt_budget_usd": {
+            "type": ["number", "null"],
+            "minimum": 0.000001,
+            "maximum": 1000000,
+            "multipleOf": 0.000001,
+            "description": "Immutable fixed attempt reservation accepted for this group and its child runs. Absent for the legacy allocation policy."
+          },
           "id": {
             "type": "string",
             "pattern": "^[A-Za-z0-9:_.-]{1,128}$"
@@ -12335,6 +12569,14 @@
               "unresolved"
             ],
             "description": "Separate from useful task completion. Unresolved resource or accounting evidence takes precedence, then any unsettled attempt is pending. Complete means no assigned attempt currently retains cleanup liability."
+          },
+          "broker_limits": {
+            "$ref": "#/components/schemas/ManagedBrokerLimits",
+            "description": "Optional independently enabled broker enrollment. Omission preserves existing direct model and tool workflows. Accepted limits are immutable."
+          },
+          "broker_usage": {
+            "$ref": "#/components/schemas/ManagedBrokerUsage",
+            "description": "Present only for broker-enrolled groups. Separate integer model and tool accounting from compute costs and logical-run wait counts."
           }
         },
         "required": [
