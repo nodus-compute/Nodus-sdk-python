@@ -4050,6 +4050,20 @@
             ],
             "format": "date-time"
           },
+          "expired_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "default": null,
+            "description": "When the saved workspace contents expired, if reported by the server. The named workspace remains available."
+          },
+          "cleanup_pending": {
+            "type": "boolean",
+            "default": false,
+            "description": "Whether cleanup of expired workspace contents remains pending, if reported by the server."
+          },
           "stored_bytes": {
             "type": [
               "integer",
