@@ -128,7 +128,7 @@ The assistant returns `text`, `model`, `stop_reason` and reported `usage` in the
 run result. It saves conversation history in `NODUS_CHECKPOINT_DIR`. Reusing the
 session keeps its ordered conversation. Different sessions have separate state.
 The installed assistant answers text tasks and does not execute tools or browse.
-Its [entrypoint](../../nodus/managed_assistant.py) writes and flushes state before
+Its [entrypoint](https://github.com/nodus-compute/Nodus-sdk-python/blob/main/nodus/managed_assistant.py) writes and flushes state before
 the journal commits its answer. It does not restore arbitrary process memory.
 
 Model usage consumes the agent's authorized budget alongside compute. The
