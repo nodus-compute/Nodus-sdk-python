@@ -20,6 +20,7 @@ _ID = re.compile(r'^[A-Za-z0-9:_.-]{1,128}$')
 _MAX = 256 << 10
 _current = contextvars.ContextVar('nodus_agent_session', default=None)
 _step_context = contextvars.ContextVar('nodus_agent_step', default=None)
+_step_authority = contextvars.ContextVar('nodus_agent_step_authority', default=None)
 _managed = contextvars.ContextVar('nodus_managed_driver', default=False)
 
 
@@ -362,3 +363,9 @@ from ._agent_children import (
 )
 
 from ._agent_broker import complete_model, read_blob_chunk
+def model(messages: list[dict[str, str]], *, call_id: str, max_output_tokens: int,
+          model: str | None = None, system: str | None = None) -> dict:
+    """Read a durable hosted model response under a stable call ID inside a managed step."""
+    from ._agent_models import request
+    return request(messages, call_id=call_id, max_output_tokens=max_output_tokens,
+                   model=model, system=system)

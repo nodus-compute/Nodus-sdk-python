@@ -324,7 +324,12 @@ async def test_download_keeps_resolved_credential_and_origin_together(api, nodus
 
 
 @pytest.mark.asyncio
-async def test_sandbox_and_agent_tools_return_acceptance_without_polling(api):
+@pytest.mark.parametrize("agent", [
+    {"name": "worker", "entrypoint": "agent:main", "budget_usd": 20},
+    {"name": "assistant", "assistant_template": "nodus:claude-assistant-v1",
+     "model": "nodus:claude-haiku", "model_max_output_tokens": 1024, "budget_usd": 20},
+])
+async def test_sandbox_and_agent_tools_return_acceptance_without_polling(api, agent):
     server, requests, responses = api
     async with create_connected_server_and_client_session(server) as session:
         tools = {tool.name: tool for tool in (await session.list_tools()).tools}
@@ -334,7 +339,6 @@ async def test_sandbox_and_agent_tools_return_acceptance_without_polling(api):
         assert tools["get_sandbox"].annotations.readOnlyHint is True
         assert tools["get_agent_run"].annotations.readOnlyHint is True
         sandbox = {"template": "nodus:agent-tools-v1", "budget_usd": 5}
-        agent = {"name": "worker", "entrypoint": "agent:main", "budget_usd": 20}
         operations = [
             ("create_sandbox", {"sandbox": sandbox}, "/v1/sandboxes", sandbox, {"id": "sb_one", "status": "pending"}),
             ("submit_sandbox_command", {"sandbox_id": "sb_one", "command": {"command": ["python", "example.py"]}},
@@ -406,10 +410,14 @@ async def test_new_controls_require_stable_keys_and_never_wait_for_cleanup(api, 
 
 
 @pytest.mark.asyncio
-async def test_agent_update_and_signal_preserve_revision_and_input(api):
+@pytest.mark.parametrize("definition", [
+    {"name": "worker", "entrypoint": "agent:main", "budget_usd": 20},
+    {"name": "assistant", "assistant_template": "nodus:claude-assistant-v1",
+     "model": "nodus:claude-haiku", "model_max_output_tokens": 1024, "budget_usd": 20},
+])
+async def test_agent_update_and_signal_preserve_revision_and_input(api, definition):
     server, requests, _ = api
     async with create_connected_server_and_client_session(server) as session:
-        definition = {"name": "worker", "entrypoint": "agent:main", "budget_usd": 20}
         update = {"expected_revision": 3, "definition": definition}
         result = await session.call_tool("update_agent", {"agent_id": "agent_one", "update": update, "idempotency_key": "revision-4"})
         assert not result.isError, result
