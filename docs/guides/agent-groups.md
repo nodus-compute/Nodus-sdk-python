@@ -83,6 +83,19 @@ rejected. Missing and foreign-owned groups return HTTP 404.
 liability independently of task success. A completed result does not imply that
 its compute and accounting have settled.
 
+On servers that expose group progress details, `blocked_reasons` gives sorted
+public categories with logical run counts. These distinguish dependencies,
+child waits, session serialization, execution and workspace capacity, budget
+limits and unknown external outcomes. Unknown reasons use `attention_required`.
+Cancellation reports nonterminal members as `cancelling` until their individual
+cancellation completes.
+
+`cleanup_status` is `unresolved` while resource or accounting evidence remains
+unresolved, `pending` while other assigned attempts remain unsettled, and
+`complete` after those obligations settle. Completed work can still have
+unresolved cleanup and a nonzero `reserved_usd`. These fields describe the
+current group response and do not measure productive model activity.
+
 | Control | Consumed by |
 | --- | --- |
 | `max_pending` | All nonterminal tasks, including active, waiting and blocked work |
