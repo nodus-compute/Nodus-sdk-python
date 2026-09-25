@@ -215,3 +215,21 @@ def test_broker_validation_never_consumes_an_identity(broker):
     with pytest.raises(nodus.ValidationError):
         drive(lambda: complete(timeout=float('inf')))
     assert not any(a.startswith('broker_') for a, _ in state['calls'])
+
+
+@pytest.mark.parametrize('code', [[], {}, None, True, 1])
+def test_malformed_refusal_cannot_finish_after_application_catch(broker, code):
+    state, drive = broker
+    state['model_state'] = 'rejected'
+    state['transform'] = lambda action, value: terminal(value, {'error': {'code': code, 'retryable': True}}, 'rejected') if action == 'broker_invoke' else value
+    caught = []
+    def driver():
+        try:
+            complete()
+        except Exception as error:
+            caught.append(type(error).__name__)
+        return {'incorrectly_finished': True}
+    with pytest.raises(nodus.StepOutcomeUnknown):
+        drive(driver)
+    assert caught == ['StepOutcomeUnknown']
+    assert not any(action == 'finish' for action, _ in state['calls'])

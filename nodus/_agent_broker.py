@@ -108,7 +108,8 @@ def _invoke(intent, invocation_key, timeout):
                     problem = result.get('error')
                     allowed = {'model_capacity_exceeded': True, 'blob_unavailable': False}
                     if (set(result) != {'error'} or not isinstance(problem, dict) or set(problem) != {'code', 'retryable'}
-                            or problem.get('code') not in allowed or type(problem.get('retryable')) is not bool
+                            or not isinstance(problem.get('code'), str) or problem['code'] not in allowed
+                            or type(problem.get('retryable')) is not bool
                             or problem['retryable'] is not allowed[problem['code']]
                             or intent['kind'] == _MODEL and problem['code'] != 'model_capacity_exceeded'
                             or intent['kind'] == _BLOB and problem['code'] != 'blob_unavailable'):
