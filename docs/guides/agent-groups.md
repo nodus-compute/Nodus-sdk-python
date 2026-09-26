@@ -7,6 +7,33 @@ explicit quotas. Existing deployment execution limits still apply.
 
 The [public API contract](../../openapi/openapi.yaml) describes the request fields.
 
+In the console, open an agent under **Sandboxes** and choose **Parallel task
+groups**. Create a group, submit task batches, inspect results and cancel work
+from the same view. See the [parallel agents guide](https://nodus-compute.ai/docs/parallel-agents/)
+for task inputs and a coordinator example that passes child results to another
+child. Console access uses your existing team permissions and execution limits.
+
+## Find existing groups
+
+Set `NODUS_BASE_URL` to your HTTPS API origin without `/v1`. Set `NODUS_AGENT_ID`
+to the existing definition. List its groups with your API key:
+
+```sh
+curl --fail --silent --show-error --get \
+  --header "Authorization: Bearer ${NODUS_API_KEY}" \
+  --data-urlencode 'limit=50' \
+  --data-urlencode "after=${NODUS_AFTER:-}" \
+  "${NODUS_BASE_URL}/v1/agents/${NODUS_AGENT_ID}/groups"
+```
+
+The response contains `groups` and `next_after`.
+Set `NODUS_AFTER` to `next_after` for the next page. Groups are ordered newest
+first. Each request reads a separate database snapshot. New groups appear when
+you refresh the first page. A cursor from another agent is rejected.
+
+Discovery remains available when new group admission is disabled. Existing
+groups still expose their results, spending, cleanup and cancellation control.
+
 ## Create a group
 
 Authenticate with your existing API key. Set `NODUS_BASE_URL` to your HTTPS API
