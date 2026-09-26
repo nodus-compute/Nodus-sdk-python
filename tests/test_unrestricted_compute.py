@@ -25,3 +25,22 @@ def test_compute_submission_needs_no_budget(operation):
     assert 'budget_usd' not in body
     assert 'max_cost_usd' not in body.get('outcome', {})
     assert requests[0].headers['Idempotency-Key'] == 'same-request'
+
+
+@pytest.mark.parametrize('budget', [0, 5])
+def test_legacy_budget_only_constructor_preserves_managed_template(budget, monkeypatch):
+    requests = []
+    def handle(request):
+        requests.append(request)
+        return httpx.Response(202, json={'id': 'sb_legacy', 'state': 'creating'})
+    with nodus.Client(api_key='test', base_url='https://nodus.invalid') as client:
+        client._http.close()
+        client._http = httpx.Client(base_url='https://nodus.invalid', transport=httpx.MockTransport(handle))
+        monkeypatch.setattr(nodus, 'Client', lambda: client)
+        sandbox = nodus.Sandbox(budget=budget, idempotency_key='legacy-request')
+        assert sandbox.id == 'sb_legacy'
+    assert len(requests) == 1
+    body = json.loads(requests[0].content)
+    assert body['template'] == 'nodus:agent-tools-v1'
+    assert body['outcome']['max_cost_usd'] == budget
+    assert requests[0].headers['Idempotency-Key'] == 'legacy-request'

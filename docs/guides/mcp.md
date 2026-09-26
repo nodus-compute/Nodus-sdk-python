@@ -123,9 +123,9 @@ The [sandbox guide](agent-sandboxes.md) also covers SDK commands and streaming o
 
 ## Submit and monitor a workload
 
-This example checks the remote GPU and allows up to $1 in workload spending.
-Authorize the workload before submitting. An accepted
-request does not guarantee completion within that limit.
+This example checks the remote GPU using account funding without a spending
+cap. Authorize the workload before submitting. An accepted request does not
+guarantee completion or a final price.
 
 Call `submit_workload` with:
 

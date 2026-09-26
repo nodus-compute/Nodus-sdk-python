@@ -664,7 +664,7 @@ class Sandbox(_SandboxState):
         self._owned_client = client is None
         self._init_state(sandbox_id)
         if client is None:
-            if not any((image, template, project, name, source_asset_id, from_snapshot)):
+            if budget is None and not any((image, template, project, name, source_asset_id, from_snapshot)):
                 raise ValidationError("Provide an image or name, or select a template or project for the sandbox.")
             from . import Client
 

@@ -29,7 +29,8 @@ claim Nodus uploads the current directory automatically. Ask only for missing
 requirements, including data and code access.
 
 Prepare the complete HTTP request and call `validate_workload` when available.
-Show the command, image, resources, output paths and maximum spend for review.
+Show the command, image, resources and output paths for review. Explain that
+usage is billed to the account without a spending cap.
 Reuse explicit authorization the user already gave for that request. Validation
 starts no compute and is not a price quote or a capacity reservation.
 
