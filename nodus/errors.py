@@ -3,8 +3,7 @@
 Every exception inherits :class:`NodusError`, so one ``except nodus.NodusError``
 catches all of them and nothing else. The distinction that matters when writing
 a handler is whether the condition can clear on its own: rate limits and
-capacity pressure clear with time, budget caps clear only if you lower what you
-are asking for, and authentication and validation failures never clear.
+capacity pressure can clear with time, credit exhaustion requires account funding, and authentication and validation failures never clear.
 """
 
 from __future__ import annotations
@@ -22,7 +21,7 @@ _CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 __all__ = [
     "NodusError",
     "StepOutcomeUnknown", "StepDefinitionConflict", "StepResultExpired", "StepFailed",
-    "AgentChildrenUnavailable", "AgentBrokerUnavailable", "BrokerRefused",
+    "AgentChildrenUnavailable", "AgentBrokerUnavailable", "AgentMessagesUnavailable", "BrokerRefused",
     "ConfigurationError",
     "AuthenticationError",
     "NotFoundError",
@@ -284,8 +283,7 @@ _REMEDIES: dict[str, str] = {
         "runs using starter credits: https://console.nodus-compute.ai/?view=billing"
     ),
     "budget_exceeded": (
-        "Review your account spending limit in the console. "
-        "Use budget=<usd> to set a separate limit for this run."
+        "Check account funding and payment readiness in Billing."
     ),
     "spend_check_unavailable": (
         "The account spend check could not be reached, so the submission was "
@@ -352,6 +350,11 @@ def error_from_response(
     # Only the code the API actually writes counts.
     if status_code == 401 and code == "invalid_signature":
         cls: type[NodusError] = SignatureError
+    elif status_code == 409 and isinstance(code, str) and code in {
+        "workspace_files_conflict", "workspace_files_format_unsupported",
+        "workspace_files_empty", "workspace_storage_inactive", "workspace_transfer_conflict",
+    }:
+        cls = APIError
     elif status_code == 409 and code == "asset_in_use":
         cls = AssetInUseError
     elif status_code == 409 and code == "run_draft_conflict":
@@ -393,6 +396,10 @@ class StepFailed(NodusError):
 
 class AgentChildrenUnavailable(NodusError):
     """The assigned runtime or account has not enabled durable child operations."""
+
+
+class AgentMessagesUnavailable(NodusError):
+    """The assigned group or runtime has not enabled durable peer messages."""
 
 
 class AgentBrokerUnavailable(NodusError):

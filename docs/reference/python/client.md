@@ -51,7 +51,7 @@ terminates on exit. Call `close()` to release only the local HTTP client while
 keeping the remote sandbox alive.
 
 `client.sandboxes.create(...)` accepts an image, resource requirements, a
-budget, network policy, lifecycle, reservation, and continuity settings. It
+network policy, lifecycle, reservation, and continuity settings. It
 returns an accepted `Sandbox` handle. Read `sandbox.state` or call
 `sandbox.refresh()` before assuming the environment is ready.
 
@@ -150,7 +150,7 @@ import nodus
 requirements = nodus.Requirements(compute_class="accelerator", peak_memory_gb=24)
 source = nodus.Source(image="pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime", command=["python", "-c", "print(1)"])
 stage = nodus.StageSpec(id="example", source=source)
-# Supply requirements= and stages=[stage] to client.run(..., budget=5).
+# Supply requirements= and stages=[stage] to client.run(...).
 ```
 
 They do not add runtime validation or defaults. Existing plain dictionaries remain

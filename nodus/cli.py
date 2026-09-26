@@ -543,7 +543,7 @@ def _cmd_sandbox(args: argparse.Namespace) -> int:
                 show_table(
                     ["Sandbox", "Name", "Status", "Cost"],
                     [[sandbox.id, sandbox.envelope.get("name", ""), sandbox.state, format_cost(sandbox.cost_usd)] for sandbox in sandboxes],
-                    empty="No sandboxes yet. Use nodus sandbox new --budget USD to create one.",
+                    empty="No sandboxes yet. Use nodus sandbox new to create one.",
                     plain=args.plain,
                 )
             return 0
@@ -801,7 +801,7 @@ def _cmd_explain(args: argparse.Namespace) -> int:
         for line in _fmt_route(wl.route):
             print(f"  {line}")
         print()
-        print("  Your run budget is a spending limit. Nodus stops the run at that limit.")
+        print("  Legacy budget fields do not impose a spending limit.")
     return 0
 
 
@@ -1195,7 +1195,7 @@ Use nodus COMMAND --help for command options.""",
     sandbox_new.add_argument("--setup", help="dependency setup command for the managed environment")
     sandbox_new.add_argument("--template", help="versioned managed environment, such as nodus:agent-tools-v1")
     sandbox_new.add_argument("--network-permission", action="append", help="named managed network permission")
-    sandbox_new.add_argument("--budget", type=_positive_cost, default=None, help="maximum sandbox cost in USD")
+    sandbox_new.add_argument("--budget", type=_positive_cost, default=None, help="deprecated compatibility field")
     sandbox_new.add_argument("--idempotency-key", help="reuse the same key when retrying an uncertain request")
     for action, help_text in (("detail", "inspect a sandbox"), ("sleep", "save project files and release compute"), ("wake", "resume authorized compute")):
         operation = sandbox_sub.add_parser(action, help=help_text)
@@ -1378,12 +1378,12 @@ def _cmd_benchmark(args: argparse.Namespace) -> int:
             if source.stat().st_size > 1_000_000:
                 raise ValueError("benchmark request exceeds 1 MB")
             request = json.loads(source.read_text())
-            if not isinstance(request, dict) or set(request) != {"workload", "matrix", "budget_usd"}:
-                raise ValueError("benchmark request requires workload, matrix and budget_usd")
+            if not isinstance(request, dict) or not {"workload", "matrix"}.issubset(request) or set(request) - {"workload", "matrix", "budget_usd"}:
+                raise ValueError("benchmark request requires workload and matrix")
             matrix = request["matrix"]
             if not isinstance(matrix, dict) or set(matrix) != {"gpu_families", "batch_sizes", "regions", "repetitions"}:
                 raise ValueError("matrix requires gpu_families, batch_sizes, regions and repetitions")
-            result = client.benchmark(workload=request["workload"], budget=request["budget_usd"],
+            result = client.benchmark(workload=request["workload"], budget=request.get("budget_usd"),
                                       idempotency_key=args.idempotency_key, **matrix)
         print(json.dumps(result, indent=2, allow_nan=False))
     return 0

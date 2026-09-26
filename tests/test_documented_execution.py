@@ -7,6 +7,7 @@ from __future__ import annotations
 import ast
 import base64
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -14,11 +15,13 @@ import re
 import subprocess
 import sys
 import sysconfig
+import tarfile
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
 import nodus
+import httpx
 import pytest
 from test_agent_steps import journal_socket
 
@@ -32,6 +35,23 @@ def docs_api(monkeypatch):
     calls = []
     submissions = []
     file_output = {}
+    workspace_upload = {}
+    archive = io.BytesIO()
+    with tarfile.open(fileobj=archive, mode="w") as saved:
+        entry = tarfile.TarInfo("result.json")
+        entry.size = len(DATA)
+        saved.addfile(entry, io.BytesIO(DATA))
+    archive_bytes = archive.getvalue()
+    segment = {"sha256": hashlib.sha256(archive_bytes).hexdigest(), "offset": 0, "bytes": len(archive_bytes)}
+    manifest = {"version": 3, "archive_sha256": segment["sha256"], "archive_bytes": len(archive_bytes), "segments": [segment]}
+
+    def download(request):
+        assert str(request.url) == "https://workspace-objects.invalid/saved-project"
+        assert "authorization" not in request.headers and "cookie" not in request.headers
+        return httpx.Response(200, content=archive_bytes)
+
+    import nodus._workspace_files as workspace_files
+    monkeypatch.setattr(workspace_files, "_download_client", lambda asynchronous: httpx.Client(transport=httpx.MockTransport(download)))
     row = {"id": "wl_docs", "status": "completed", "revision": 2,
            "spend_usd": 0.01, "meter": {"total_now_usd": 0.01},
            "route": {"sku": "nodus:test", "region": "test-region", "expected_cost_usd": 0.01}}
@@ -76,6 +96,8 @@ def docs_api(monkeypatch):
             calls.append(("GET", path))
             if self.headers.get("Authorization") != "Bearer nk_docs":
                 return self.reply({"error": "unauthorized"}, 401)
+            if path == "/v1/research-workspaces/storage":
+                return self.reply({"retained_bytes": len(DATA), "billable_bytes": 0})
             if path == "/v1/sandboxes/capabilities":
                 return self.reply({"available": True, "default_template": "nodus:agent-tools-v1", "templates": [
                     {"id": "nodus:agent-tools-v1", "available": True, "max_project_bytes": 1048576}]})
@@ -151,7 +173,24 @@ def docs_api(monkeypatch):
                 return self.reply({"error": "unauthorized"}, 401)
             if path == "/v1/connections/conn_docs":
                 return self.reply(b"", 204)
+            if path == "/v1/research-workspaces/ws_docs/files":
+                payload = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+                assert payload == {"storage_revision": 1}
+                return self.reply({"workspace_id": "ws_docs", "storage_revision": 2, "deleted": True})
             return self.reply({"error": "not_found"}, 404)
+
+        def do_PUT(self):
+            path = urlsplit(self.path).path
+            calls.append(("PUT", path))
+            assert self.headers.get("Authorization") == "Bearer nk_docs"
+            assert path.startswith("/v1/research-workspaces/ws_docs/transfers/transfer_docs/segments/")
+            index = int(path.rsplit("/", 1)[1])
+            data = self.rfile.read(int(self.headers.get("Content-Length", 0)))
+            expected = workspace_upload["manifest"]["segments"][index]
+            assert len(data) == expected["bytes"] and hashlib.sha256(data).hexdigest() == expected["sha256"]
+            assert index not in workspace_upload["uploaded"]
+            workspace_upload["uploaded"].add(index)
+            return self.reply(b"", 204)
 
         def do_PATCH(self):
             path = urlsplit(self.path).path
@@ -202,8 +241,22 @@ def docs_api(monkeypatch):
                 return self.reply({"api_key": "nk_docs", "base_url": address, "tenant": "docs-test"})
             if self.headers.get("Authorization") != "Bearer nk_docs":
                 return self.reply({"error": "unauthorized"}, 401)
+            if path == "/v1/research-workspaces/ws_docs/transfers":
+                assert payload["idempotency_key"] == "project-upload-1"
+                workspace_upload.update(manifest=payload["manifest"], uploaded=set())
+                canonical = json.dumps(payload["manifest"], separators=(",", ":")).encode()
+                return self.reply({"id": "transfer_docs", "workspace_id": "ws_docs", "state": "uploading",
+                    "manifest_sha256": hashlib.sha256(canonical).hexdigest(), "manifest_bytes": len(canonical), "uploaded_segments": []}, 201)
+            if path == "/v1/research-workspaces/ws_docs/transfers/transfer_docs/finalize":
+                assert workspace_upload["uploaded"] == set(range(len(workspace_upload["manifest"]["segments"])))
+                return self.reply({"id": "transfer_docs", "workspace_id": "ws_docs", "state": "queued"}, 202)
+            if path == "/v1/research-workspaces/ws_docs/files/export":
+                assert payload == {"storage_revision": 1}
+                return self.reply({"id": "export_docs", "workspace_id": "ws_docs", "storage_revision": 1,
+                    "format": "research-archive-v3", "manifest": manifest,
+                    "segments": [{"index": 0, **segment, "url": "https://workspace-objects.invalid/saved-project"}]})
             if path == "/v1/agents":
-                assert payload["budget_usd"] == 20 and payload["entrypoint"] == "agent:main"
+                assert payload["entrypoint"] == "agent:main"
                 if "bootstrap" in payload:
                     assert payload["bootstrap"] == {"repo": "your-org/private-agent", "ref": "main"}
                     assert payload["network_permissions"] == ["github"] and "source" not in payload
@@ -238,7 +291,7 @@ def docs_api(monkeypatch):
                 return self.reply({"id": "pet_docs", "mode": "execute", "token": "synthetic-token", "expires_at": "2026-09-18T12:00:00Z"}, 201)
             if path == "/v1/workloads":
                 submissions.append(payload)
-                if not self.headers.get("Idempotency-Key") or not payload.get("outcome", {}).get("max_cost_usd"):
+                if not self.headers.get("Idempotency-Key"):
                     return self.reply({"error": "invalid_brief"}, 400)
                 return self.reply({"id": "wl_docs", "workload_id": "wl_docs", "status": "accepted", "revision": 1}, 202)
             if path == "/v1/workspaces":
@@ -295,6 +348,9 @@ def test_python_documentation_executes(path, number, body, docs_api, tmp_path, m
     monkeypatch.chdir(tmp_path)
     for name in ("hello.py", "train.py", "data.csv"):
         (tmp_path / name).write_text("test fixture")
+    if path.name == "workspaces.md" and number == 1:
+        (tmp_path / "project").mkdir()
+        (tmp_path / "project" / "train.py").write_text("print('saved')\n")
     from nodus._workload_file import write_workload_file
     write_workload_file(tmp_path / "train.toml")
     with nodus.Client() as client:
@@ -309,7 +365,7 @@ def test_python_documentation_executes(path, number, body, docs_api, tmp_path, m
             state["run_id"] = "invoice:42"
             state["input"] = {"invoice_id": 42}
             namespace["send_to_invoice_service"] = lambda invoice_id: "synthetic-remote-7"
-        program = compile(body.replace('"YOUR_WORKLOAD_ID"', '"wl_docs"'), str(path), "exec")
+        program = compile(body.replace('"YOUR_WORKLOAD_ID"', '"wl_docs"').replace('"YOUR_WORKSPACE_ID"', '"ws_docs"'), str(path), "exec")
         local_project_example = (path.name, number) in {("agent-sandboxes.md", 0), ("managed-agents.md", 1)}
         descriptor_support = os.name == "nt" or (hasattr(os, "fwalk") and hasattr(os, "O_NOFOLLOW") and os.open in os.supports_dir_fd)
         if local_project_example and not descriptor_support:
@@ -317,6 +373,13 @@ def test_python_documentation_executes(path, number, body, docs_api, tmp_path, m
                 exec(program, namespace)
         else:
             exec(program, namespace)
+    if path.name == "workspaces.md" and number == 1:
+        assert namespace["transfer"]["state"] == "queued"
+        assert ("GET", "/v1/research-workspaces/storage") in docs_api[1]
+    if path.name == "workspaces.md" and number == 2:
+        with tarfile.open(tmp_path / "saved-project.tar") as saved:
+            assert saved.extractfile("result.json").read() == DATA
+        assert ("DELETE", "/v1/research-workspaces/ws_docs/files") in docs_api[1]
     # Compile embedded Python argv too, without pretending it ran on a GPU.
     for payload in docs_api[2]:
         sources = [payload.get("source", {})] + [s.get("source", {}) for s in payload.get("stages", [])]
@@ -327,10 +390,10 @@ def test_python_documentation_executes(path, number, body, docs_api, tmp_path, m
 
 
 @pytest.mark.parametrize("script,args", [
-    ("basic.py", ["--budget", "5"]),
-    ("async_sweep.py", ["--run-id", "docs-check", "--budget-per-run", "1"]),
-    ("ci_submit.py", ["--submission-id", "docs-check", "--budget", "5"]),
-    ("multi_stage.py", ["--submission-id", "docs-check", "--budget", "5"]),
+    ("basic.py", []),
+    ("async_sweep.py", ["--run-id", "docs-check"]),
+    ("ci_submit.py", ["--submission-id", "docs-check"]),
+    ("multi_stage.py", ["--submission-id", "docs-check"]),
 ])
 def test_complete_example_programs(script, args, docs_api, tmp_path):
     result = subprocess.run([sys.executable, str(ROOT / "examples" / script), *args],
@@ -348,8 +411,8 @@ def test_complete_example_programs(script, args, docs_api, tmp_path):
     ["events", "wl_docs"], ["logs", "wl_docs"],
     ["artifacts", "wl_docs"], ["explain", "wl_docs"], ["ledger", "wl_docs"],
     ["download", "wl_docs"], ["workload", "outputs", "wl_docs"], ["workload", "outputs", "wl_docs", "--reload", "results", "--stage", "main"], ["cancel", "wl_docs"], ["assets"], ["upload", "hello.py"],
-    ["sandbox", "new", "--name", "research-agent", "--github-repo", "your-org/private-agent", "--github-ref", "main", "--budget", "5"],
-    ["agent", "deploy", "worker", "--github-repo", "your-org/private-agent", "--github-ref", "main", "--budget", "20"],
+    ["sandbox", "new", "--name", "research-agent", "--github-repo", "your-org/private-agent", "--github-ref", "main"],
+    ["agent", "deploy", "worker", "--github-repo", "your-org/private-agent", "--github-ref", "main"],
 ])
 def test_installed_terminal_commands(args, docs_api, tmp_path):
     from nodus._workload_file import write_workload_file

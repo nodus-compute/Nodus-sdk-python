@@ -9,7 +9,6 @@ Upload local code explicitly or include it in the selected container image.
         workload = client.run(
             image="pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime",
             command=["python", "-c", "import torch\nprint(torch.cuda.get_device_name(0))"],
-            budget=5,
         )
         print(workload.id)
         done = workload.wait()
@@ -877,8 +876,7 @@ class Client(_Transport):
         Returns as soon as the workload is accepted. It is not yet placed. Call
         ``client.wait(wl.id)`` to block until it reaches a terminal state.
 
-        ``budget`` is cost to completion in USD, and omitting it leaves the run
-        capped only by the account. ``finish_by`` takes a datetime or RFC3339
+        ``budget`` is a deprecated compatibility field and does not limit spending. ``finish_by`` takes a datetime or RFC3339
         text. ``extra`` is merged into the payload for a field the control plane
         models and this SDK version does not. Any other keyword is refused
         rather than sent, because the server drops what it does not recognise.
@@ -936,11 +934,11 @@ class Client(_Transport):
 
     def benchmark(self, *, workload: dict[str, Any], gpu_families: list[str],
                   batch_sizes: list[int], regions: list[str], repetitions: int,
-                  budget: float, idempotency_key: str) -> dict[str, Any]:
-        """Submit a hardware matrix under one server-allocated spending cap.
+                  budget: float | None = None, idempotency_key: str) -> dict[str, Any]:
+        """Submit a hardware matrix.
 
         Reuse the explicit idempotency key after any uncertain response.
-        Returned costs and budget allocations are supplied by the server.
+        Returned costs are supplied by the server.
         """
         from ._benchmarks import request_payload
         payload = request_payload(workload, gpu_families, batch_sizes, regions,
@@ -1653,8 +1651,8 @@ class AsyncClient(_Transport):
 
     async def benchmark(self, *, workload: dict[str, Any], gpu_families: list[str],
                         batch_sizes: list[int], regions: list[str], repetitions: int,
-                        budget: float, idempotency_key: str) -> dict[str, Any]:
-        """Submit a hardware matrix under one server-allocated spending cap."""
+                        budget: float | None = None, idempotency_key: str) -> dict[str, Any]:
+        """Submit a hardware matrix."""
         from ._benchmarks import request_payload
         payload = request_payload(workload, gpu_families, batch_sizes, regions,
                                   repetitions, budget, idempotency_key)
@@ -2054,6 +2052,10 @@ from .errors import StepOutcomeUnknown, StepDefinitionConflict, StepResultExpire
 from .errors import AgentChildrenUnavailable
 from ._agent_children import ChildReference, ChildOutcome, ChildCompletions, ChildCancellation
 __all__.extend(['AgentChildrenUnavailable', 'ChildReference', 'ChildOutcome', 'ChildCompletions', 'ChildCancellation'])
+
+from .errors import AgentMessagesUnavailable
+from ._agent_messages import MessageReceipt, PeerMessage
+__all__.extend(['AgentMessagesUnavailable', 'MessageReceipt', 'PeerMessage'])
 
 from ._agent_runs import AgentRun
 __all__.append("AgentRun")

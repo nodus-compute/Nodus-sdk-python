@@ -38,7 +38,6 @@ with nodus.Client() as client:
         name="calculator",
         project=".",
         entrypoint="agent:main",
-        budget=20,
         max_workers=4,
         idempotency_key="calculator-deployment-001",
     )
@@ -69,9 +68,9 @@ cancellation. Each mutation accepts an idempotency key. Run submission and
 signals require an explicit key so uncertain responses can be retried safely.
 When the server reports exhausted retries, `run.retry()` explicitly requests
 another attempt within the existing authorization. It does not resolve an
-unknown external effect or raise the spending limit.
+unknown external effect.
 
-The CLI exposes the same operations. `nodus agent deploy NAME --budget USD`
+The CLI exposes the same operations. `nodus agent deploy NAME`
 uploads the current directory. Add `--project PATH` to select another project
 or `--source-asset-id ID` to reuse one already uploaded. Use `nodus agent list`,
 `detail`, `submit`, `runs`, `signal`, `pause`, `resume` and `cancel` to operate
@@ -86,7 +85,7 @@ to the CLI:
 nodus agent deploy worker \
   --github-repo your-org/private-agent \
   --github-ref main \
-  --budget 20
+
 ```
 
 Omit `--github-ref` to use the repository default branch. The CLI adds the GitHub
@@ -143,7 +142,6 @@ def deploy_assistant(client, model):
         name="report-assistant",
         assistant_template="nodus:claude-assistant-v1",
         model=model,
-        budget=20,
         idempotency_key="report-assistant-001",
     )
 
@@ -171,8 +169,8 @@ The installed assistant answers text tasks and does not execute tools or browse.
 Its [entrypoint](https://github.com/nodus-compute/Nodus-sdk-python/blob/main/nodus/managed_assistant.py) writes and flushes state before
 the journal commits its answer. It does not restore arbitrary process memory.
 
-The agent budget limits compute spending. Model and retained storage charges
-are separate and use the account balance and spending controls. The controller
+Compute, model and retained storage charges
+are separate and use the available account credits. The controller
 supplies the accepted model and output limit. You can set
 `model_max_output_tokens` explicitly at deployment, up to 4096 and the enabled
 model's limit. The SDK does not supply a missing limit or calculate charges.
@@ -286,6 +284,11 @@ An empty list removes that capability. Removing named secrets does not remove
 separately declared connection credentials. The server refuses any broadening
 or removal that makes mandatory setup invalid. Children share the existing
 group and deployment spending limits.
+
+For messages between admitted tasks in the same group, see
+[peer messaging](agent-groups.md#exchange-messages-between-tasks). Peer messages
+use their own send and receive keys and are available automatically on qualified
+new groups.
 
 ## Recovery boundaries
 

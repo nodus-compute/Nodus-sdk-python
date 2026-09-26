@@ -39,7 +39,7 @@ Keep an existing working connection or remove it before adding another.
 
 The approval screen names the account, team, requested permissions and client
 return address. You can choose read-only access. Write access permits workload
-submission and cancellation, with an explicit budget on every submission.
+submission and cancellation, with explicit authorization on every submission.
 Access expires after 30 days. Authenticate again in the client to reconnect.
 
 [Connected agents](https://console.nodus-compute.ai/console/?view=agents) shows
@@ -194,10 +194,9 @@ Ask the agent to call `list_workloads`. Check its
 actual response. An empty list is valid. This read does not start paid compute.
 If it fails, use the [MCP troubleshooting guide](mcp.md#cancel-and-troubleshoot).
 
-For your first workload, provide your image, command, GPU requirements and
-spending limit. Ask the agent to prepare your command with a maximum you
-specify and show the request before submission. Do not invent a budget or
-start compute to test the connection. The [workload guide](agents.md) covers
+For your first workload, provide your image, command and GPU requirements.
+Ask the agent to show the request before submission. Do not start compute
+to test the connection. The [workload guide](agents.md) covers
 execution and downloaded result verification. Use `download_workload_output`
 locally or `get_workload_output` on a hosted connection to retrieve results.
 

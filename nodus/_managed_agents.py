@@ -43,14 +43,16 @@ def _definition(name, entrypoint, budget, *, template=None, source_asset_id=None
         entrypoint = 'nodus.managed_assistant:main'
     if not isinstance(entrypoint, str) or len(entrypoint) > 256 or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*:[A-Za-z_][A-Za-z0-9_]*", entrypoint):
         raise ValidationError("entrypoint must be module:function")
-    if type(budget) not in (int, float) or not math.isfinite(budget) or budget <= 0 or budget > 1_000_000:
-        raise ValidationError("Managed agents require an explicit positive finite budget")
+    if budget is not None and (type(budget) not in (int, float) or not math.isfinite(budget) or budget < 0):
+        raise ValidationError("Legacy budget must be a finite nonnegative value")
     for value, minimum in ((min_workers, 0), (max_workers, 1)):
         if value is not None and (type(value) is not int or not minimum <= value <= 100):
             raise ValidationError("Invalid worker limit")
     if min_workers is not None and max_workers is not None and min_workers > max_workers:
         raise ValidationError("min_workers cannot exceed max_workers")
-    body = {"name": _id(name), "entrypoint": entrypoint, "budget_usd": budget}
+    body = {"name": _id(name), "entrypoint": entrypoint}
+    if budget is not None:
+        body["budget_usd"] = budget
     for field, value in (("template", template), ("bootstrap", bootstrap), ("secrets", secrets), ("policy", policy),
                          ("network_permissions", network_permissions), ("requirements", requirements),
                          ("min_workers", min_workers), ("max_workers", max_workers),
@@ -101,8 +103,8 @@ class ManagedAgents:
     def __init__(self, client):
         self._client = client
 
-    def create(self, *, name, budget, project=None, entrypoint="agent:main", idempotency_key=None, **options):
-        """Deploy a versioned Python agent under an explicit spending limit."""
+    def create(self, *, name, budget=None, project=None, entrypoint="agent:main", idempotency_key=None, **options):
+        """Deploy a versioned Python agent."""
         key = _key(idempotency_key)
         body = _definition(name, entrypoint, budget, **options)
         if project is not None:
@@ -174,7 +176,7 @@ class ManagedAgent(_Handle):
         self.raw = self._client.agents.get(self.id).raw
         return self
 
-    def update(self, *, expected_revision, name, budget, entrypoint="agent:main", idempotency_key=None, **options):
+    def update(self, *, expected_revision, name, budget=None, entrypoint="agent:main", idempotency_key=None, **options):
         """Create a revision only if the observed revision is still current."""
         if type(expected_revision) is not int or expected_revision < 1:
             raise ValidationError("expected_revision must be positive")
@@ -296,7 +298,7 @@ def _listing(response, field, cls, client):
 
 
 class AsyncManagedAgents(ManagedAgents):
-    async def create(self, *, name, budget, project=None, entrypoint="agent:main", idempotency_key=None, **options):
+    async def create(self, *, name, budget=None, project=None, entrypoint="agent:main", idempotency_key=None, **options):
         key = _key(idempotency_key)
         body = _definition(name, entrypoint, budget, **options)
         if project is not None:
@@ -358,7 +360,7 @@ class AsyncManagedAgent(ManagedAgent):
         self.raw = (await self._client.agents.get(self.id)).raw
         return self
 
-    async def update(self, *, expected_revision, name, budget, entrypoint="agent:main", idempotency_key=None, **options):
+    async def update(self, *, expected_revision, name, budget=None, entrypoint="agent:main", idempotency_key=None, **options):
         if type(expected_revision) is not int or expected_revision < 1:
             raise ValidationError("expected_revision must be positive")
         body = {"expected_revision": expected_revision, "definition": _definition(name, entrypoint, budget, **options)}
