@@ -3,8 +3,7 @@
 Every exception inherits :class:`NodusError`, so one ``except nodus.NodusError``
 catches all of them and nothing else. The distinction that matters when writing
 a handler is whether the condition can clear on its own: rate limits and
-capacity pressure clear with time, budget caps clear only if you lower what you
-are asking for, and authentication and validation failures never clear.
+capacity pressure can clear with time, credit exhaustion requires account funding, and authentication and validation failures never clear.
 """
 
 from __future__ import annotations
@@ -284,8 +283,7 @@ _REMEDIES: dict[str, str] = {
         "runs using starter credits: https://console.nodus-compute.ai/?view=billing"
     ),
     "budget_exceeded": (
-        "Review your account spending limit in the console. "
-        "Use budget=<usd> to set a separate limit for this run."
+        "Check account funding and payment readiness in Billing."
     ),
     "spend_check_unavailable": (
         "The account spend check could not be reached, so the submission was "

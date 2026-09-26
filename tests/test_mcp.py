@@ -101,10 +101,10 @@ async def test_output_download_verifies_bytes_and_refuses_overwrite(api, tmp_pat
 
 
 @pytest.mark.asyncio
-async def test_validate_and_submit_require_explicit_positive_budget(api):
+async def test_validate_and_submit_accept_optional_legacy_budget(api):
     server, requests, responses = api
     async with create_connected_server_and_client_session(server) as session:
-        for budget in (None, 0, -1, True, "10"):
+        for budget in (-1, True, "10"):
             workload = {"outcome": {"max_cost_usd": budget}}
             for tool in ("validate_workload", "submit_workload"):
                 args = {"workload": workload}
@@ -113,7 +113,7 @@ async def test_validate_and_submit_require_explicit_positive_budget(api):
                 result = await session.call_tool(tool, args)
                 assert result.isError
         assert requests == []
-        workload = {"source": {"image": "customer/image", "command": ["python", "train.py"]}, "outcome": {"max_cost_usd": 10}}
+        workload = {"source": {"image": "customer/image", "command": ["python", "train.py"]}}
         responses.append(httpx.Response(200, json={"valid": True, "submitted": False, "workload": workload}))
         result = await session.call_tool("validate_workload", {"workload": workload})
         assert not result.isError
@@ -434,7 +434,7 @@ async def test_new_tools_reject_missing_authority_before_network(api):
     server, requests, _ = api
     async with create_connected_server_and_client_session(server) as session:
         for tool, payload in (("create_sandbox", "sandbox"), ("create_agent", "agent")):
-            for budget in (None, True, 0, -1, "20"):
+            for budget in (True, -1, "20"):
                 result = await session.call_tool(tool, {payload: {"budget_usd": budget}, "idempotency_key": "explicit-intent"})
                 assert result.isError
         for arguments in (

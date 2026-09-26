@@ -1,14 +1,14 @@
 # Connect workflows and CI
 
 Use a Nodus API key from your workflow's secret store. Keep the image, command,
-GPU requirements, budget and output paths in a reviewed
+GPU requirements and output paths in a reviewed
 [workload file](../getting-started/workload-files.md). Your image must already
 contain your code and dependencies. These recipes do not upload the checkout.
 
 ## GitHub Actions
 
 Add a repository or environment secret named `NODUS_API_KEY`. Commit your
-`nodus.toml` with an explicit positive `budget` you authorize. Run this workflow
+`nodus.toml` containing the work you authorize. Run this workflow
 manually when you intend to start paid compute:
 
 ```yaml
@@ -54,7 +54,7 @@ the same across its retries.
 `wait-timeout` defaults to 3600 seconds. It limits observation, not workload
 spending or runtime. A timeout or cancelled GitHub job does not cancel Nodus
 compute. Inspect the recorded workload in the console and cancel it explicitly
-if needed. Your workload's budget remains its spending control.
+if needed. Charges continue until execution stops.
 
 For stable automation, pin the action to the reviewed release commit instead
 of a moving branch. GitHub's workflow permissions and environment approval
@@ -91,7 +91,7 @@ and does not require a Nodus-specific connector.
 1. Store your API key in the tool's credential store and send it as a Bearer
    credential only to your Nodus API origin.
 2. Prepare the workload JSON with your image, command, GPU requirements,
-   output paths and an explicit `outcome.max_cost_usd`.
+   output paths.
 3. Call `POST /v1/workloads/validate`. Validation does not start compute or
    reserve capacity. Require `valid: true` before continuing.
 4. Save a unique key for the intentional run. Call `POST /v1/workloads` with

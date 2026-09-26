@@ -41,7 +41,6 @@ Inside a `with nodus.Client() as client:` block:
 workload = client.run(
     image="pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime",
     command=["python", "-c", "print('ready')"],
-    budget=5,
 )
 ```
 
@@ -87,7 +86,7 @@ letters, digits, or underscores. For example, `training_data` is valid and
 Set `cache: True` to allow reuse of verified input content within your team and
 execution region. Cache storage uses workspace size and count limits. The first
 workload that fills a cache remains its storage billing owner, including after
-termination, under its existing spending cap. Storage billing stays disabled
+termination, subject to available credits. Storage billing stays disabled
 until a storage rate is configured. An unavailable cache falls back to the
 ordinary input. This flag does not stream external bucket data.
 
@@ -121,7 +120,6 @@ Replace its location, byte count and digest with your own object metadata.
 ```python
 job = client.run(
     command=["python", "train.py"],
-    budget=2,
     data_regions=["us-east-1"],
     inputs=[{
         "name": "corpus",

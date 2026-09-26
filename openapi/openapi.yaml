@@ -574,7 +574,9 @@
             "type": "integer"
           },
           "budget_usd": {
-            "type": "number"
+            "type": "number",
+            "deprecated": true,
+            "description": "Deprecated compatibility field. Customer spending limits are not enforced."
           },
           "workload_id": {
             "type": "string"
@@ -666,7 +668,9 @@
             ]
           },
           "budget_usd": {
-            "type": "number"
+            "type": "number",
+            "deprecated": true,
+            "description": "Deprecated compatibility field. Customer spending limits are not enforced."
           },
           "spend_usd": {
             "type": "number"
@@ -688,8 +692,7 @@
         "additionalProperties": false,
         "required": [
           "workload",
-          "matrix",
-          "budget_usd"
+          "matrix"
         ],
         "properties": {
           "workload": {
@@ -700,9 +703,8 @@
           },
           "budget_usd": {
             "type": "number",
-            "exclusiveMinimum": 0,
-            "maximum": 1000000,
-            "description": "One total USD cap. Server divides microdollars across at most 64 immutable cell budgets. Unused cell allocations are not redistributed."
+            "description": "Deprecated compatibility field. Customer spending limits are not enforced.",
+            "deprecated": true
           }
         }
       },
@@ -1062,7 +1064,8 @@
         "properties": {
           "max_cost_usd": {
             "type": "number",
-            "description": "Hard customer spending limit in USD for this workload. Omitted means no per-run limit. Available credits and configured account limits still apply. Acceptance does not guarantee completion within the limit."
+            "description": "Deprecated compatibility field. Customer spending limits are not enforced.",
+            "deprecated": true
           },
           "complete_by": {
             "type": "string",
@@ -1685,7 +1688,7 @@
               "cache": {
                 "type": "boolean",
                 "default": false,
-                "description": "Opt in to verified image layer caching within this team and selected execution region. Retained storage stays attributed to the first materializing sandbox under its existing budget and configured workspace storage rate. Cache misses use the image registry."
+                "description": "Opt in to verified image layer caching within this team and selected execution region. Retained storage stays attributed to the first materializing sandbox at the configured workspace storage rate. Cache misses use the image registry."
               }
             },
             "additionalProperties": false
@@ -1795,7 +1798,7 @@
               "cache": {
                 "type": "boolean",
                 "default": false,
-                "description": "Opt in to verified image layer caching within this team and selected execution region. Retained storage stays attributed to the first materializing sandbox under its existing budget and configured workspace storage rate. Cache misses use the image registry."
+                "description": "Opt in to verified image layer caching within this team and selected execution region. Retained storage stays attributed to the first materializing sandbox at the configured workspace storage rate. Cache misses use the image registry."
               }
             },
             "additionalProperties": false
@@ -2220,8 +2223,8 @@
         "properties": {
           "max_cost_usd": {
             "type": "number",
-            "exclusiveMinimum": 0,
-            "description": "Hard customer spending limit for this sandbox. The server default is 5 USD. Reconnecting without a budget preserves the existing limit. Account credits and configured account limits also apply."
+            "description": "Deprecated compatibility field. Customer spending limits are not enforced.",
+            "deprecated": true
           },
           "complete_by": {
             "type": "string",
@@ -3218,7 +3221,15 @@
       "ResearchWorkspaceConfiguration": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["name", "environment", "gpu", "gpu_count", "gpu_memory_gb", "max_hours", "size_gb"],
+        "required": [
+          "name",
+          "environment",
+          "gpu",
+          "gpu_count",
+          "gpu_memory_gb",
+          "max_hours",
+          "size_gb"
+        ],
         "properties": {
           "name": {
             "type": "string",
@@ -3229,12 +3240,19 @@
           },
           "environment": {
             "type": "string",
-            "enum": ["pytorch-cuda"],
+            "enum": [
+              "pytorch-cuda"
+            ],
             "description": "Operator-qualified PyTorch and CUDA image with the selected development tool. Customers cannot override its image digest."
           },
           "editor": {
             "type": "string",
-            "enum": ["", "vscode", "jupyter", "ssh"],
+            "enum": [
+              "",
+              "vscode",
+              "jupyter",
+              "ssh"
+            ],
             "description": "Development-tool preference retained for compatibility with existing configurations. Direct sessions offer browser VS Code and SSH on the same compute. Use the response connections flags to determine current access. On legacy sessions, omission or an empty value preserves both browser tools, and ssh requires ssh_authorized_key."
           },
           "repository": {
@@ -3253,7 +3271,12 @@
           },
           "gpu_count": {
             "type": "integer",
-            "enum": [1, 2, 4, 8],
+            "enum": [
+              1,
+              2,
+              4,
+              8
+            ],
             "description": "Exact GPU count on one machine. These accepted request values do not establish hardware qualification or current availability."
           },
           "gpu_memory_gb": {
@@ -3264,8 +3287,8 @@
           },
           "budget_usd": {
             "type": "number",
-            "minimum": 0,
-            "description": "Optional spending limit for each compute session in USD. When capabilities.account_funded_sessions is true, omission or zero uses account funding without a per-session cap. Older deployments require a positive limit. Existing positive limits remain effective. Positive amounts below one microdollar and amounts outside signed 64-bit microdollar accounting are rejected. Fractional microdollars are truncated. Account credit, account spending controls and maximum duration still apply. Retained project storage is reported separately."
+            "description": "Deprecated compatibility field. Customer spending limits are not enforced.",
+            "deprecated": true
           },
           "max_hours": {
             "type": "integer",
@@ -3275,7 +3298,7 @@
           },
           "size_gb": {
             "type": "number",
-            "minimum": 0.00000095367431640625,
+            "minimum": 9.5367431640625e-07,
             "maximum": 10,
             "description": "Project capacity within capabilities.storage_limit_bytes. With storage_policy_version included-10gb-v1 or r2-standard-10gb-account-v1, send exactly 10 for the 10,000,000,000-byte per-workspace capacity. The account policy shares its free allowance across workspaces. Other deployments use GiB and their displayed capacity limit."
           },
@@ -3395,13 +3418,43 @@
       "WorkspaceWorkloadRequest": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["command"],
+        "required": [
+          "command"
+        ],
         "properties": {
-          "command": {"type": "string", "minLength": 1, "maxLength": 8192, "description": "Command run from the captured project directory through the environment shell. Whitespace-only commands, NUL characters and commands longer than 8192 UTF-8 bytes are rejected."},
-          "budget_usd": {"type": "number", "minimum": 0, "description": "Optional independent workload spending limit in USD. Omission or zero uses account funding without a workload cap. Positive limits below one microdollar are rejected. Account spending controls still apply. This does not change any existing workspace session limit."},
-          "gpu": {"type": "string", "maxLength": 64, "description": "Optional GPU model override. Omit or send an empty string to inherit the workspace configuration."},
-          "gpu_count": {"type": "integer", "enum": [0, 1, 2, 4, 8], "description": "Exact GPUs on one machine. Omitted or zero inherits the workspace configuration."},
-          "gpu_memory_gb": {"type": "number", "minimum": 0, "maximum": 1024, "description": "Memory per GPU in GB. Omitted or zero inherits the workspace configuration."}
+          "command": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192,
+            "description": "Command run from the captured project directory through the environment shell. Whitespace-only commands, NUL characters and commands longer than 8192 UTF-8 bytes are rejected."
+          },
+          "budget_usd": {
+            "type": "number",
+            "description": "Deprecated compatibility field. Customer spending limits are not enforced.",
+            "deprecated": true
+          },
+          "gpu": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "Optional GPU model override. Omit or send an empty string to inherit the workspace configuration."
+          },
+          "gpu_count": {
+            "type": "integer",
+            "enum": [
+              0,
+              1,
+              2,
+              4,
+              8
+            ],
+            "description": "Exact GPUs on one machine. Omitted or zero inherits the workspace configuration."
+          },
+          "gpu_memory_gb": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1024,
+            "description": "Memory per GPU in GB. Omitted or zero inherits the workspace configuration."
+          }
         }
       },
       "WorkspaceArchiveSegment": {
@@ -7206,10 +7259,8 @@
           },
           "max_cost_usd": {
             "type": "number",
-            "minimum": 1,
-            "maximum": 100,
-            "default": 5,
-            "description": "Run spending limit. This is not a prediction of completion cost."
+            "description": "Deprecated compatibility field. Customer spending limits are not enforced.",
+            "deprecated": true
           },
           "seed": {
             "type": "integer",
@@ -7266,10 +7317,8 @@
           },
           "max_cost_usd": {
             "type": "number",
-            "minimum": 1,
-            "maximum": 100,
-            "default": 5,
-            "description": "Run spending limit. This is not a prediction of completion cost."
+            "description": "Deprecated compatibility field. Customer spending limits are not enforced.",
+            "deprecated": true
           },
           "seed": {
             "type": "integer",
@@ -7351,10 +7400,8 @@
           },
           "max_cost_usd": {
             "type": "number",
-            "minimum": 1,
-            "maximum": 100,
-            "default": 5,
-            "description": "Run spending limit. This is not a prediction of completion cost."
+            "description": "Deprecated compatibility field. Customer spending limits are not enforced.",
+            "deprecated": true
           },
           "seed": {
             "type": "integer",
@@ -7366,7 +7413,6 @@
         "required": [
           "evaluation_tasks",
           "training_steps",
-          "max_cost_usd",
           "seed"
         ]
       },
@@ -8116,24 +8162,22 @@
         "additionalProperties": false,
         "properties": {
           "workload": {
-            "description": "Customer HTTP workload request with explicit outcome.max_cost_usd. Preserve the user's command, image, resources and budget.",
+            "description": "Customer HTTP workload request. Preserve the user's command, image and resources.",
             "properties": {
               "outcome": {
                 "properties": {
                   "max_cost_usd": {
-                    "exclusiveMinimum": 0,
-                    "type": "number"
+                    "deprecated": true,
+                    "minimum": 0,
+                    "type": [
+                      "number",
+                      "null"
+                    ]
                   }
                 },
-                "required": [
-                  "max_cost_usd"
-                ],
                 "type": "object"
               }
             },
-            "required": [
-              "outcome"
-            ],
             "type": "object"
           }
         },
@@ -8152,24 +8196,22 @@
             "type": "string"
           },
           "workload": {
-            "description": "Customer HTTP workload request with explicit outcome.max_cost_usd. Preserve the user's command, image, resources and budget.",
+            "description": "Customer HTTP workload request. Preserve the user's command, image and resources.",
             "properties": {
               "outcome": {
                 "properties": {
                   "max_cost_usd": {
-                    "exclusiveMinimum": 0,
-                    "type": "number"
+                    "deprecated": true,
+                    "minimum": 0,
+                    "type": [
+                      "number",
+                      "null"
+                    ]
                   }
                 },
-                "required": [
-                  "max_cost_usd"
-                ],
                 "type": "object"
               }
             },
-            "required": [
-              "outcome"
-            ],
             "type": "object"
           }
         },
@@ -8448,8 +8490,8 @@
               "max_cost_usd": {
                 "anyOf": [
                   {
+                    "deprecated": true,
                     "exclusiveMinimum": 0,
-                    "maximum": 100000,
                     "type": "number"
                   },
                   {
@@ -8556,9 +8598,9 @@
             "type": "string"
           },
           "max_cost_usd": {
-            "exclusiveMinimum": 0,
-            "maximum": 100000,
-            "type": "number"
+            "type": "number",
+            "deprecated": true,
+            "description": "Deprecated compatibility field. Customer spending limits are not enforced."
           },
           "memory_gb": {
             "maximum": 1024,
@@ -8647,8 +8689,8 @@
           },
           "budget_usd": {
             "type": "number",
-            "exclusiveMinimum": 0,
-            "description": "Shared compute spending limit. Defaults to 20 for the built-in assistant. Model and retained storage charges are separate and use the account balance and spending controls."
+            "description": "Deprecated compatibility field. Customer spending limits are not enforced.",
+            "deprecated": true
           },
           "template": {
             "type": "string"
@@ -8745,13 +8787,12 @@
             "else": {
               "required": [
                 "name",
-                "entrypoint",
-                "budget_usd"
+                "entrypoint"
               ]
             }
           }
         ],
-        "description": "Custom code supplies a name, entrypoint and compute budget. A qualified built-in assistant supplies assistant_template and model, with optional name and compute limits. The built-in assistant rejects source, bootstrap, setup, secrets, network permissions and policy overrides."
+        "description": "Custom code supplies a name and entrypoint. A qualified built-in assistant supplies assistant_template and model, with optional name and worker limits. The built-in assistant rejects source, bootstrap, setup, secrets, network permissions and policy overrides."
       },
       "ManagedModelRates": {
         "type": "object",
@@ -9575,7 +9616,9 @@
             "type": "integer"
           },
           "budget_usd": {
-            "type": "number"
+            "type": "number",
+            "deprecated": true,
+            "description": "Deprecated compatibility field. Customer spending limits are not enforced."
           },
           "cost_usd": {
             "type": "number"
@@ -9664,7 +9707,6 @@
           "name",
           "status",
           "current_revision",
-          "budget_usd",
           "cost_usd",
           "reserved_usd",
           "workers"
@@ -10275,7 +10317,8 @@
                 ]
               },
               "budget_usd": {
-                "exclusiveMinimum": 0,
+                "deprecated": true,
+                "description": "Compatibility field. Customer spending limits are not enforced.",
                 "type": "number"
               },
               "connections": {
@@ -10649,9 +10692,6 @@
                 ]
               }
             },
-            "required": [
-              "budget_usd"
-            ],
             "type": "object"
           }
         },
@@ -11013,7 +11053,8 @@
                 ]
               },
               "budget_usd": {
-                "exclusiveMinimum": 0,
+                "deprecated": true,
+                "description": "Compatibility field. Customer spending limits are not enforced.",
                 "type": "number"
               },
               "entrypoint": {
@@ -11181,9 +11222,6 @@
                 "type": "string"
               }
             },
-            "required": [
-              "budget_usd"
-            ],
             "type": "object"
           },
           "idempotency_key": {
@@ -11251,7 +11289,8 @@
                     ]
                   },
                   "budget_usd": {
-                    "exclusiveMinimum": 0,
+                    "deprecated": true,
+                    "description": "Compatibility field. Customer spending limits are not enforced.",
                     "type": "number"
                   },
                   "entrypoint": {
@@ -11419,9 +11458,6 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "budget_usd"
-                ],
                 "type": "object"
               },
               "expected_revision": {
@@ -14070,7 +14106,7 @@
         "tags": [
           "Sandboxes"
         ],
-        "description": "Creates a durable execution environment after Nodus matches infrastructure and authorizes customer-funded usage. 202 means accepted and can precede readiness. A payment method, account headroom, and the sandbox budget are enforced before billable placement.",
+        "description": "Creates a durable execution environment after Nodus matches infrastructure and authorizes customer-funded usage. 202 means accepted and can precede readiness. Payment and credits are checked before billable placement.",
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -14296,7 +14332,7 @@
             }
           }
         },
-        "description": "Account authentication is required. Receipt, immutable run, driver exec and normal lifecycle wake intent commit atomically. Exact source and event ID replay returns the same logical run. Changed command or payload conflicts. Normal budget, deadline, capacity and cleanup gates still apply. Queued events expire after seven days. Lost drivers have at most three attempts and unknown external effects block automatic restart."
+        "description": "Account authentication is required. Receipt, immutable run, driver exec and normal lifecycle wake intent commit atomically. Exact source and event ID replay returns the same logical run. Changed command or payload conflicts. Normal billing, deadline, capacity and cleanup gates still apply. Queued events expire after seven days. Lost drivers have at most three attempts and unknown external effects block automatic restart."
       }
     },
     "/v1/sandboxes/{id}/agent-events/{event_id}": {
@@ -15965,7 +16001,7 @@
             }
           }
         },
-        "description": "202 means accepted, not running. 402 payment_method_required means an administrator must add a payment method in console Billing before running workloads, including runs using starter credits. 402 budget_exceeded means available credits or a configured spending limit prevent submission. 409 is an idempotency conflict. 503 spend_check_unavailable may be retried using the same key."
+        "description": "202 means accepted, not running. 402 payment_method_required means an administrator must add a payment method in console Billing before running workloads, including runs using starter credits. 402 credits_exhausted means the available credits cannot fund submission. 409 is an idempotency conflict. 503 spend_check_unavailable may be retried using the same key."
       },
       "get": {
         "operationId": "listWorkloads",
@@ -16987,7 +17023,7 @@
         "operationId": "updateResearchWorkspaceConfiguration",
         "summary": "Change settings for the next workspace session",
         "tags": ["Research workspaces"],
-        "description": "Requires stopped compute with confirmed release and no active file transfer. Send the complete configuration and its observed configuration_revision. Allows editor, SSH public key, GPU resources, session budget and duration changes. Name, environment, project capacity and repository bootstrap remain fixed. Saved files and previous workloads are preserved. An exact retry of already applied settings succeeds. Conflicting changes require reloading and reviewing the current configuration.",
+        "description": "Requires stopped compute with confirmed release and no active file transfer. Send the complete configuration and its observed configuration_revision. Allows editor, SSH public key, GPU resources, session duration changes. Name, environment, project capacity and repository bootstrap remain fixed. Saved files and previous workloads are preserved. An exact retry of already applied settings succeeds. Conflicting changes require reloading and reviewing the current configuration.",
         "parameters": [
           {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}, "description": "Saved workspace identifier."}
         ],
@@ -17356,7 +17392,7 @@
             "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
           },
           "default": {
-            "description": "400 for invalid command, budget or GPU configuration. 402 for payment, credit or spending limits. 404 for a workspace outside this account. 503 when submission is unavailable. Ordinary workload admission checks, authentication, rate limits and transient failures also apply.",
+            "description": "400 for invalid command or GPU configuration. 402 for payment or credit requirements. 404 for a workspace outside this account. 503 when submission is unavailable. Ordinary workload admission checks, authentication, rate limits and transient failures also apply.",
             "content": {"application/json": {"schema": {"oneOf": [{"$ref": "#/components/schemas/Error"}, {"$ref": "#/components/schemas/SandboxError"}]}}}
           }
         }
@@ -17394,7 +17430,7 @@
             }
           },
           "default": {
-            "description": "400 for a missing retry key or invalid saved configuration. 402 for payment, credit or spending limits. 404 for a workspace not owned by this account. 409 for an existing writer, saving, state or idempotency conflict. 503 when admission or workspace compute is unavailable. Authentication, quotas, repository authorization, rate limits and transient failures also apply.",
+            "description": "400 for a missing retry key or invalid saved configuration. 402 for payment or credit requirements. 404 for a workspace not owned by this account. 409 for an existing writer, saving, state or idempotency conflict. 503 when admission or workspace compute is unavailable. Authentication, quotas, repository authorization, rate limits and transient failures also apply.",
             "content": {
               "application/json": {
                 "schema": {
@@ -19686,7 +19722,7 @@
         ],
         "summary": "Validate a prepared workload without submitting it",
         "operationId": "validateWorkload",
-        "description": "Checks the workload request and referenced resources without admission, capacity reservation or spending. Requires an explicit positive outcome.max_cost_usd. A valid request can still fail admission when submitted.",
+        "description": "Checks the workload request and referenced resources without admission, capacity reservation or spending. A valid request can still fail admission when submitted.",
         "requestBody": {
           "required": true,
           "content": {
@@ -19799,7 +19835,7 @@
         "tags": [
           "Operations"
         ],
-        "description": "Workload operations use the same handlers as the direct routes. The authenticated credential determines team and member access. Submit requires an explicit positive outcome.max_cost_usd and a stable idempotency_key in the JSON arguments. Retry identical arguments after an uncertain response. Validation starts no compute and does not guarantee admission. Logs return text. Workload operations preserve their direct-route JSON response shape. Run drafts require a member-attributed credential and are isolated by team and member. Updates require expected_revision and a partial patch. Omitted fields remain unchanged and null removes a field. An immediate identical retry returns its saved revision. A conflicting edit returns HTTP 409 with run_draft_conflict. Draft operations do not submit workloads or authorize spending. Unsupported operations or versions return 404. Sandbox and managed-agent operations use the same owning handlers as their direct routes and return their existing receipts. Creation requires an explicit positive budget_usd. All mutations in these families require caller-stable idempotency keys. Live file reads run a helper and can wake paid compute. Observation tools never wait for execution completion.",
+        "description": "Workload operations use the same handlers as the direct routes. The authenticated credential determines team and member access. Submit requires a stable idempotency_key in the JSON arguments. Retry identical arguments after an uncertain response. Validation starts no compute and does not guarantee admission. Logs return text. Workload operations preserve their direct-route JSON response shape. Run drafts require a member-attributed credential and are isolated by team and member. Updates require expected_revision and a partial patch. Omitted fields remain unchanged and null removes a field. An immediate identical retry returns its saved revision. A conflicting edit returns HTTP 409 with run_draft_conflict. Draft operations do not submit workloads or authorize spending. Unsupported operations or versions return 404. Sandbox and managed-agent operations use the same owning handlers as their direct routes and return their existing receipts. All mutations in these families require caller-stable idempotency keys. Live file reads run a helper and can wake paid compute. Observation tools never wait for execution completion.",
         "parameters": [
           {
             "name": "version",
@@ -21010,7 +21046,7 @@
             }
           }
         },
-        "description": "Admission is limited to explicitly enabled accounts. Immutable revisions preserve the accepted code for existing runs. The shared budget bounds all workers and unresolved cleanup liability."
+        "description": "Admission is limited to explicitly enabled accounts. Immutable revisions preserve the accepted code for existing runs. Worker concurrency includes unresolved cleanup liability."
       },
       "get": {
         "operationId": "listManagedAgents",

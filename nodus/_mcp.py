@@ -82,11 +82,13 @@ def create_server(base_url: str | None = None) -> FastMCP:
     server = FastMCP("nodus", log_level="WARNING", lifespan=_lifespan)
     read = ToolAnnotations(readOnlyHint=True, destructiveHint=False)
 
-    def require_budget(workload: dict[str, Any]) -> None:
-        outcome = workload.get("outcome")
-        value = outcome.get("max_cost_usd") if isinstance(outcome, dict) else None
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
-            raise ValueError("Provide an explicit positive outcome.max_cost_usd authorized by the user.")
+    def validate_legacy_cost(workload):
+        outcome = workload.get("outcome") or {}
+        if not isinstance(outcome, dict):
+            raise ValueError("outcome must be an object")
+        value = outcome.get("max_cost_usd")
+        if value is not None and (type(value) not in (int, float) or not math.isfinite(value) or value < 0):
+            raise ValueError("max_cost_usd must be a finite nonnegative number")
 
     @server.tool(structured_output=False, annotations=read)
     async def validate_workload(ctx: Context, workload: dict[str, Any]) -> str:
@@ -94,7 +96,7 @@ def create_server(base_url: str | None = None) -> FastMCP:
 
         Validation does not reserve capacity or guarantee admission.
         """
-        require_budget(workload)
+        validate_legacy_cost(workload)
         return await _request(ctx.request_context.lifespan_context, "POST", "/v1/workloads/validate",
                               base_url=base_url, workload=workload)
 
@@ -116,12 +118,12 @@ def create_server(base_url: str | None = None) -> FastMCP:
     @server.tool(structured_output=False, annotations=ToolAnnotations(
         readOnlyHint=False, destructiveHint=False, idempotentHint=True))
     async def submit_workload(ctx: Context, idempotency_key: str, workload: dict[str, Any]) -> str:
-        """Submit a paid GPU workload with an explicit budget in outcome.max_cost_usd.
+        """Submit an authorized GPU workload.
 
         Use a unique idempotency key for each intentional run. Retry an uncertain
         submission with the same key and unchanged workload to avoid a second run.
         """
-        require_budget(workload)
+        validate_legacy_cost(workload)
         return await _request(ctx.request_context.lifespan_context, "POST", "/v1/workloads", base_url=base_url,
                               workload=workload, idempotency_key=idempotency_key)
 

@@ -256,7 +256,7 @@ def docs_api(monkeypatch):
                     "format": "research-archive-v3", "manifest": manifest,
                     "segments": [{"index": 0, **segment, "url": "https://workspace-objects.invalid/saved-project"}]})
             if path == "/v1/agents":
-                assert payload["budget_usd"] == 20 and payload["entrypoint"] == "agent:main"
+                assert payload["entrypoint"] == "agent:main"
                 if "bootstrap" in payload:
                     assert payload["bootstrap"] == {"repo": "your-org/private-agent", "ref": "main"}
                     assert payload["network_permissions"] == ["github"] and "source" not in payload
@@ -291,7 +291,7 @@ def docs_api(monkeypatch):
                 return self.reply({"id": "pet_docs", "mode": "execute", "token": "synthetic-token", "expires_at": "2026-09-18T12:00:00Z"}, 201)
             if path == "/v1/workloads":
                 submissions.append(payload)
-                if not self.headers.get("Idempotency-Key") or not payload.get("outcome", {}).get("max_cost_usd"):
+                if not self.headers.get("Idempotency-Key"):
                     return self.reply({"error": "invalid_brief"}, 400)
                 return self.reply({"id": "wl_docs", "workload_id": "wl_docs", "status": "accepted", "revision": 1}, 202)
             if path == "/v1/workspaces":
@@ -390,10 +390,10 @@ def test_python_documentation_executes(path, number, body, docs_api, tmp_path, m
 
 
 @pytest.mark.parametrize("script,args", [
-    ("basic.py", ["--budget", "5"]),
-    ("async_sweep.py", ["--run-id", "docs-check", "--budget-per-run", "1"]),
-    ("ci_submit.py", ["--submission-id", "docs-check", "--budget", "5"]),
-    ("multi_stage.py", ["--submission-id", "docs-check", "--budget", "5"]),
+    ("basic.py", []),
+    ("async_sweep.py", ["--run-id", "docs-check"]),
+    ("ci_submit.py", ["--submission-id", "docs-check"]),
+    ("multi_stage.py", ["--submission-id", "docs-check"]),
 ])
 def test_complete_example_programs(script, args, docs_api, tmp_path):
     result = subprocess.run([sys.executable, str(ROOT / "examples" / script), *args],
@@ -411,8 +411,8 @@ def test_complete_example_programs(script, args, docs_api, tmp_path):
     ["events", "wl_docs"], ["logs", "wl_docs"],
     ["artifacts", "wl_docs"], ["explain", "wl_docs"], ["ledger", "wl_docs"],
     ["download", "wl_docs"], ["workload", "outputs", "wl_docs"], ["workload", "outputs", "wl_docs", "--reload", "results", "--stage", "main"], ["cancel", "wl_docs"], ["assets"], ["upload", "hello.py"],
-    ["sandbox", "new", "--name", "research-agent", "--github-repo", "your-org/private-agent", "--github-ref", "main", "--budget", "5"],
-    ["agent", "deploy", "worker", "--github-repo", "your-org/private-agent", "--github-ref", "main", "--budget", "20"],
+    ["sandbox", "new", "--name", "research-agent", "--github-repo", "your-org/private-agent", "--github-ref", "main"],
+    ["agent", "deploy", "worker", "--github-repo", "your-org/private-agent", "--github-ref", "main"],
 ])
 def test_installed_terminal_commands(args, docs_api, tmp_path):
     from nodus._workload_file import write_workload_file
