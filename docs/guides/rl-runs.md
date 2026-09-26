@@ -6,19 +6,16 @@ optional `rl` metadata to a normal run:
 
 ```python
 def launch_custom_rl(
-    client, *, image, source_asset_id, budget, stable_run_id,
+    client, *, image, source_asset_id, stable_run_id,
     model_label, planned_tasks,
 ):
     if not isinstance(stable_run_id, str) or not stable_run_id:
         raise ValueError("stable_run_id must be a nonempty stable key for this run")
-    if budget is None:
-        raise ValueError("budget must be an explicit spending limit for this run")
     return client.run(
         image=image,
         source_asset_id=source_asset_id,
         command=["python", "train.py"],
         outputs={"results": "outputs"},
-        budget=budget,
         compute_class="accelerator",
         idempotency_key=stable_run_id,
         extra={
@@ -34,7 +31,7 @@ def launch_custom_rl(
 ```
 
 Use an imported source asset containing your `train.py`, a compatible runtime
-image and an explicit spending limit. The command must write final results
+image and explicit authorization. The command must write final results
 under `outputs` and write and load its own checkpoint state. Adjust the command
 and output path to match your project.
 
@@ -84,7 +81,6 @@ def prepare_run(client, recipe):
         "mode": "evaluate",
         "evaluation_tasks": 16,
         "training_steps": 20,
-        "max_cost_usd": 5,
         "seed": 42,
         "include_traces": False,
     }

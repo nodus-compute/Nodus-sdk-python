@@ -84,14 +84,6 @@ def _warn_if_it_cannot_bootstrap(image: str) -> None:
     )
 
 
-def _warn_if_it_is_uncapped(outcome: dict[str, Any]) -> None:
-    """Explain an omitted workload budget without assuming account limits."""
-    if "max_cost_usd" in outcome:
-        return
-    if sys.stderr.isatty():
-        print("No per-run budget set. Add budget=<usd> to limit this run.", file=sys.stderr)
-
-
 def _as_command(command: list[str] | str | None) -> list[str]:
     """Argv for the workload. A string is split the way a shell would split it."""
     if isinstance(command, str):
@@ -144,8 +136,8 @@ def _reject_unknown(unknown: dict[str, Any], known: tuple[str, ...]) -> None:
     """Refuse a keyword this SDK does not model, naming what it looked like.
 
     The control plane ignores fields it does not know, so a forwarded typo is
-    accepted and runs: ``budget_usd=400`` submits a workload with no cost
-    ceiling at all and answers 202. :data:`UNSUPPORTED` names the fields that
+    accepted and runs: a misspelled resource requirement can select a machine
+    that does not fit the workload. :data:`UNSUPPORTED` names the fields that
     deserve a better refusal than "unknown".
     """
     if not unknown:
@@ -245,9 +237,9 @@ def build_payload(
         try:
             amount = float(budget)
         except (TypeError, ValueError, OverflowError):
-            raise ValueError("budget must be a finite positive amount in USD. Omit it for no per-run limit.") from None
-        if isinstance(budget, bool) or not math.isfinite(amount) or amount <= 0:
-            raise ValueError("budget must be a finite positive amount in USD. Omit it for no per-run limit.")
+            raise ValueError("Legacy budget must be a finite non-negative number.") from None
+        if isinstance(budget, bool) or not math.isfinite(amount) or amount < 0:
+            raise ValueError("Legacy budget must be a finite non-negative number.")
         outcome["max_cost_usd"] = amount
     deadline = _as_timestamp(finish_by)
     if deadline:
@@ -541,7 +533,6 @@ def _warn_about_the_money(payload: dict[str, Any]) -> None:
     After the merge, not before: a warning drawn from a draft can describe a
     submission that never happens.
     """
-    _warn_if_it_is_uncapped(payload.get("outcome") or {})
     source = payload.get("source") or {}
     if source.get("image"):
         _warn_if_it_cannot_bootstrap(source["image"])

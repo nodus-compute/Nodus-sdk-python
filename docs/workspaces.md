@@ -18,6 +18,6 @@ One live sandbox can write a workspace. A conflict includes its current holder I
 
 A workspace can select another dedicated top-level mount. System directories cannot be used. Workspace contents and application recovery state are separate.
 
-Periodic saves preserve the latest useful archive. An empty folder does not replace an earlier useful archive. Hard spending and lifetime cutoffs preserve the last successful save. They cannot guarantee files written after that save. Files must fit the configured workspace capacity.
+Periodic saves preserve the latest useful archive. An empty folder does not replace an earlier useful archive. Credit exhaustion and lifetime cutoffs preserve the last successful save. They cannot guarantee files written after that save. Files must fit the configured workspace capacity.
 
-Storage billing is disabled unless the deployment has a configured price. The metadata reports `disabled_no_approved_storage_rate` or `metered_subject_to_account_limits`. Account and workload spending limits still apply. The asynchronous client exposes the same workspace methods.
+Storage billing is disabled unless the deployment has a configured price. The metadata reports `disabled_no_approved_storage_rate` or `metered_subject_to_account_limits`. Payment requirements and available credits still apply. The asynchronous client exposes the same workspace methods.
