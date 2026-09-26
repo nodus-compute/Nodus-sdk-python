@@ -2055,6 +2055,10 @@ from .errors import AgentChildrenUnavailable
 from ._agent_children import ChildReference, ChildOutcome, ChildCompletions, ChildCancellation
 __all__.extend(['AgentChildrenUnavailable', 'ChildReference', 'ChildOutcome', 'ChildCompletions', 'ChildCancellation'])
 
+from .errors import AgentMessagesUnavailable
+from ._agent_messages import MessageReceipt, PeerMessage
+__all__.extend(['AgentMessagesUnavailable', 'MessageReceipt', 'PeerMessage'])
+
 from ._agent_runs import AgentRun
 __all__.append("AgentRun")
 

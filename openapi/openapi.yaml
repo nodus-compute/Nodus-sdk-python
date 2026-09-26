@@ -13160,6 +13160,23 @@
           "waits"
         ]
       },
+      "ManagedPeerUsage": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Lifetime accepted message counts and payload bytes. Received means committed to the recipient journal. It does not prove the application acted on a message. Uncertain publication ownership remains visible until independently reconciled.",
+        "properties": {
+          "messages": {"type": "integer", "minimum": 0},
+          "bytes": {"type": "integer", "minimum": 0},
+          "pending": {"type": "integer", "minimum": 0},
+          "received": {"type": "integer", "minimum": 0},
+          "undelivered": {"type": "integer", "minimum": 0},
+          "cleanup_pending": {"type": "integer", "minimum": 0},
+          "cleanup_unresolved": {"type": "integer", "minimum": 0},
+          "max_messages": {"type": "integer", "minimum": 1, "maximum": 10000},
+          "max_bytes": {"type": "integer", "minimum": 1, "maximum": 33554432}
+        },
+        "required": ["messages", "bytes", "pending", "received", "undelivered", "cleanup_pending", "cleanup_unresolved", "max_messages", "max_bytes"]
+      },
       "ManagedAgentGroupCreate": {
         "type": "object",
         "additionalProperties": false,
@@ -13431,7 +13448,7 @@
           },
           "blocked_reasons": {
             "type": "array",
-            "maxItems": 19,
+            "maxItems": 20,
             "items": {
               "$ref": "#/components/schemas/ManagedAgentGroupBlockedReason"
             },
@@ -13444,7 +13461,7 @@
               "pending",
               "unresolved"
             ],
-            "description": "Separate from useful task completion. Unresolved resource or accounting evidence takes precedence, then any unsettled attempt is pending. Complete means no assigned attempt currently retains cleanup liability."
+            "description": "Separate from useful task completion. Unresolved resource, accounting or message publication evidence takes precedence, followed by pending allocation or inbox cleanup."
           },
           "broker_limits": {
             "$ref": "#/components/schemas/ManagedBrokerLimits",
@@ -13453,6 +13470,13 @@
           "broker_usage": {
             "$ref": "#/components/schemas/ManagedBrokerUsage",
             "description": "Present only for broker-enrolled groups. Separate integer model and tool accounting from compute costs and logical-run wait counts."
+          },
+          "peer_messaging": {
+            "type": "boolean",
+            "description": "Read-only availability of direct task messaging, assigned automatically when this group is admitted on a supported deployment. Existing groups retain their original availability."
+          },
+          "peer_usage": {
+            "$ref": "#/components/schemas/ManagedPeerUsage"
           }
         },
         "required": [
@@ -13497,6 +13521,7 @@
               "dependency_blocked",
               "execution_capacity",
               "external_outcome_unknown",
+              "messages",
               "queued",
               "recovering",
               "session",

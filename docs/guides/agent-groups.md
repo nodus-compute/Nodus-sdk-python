@@ -88,6 +88,68 @@ same immutable content in another batch returns the original run. Changed
 input, dependencies or deadline conflicts. Identity records survive payload
 expiry, so a retry cannot silently start the task again.
 
+## Exchange messages between tasks
+
+New groups on a qualified account and runtime support peer messages
+automatically. Existing groups retain their accepted capabilities. The group's
+`peer_messaging` response field reports availability. Messages address an
+admitted `task_key` in that same group. A task does not need to be a direct child
+of the sender. Group membership and messaging do not share writable files or
+grant access to another task's blobs.
+
+Use the assigned managed entrypoint to send bounded JSON and receive a recorded
+batch. For this example, submit tasks named `inspect` and `verify`. Give `inspect`
+input such as `{"role": "inspect", "values": [1, 2, 3]}` and give `verify` input
+`{"role": "verify"}`:
+
+```python
+import nodus
+
+def main(event):
+    if event["role"] == "inspect":
+        sent = nodus.agent.send_message(
+            to_task_key="verify",
+            payload={"total": sum(event["values"])},
+            message_key="inspection:1",
+        )
+        return sent.to_dict()
+
+    messages = nodus.agent.receive_messages(wait_id="inspection:1", limit=1)
+    return {"total": messages[0].payload()["total"]}
+```
+
+After deploying that entrypoint and creating its group, submit both tasks in
+one batch. They exchange the total directly without a coordinator:
+
+```sh
+curl --fail --silent --show-error \
+  --header "Authorization: Bearer ${NODUS_API_KEY}" \
+  --header 'Content-Type: application/json' \
+  --header 'Idempotency-Key: inspection-pair-1' \
+  --data '{"tasks":[{"task_key":"inspect","input":{"role":"inspect","values":[1,2,3]}},{"task_key":"verify","input":{"role":"verify"}}]}' \
+  "${NODUS_BASE_URL}/v1/agent-groups/${NODUS_GROUP_ID}/runs"
+```
+
+Keep the message key, destination and payload stable across replay. A send
+returns an immutable `MessageReceipt` once the message is durably recorded.
+It does not assert that the recipient has processed the payload. Retrying the
+same key returns the original receipt. Changing its destination or payload
+conflicts.
+
+A new receive records a wait and yields execution. Nodus resumes the task when
+its batch is recorded. Replaying the same wait ID returns the original messages
+in the same order. Use a new stable wait ID for each later batch and keep its
+limit unchanged. The result is a tuple of immutable `PeerMessage` objects.
+Each `.payload()` call returns a fresh JSON value, so modifying it does not
+alter the recorded message. Record external effects inside durable steps.
+
+Each payload is bounded to 16 KiB of encoded JSON. A receive accepts a limit
+from 1 to 32 and defaults to 10. Messages run serially outside decorated steps.
+With application-state recovery enabled, Nodus captures the state folder before
+recording a new send or receive. Missing group or runtime support raises
+`nodus.AgentMessagesUnavailable` before a message operation starts. These
+methods use the assigned session and do not require an account key in the task.
+
 ## Observe progress and limits
 
 ```sh
@@ -117,11 +179,16 @@ limits and unknown external outcomes. Unknown reasons use `attention_required`.
 Cancellation reports nonterminal members as `cancelling` until their individual
 cancellation completes.
 
-`cleanup_status` is `unresolved` while resource or accounting evidence remains
-unresolved, `pending` while other assigned attempts remain unsettled, and
+`cleanup_status` is `unresolved` while resource, accounting or message publication
+evidence remains unresolved, `pending` while allocation or inbox cleanup remains, and
 `complete` after those obligations settle. Completed work can still have
 unresolved cleanup and a nonzero `reserved_usd`. These fields describe the
 current group response and do not measure productive model activity.
+
+Messaging groups expose `peer_usage` with lifetime message and byte limits,
+pending, received and undelivered counts, and inbox cleanup status. Received
+means committed to the recipient journal. It does not prove the application
+acted on the message. Group message limits are separate from compute budgets.
 
 | Control | Consumed by |
 | --- | --- |

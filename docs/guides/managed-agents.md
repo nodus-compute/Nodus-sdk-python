@@ -287,6 +287,11 @@ separately declared connection credentials. The server refuses any broadening
 or removal that makes mandatory setup invalid. Children share the existing
 group and deployment spending limits.
 
+For messages between admitted tasks in the same group, see
+[peer messaging](agent-groups.md#exchange-messages-between-tasks). Peer messages
+use their own send and receive keys and are available automatically on qualified
+new groups.
+
 ## Recovery boundaries
 
 New deployments admitted with qualified application-state recovery use

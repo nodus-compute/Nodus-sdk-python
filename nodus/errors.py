@@ -22,7 +22,7 @@ _CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 __all__ = [
     "NodusError",
     "StepOutcomeUnknown", "StepDefinitionConflict", "StepResultExpired", "StepFailed",
-    "AgentChildrenUnavailable", "AgentBrokerUnavailable", "BrokerRefused",
+    "AgentChildrenUnavailable", "AgentBrokerUnavailable", "AgentMessagesUnavailable", "BrokerRefused",
     "ConfigurationError",
     "AuthenticationError",
     "NotFoundError",
@@ -398,6 +398,10 @@ class StepFailed(NodusError):
 
 class AgentChildrenUnavailable(NodusError):
     """The assigned runtime or account has not enabled durable child operations."""
+
+
+class AgentMessagesUnavailable(NodusError):
+    """The assigned group or runtime has not enabled durable peer messages."""
 
 
 class AgentBrokerUnavailable(NodusError):

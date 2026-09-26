@@ -14,7 +14,7 @@ import uuid
 from typing import Any
 
 import httpx
-from .errors import NodusError, ValidationError, StepOutcomeUnknown, StepDefinitionConflict, StepResultExpired, StepFailed, AgentChildrenUnavailable, AgentBrokerUnavailable
+from .errors import NodusError, ValidationError, StepOutcomeUnknown, StepDefinitionConflict, StepResultExpired, StepFailed, AgentChildrenUnavailable, AgentBrokerUnavailable, AgentMessagesUnavailable
 
 _ID = re.compile(r'^[A-Za-z0-9:_.-]{1,128}$')
 _MAX = 256 << 10
@@ -123,6 +123,15 @@ class _RPC:
                 if (response.status_code == 503 and code == 'managed_agent_children_unavailable'
                         or response.status_code == 400 and code == 'agent_bridge_unavailable'):
                     raise AgentChildrenUnavailable('Durable child operations are unavailable for this managed runtime')
+            if action in ('peer_send', 'peer_receive'):
+                try:
+                    refusal = response.json()
+                except ValueError:
+                    refusal = None
+                code = (refusal.get('code') or refusal.get('error')) if isinstance(refusal, dict) else None
+                if (response.status_code == 503 and code == 'managed_agent_peer_messages_unavailable'
+                        or response.status_code == 400 and code == 'agent_bridge_unavailable'):
+                    raise AgentMessagesUnavailable('Peer messages are unavailable for this managed group or runtime')
             if response.status_code >= 500:
                 if attempt == 2:
                     raise StepOutcomeUnknown('Journal acknowledgement unavailable')
@@ -162,6 +171,9 @@ class _Session:
             raise StepOutcomeUnknown('Invalid checkpoint identity')
         self.rpc = rpc
         self.scope = {'run_id': run_id, 'session_token': token, 'epoch': epoch}
+        self.peer_messages_version = receipt.get('peer_messages_version')
+        self.peer_group_id = receipt.get('peer_group_id')
+        self.peer_task_key = receipt.get('peer_task_key')
         self.guard = threading.Lock()
         self.stopped = threading.Event()
         self.failed = threading.Event()
@@ -260,7 +272,7 @@ def resume(entrypoint, *, run_id: str, version: str, name: str | None = None):
     session = None
     context_token = None
     try:
-        receipt = rpc.call('session', {'run_id': run_id, 'request_id': uuid.uuid4().hex})
+        receipt = rpc.call('session', {'run_id': run_id, 'request_id': uuid.uuid4().hex, 'peer_messages_version': 1})
         run = receipt.get('run')
         if not isinstance(run, dict) or run.get('run_id') != run_id or run.get('name') != name or run.get('version') != version:
             raise StepDefinitionConflict('Entrypoint identity differs from the registered run')
@@ -361,6 +373,8 @@ from ._agent_children import (
     ChildReference, ChildOutcome, ChildCompletions, ChildCancellation,
     spawn_child, await_children, next_child_completions, cancel_child, child_result, get_child_blob,
 )
+
+from ._agent_messages import MessageReceipt, PeerMessage, send_message, receive_messages
 
 from ._agent_broker import complete_model, read_blob_chunk
 def model(messages: list[dict[str, str]], *, call_id: str, max_output_tokens: int,
