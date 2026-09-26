@@ -107,7 +107,7 @@ Workload IDs contain only letters, digits, underscores and hyphens. The
 idempotency key is a nonempty printable ASCII string without spaces or line
 breaks. `workload` is the HTTP
 workload request object, not the keyword arguments to Python `client.run()`.
-For example, the HTTP budget field is `outcome.max_cost_usd`, not `budget`.
+Use the HTTP field names shown in the operation schema.
 Use the [OpenAPI contract](../../openapi/openapi.yaml) for the full request
 schema and the [parameter reference](../reference/parameters/index.md) for
 field descriptions.
@@ -124,7 +124,7 @@ The [sandbox guide](agent-sandboxes.md) also covers SDK commands and streaming o
 ## Submit and monitor a workload
 
 This example checks the remote GPU and allows up to $1 in workload spending.
-Choose a budget within your authorization before submitting. An accepted
+Authorize the workload before submitting. An accepted
 request does not guarantee completion within that limit.
 
 Call `submit_workload` with:
@@ -145,7 +145,6 @@ Call `submit_workload` with:
       "gpu_count": 1
     },
     "outcome": {
-      "max_cost_usd": 1
     }
   }
 }
@@ -243,7 +242,7 @@ your saved SDK credential and its account permissions.
 | Tools | Purpose |
 | --- | --- |
 | `get_sandbox_capabilities`, `list_sandbox_templates` | Discover qualified environments without renting compute |
-| `create_sandbox`, `list_sandboxes`, `get_sandbox` | Create with a spending limit and inspect setup, state and spending |
+| `create_sandbox`, `list_sandboxes`, `get_sandbox` | Create a sandbox and inspect setup, state and spending |
 | `submit_sandbox_command`, `get_sandbox_command`, `get_sandbox_command_output` | Submit a command, read status and retrieve bounded recorded output |
 | `cancel_sandbox_command`, `sleep_sandbox`, `wake_sandbox`, `terminate_sandbox` | Control execution and compute lifecycle |
 | `sandbox_files` | Queue a file list, stat, read or write operation and return its command receipt |
@@ -252,11 +251,9 @@ your saved SDK credential and its account permissions.
 | `signal_agent_run`, `pause_agent`, `resume_agent`, `retry_agent_run`, `cancel_agent_run` | Deliver events and control eligible execution |
 
 Every new mutation requires a caller-chosen `idempotency_key`. Preserve the key
-and exact request when retrying an uncertain response. Creation requests require
-an explicit positive `budget_usd` authorized by the customer. Run submissions use
-the deployment's existing shared budget. Updating a deployment requires an
-`update` object with `expected_revision` and a complete `definition`, including
-its authorized `budget_usd`.
+and exact request when retrying an uncertain response. Updating a deployment requires an
+`update` object with `expected_revision` and a complete `definition`.
+Creation and updates do not require a spending limit.
 
 Creation and submission return acceptance receipts before provisioning or
 execution finishes. Poll the corresponding metadata tools and use the returned

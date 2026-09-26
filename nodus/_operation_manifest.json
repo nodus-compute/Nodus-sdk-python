@@ -227,24 +227,22 @@
         "additionalProperties": false,
         "properties": {
           "workload": {
-            "description": "Customer HTTP workload request with explicit outcome.max_cost_usd. Preserve the user's command, image, resources and budget.",
+            "description": "Customer HTTP workload request. Preserve the user's command, image and resources.",
             "properties": {
               "outcome": {
                 "properties": {
                   "max_cost_usd": {
-                    "exclusiveMinimum": 0,
-                    "type": "number"
+                    "deprecated": true,
+                    "minimum": 0,
+                    "type": [
+                      "number",
+                      "null"
+                    ]
                   }
                 },
-                "required": [
-                  "max_cost_usd"
-                ],
                 "type": "object"
               }
             },
-            "required": [
-              "outcome"
-            ],
             "type": "object"
           }
         },
@@ -291,7 +289,7 @@
       "id": "workloads.submit",
       "version": "v1",
       "name": "submit_workload",
-      "description": "Submit an authorized paid GPU workload with explicit outcome.max_cost_usd. Save the request and idempotency key before calling. Reuse the identical request and key after an uncertain response.",
+      "description": "Submit an authorized paid GPU workload. Save the request and idempotency key before calling. Reuse the identical request and key after an uncertain response.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -302,24 +300,22 @@
             "type": "string"
           },
           "workload": {
-            "description": "Customer HTTP workload request with explicit outcome.max_cost_usd. Preserve the user's command, image, resources and budget.",
+            "description": "Customer HTTP workload request. Preserve the user's command, image and resources.",
             "properties": {
               "outcome": {
                 "properties": {
                   "max_cost_usd": {
-                    "exclusiveMinimum": 0,
-                    "type": "number"
+                    "deprecated": true,
+                    "minimum": 0,
+                    "type": [
+                      "number",
+                      "null"
+                    ]
                   }
                 },
-                "required": [
-                  "max_cost_usd"
-                ],
                 "type": "object"
               }
             },
-            "required": [
-              "outcome"
-            ],
             "type": "object"
           }
         },
@@ -488,8 +484,8 @@
               "max_cost_usd": {
                 "anyOf": [
                   {
+                    "deprecated": true,
                     "exclusiveMinimum": 0,
-                    "maximum": 100000,
                     "type": "number"
                   },
                   {
@@ -622,7 +618,7 @@
       "id": "sandboxes.create",
       "version": "v1",
       "name": "create_sandbox",
-      "description": "Create an environment with an explicit authorized budget and a stable request key. Returns an acceptance receipt before setup completes.",
+      "description": "Create an environment with a stable request key. Returns an acceptance receipt before setup completes.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -662,7 +658,8 @@
                 ]
               },
               "budget_usd": {
-                "exclusiveMinimum": 0,
+                "deprecated": true,
+                "description": "Compatibility field. Customer spending limits are not enforced.",
                 "type": "number"
               },
               "connections": {
@@ -1036,9 +1033,6 @@
                 ]
               }
             },
-            "required": [
-              "budget_usd"
-            ],
             "type": "object"
           }
         },
@@ -1481,7 +1475,7 @@
       "id": "sandboxes.wake",
       "version": "v1",
       "name": "wake_sandbox",
-      "description": "Request paid compute within the existing sandbox spending limit.",
+      "description": "Request paid compute for the existing sandbox.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1561,7 +1555,7 @@
       "id": "agents.create",
       "version": "v1",
       "name": "create_agent",
-      "description": "Deploy a versioned Python agent with an explicit shared budget. Positive min_workers authorizes paid warm capacity.",
+      "description": "Deploy a versioned Python agent with explicit worker settings. Positive min_workers authorizes paid warm capacity.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1598,7 +1592,8 @@
                 ]
               },
               "budget_usd": {
-                "exclusiveMinimum": 0,
+                "deprecated": true,
+                "description": "Compatibility field. Customer spending limits are not enforced.",
                 "type": "number"
               },
               "entrypoint": {
@@ -1766,9 +1761,6 @@
                 "type": "string"
               }
             },
-            "required": [
-              "budget_usd"
-            ],
             "type": "object"
           },
           "idempotency_key": {
@@ -1801,7 +1793,7 @@
       "id": "agents.update",
       "version": "v1",
       "name": "update_agent",
-      "description": "Publish a revision using expected_revision and a definition with an explicit budget. Accepted runs retain their revision.",
+      "description": "Publish a revision using expected_revision and a complete definition. Accepted runs retain their revision.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -1854,7 +1846,8 @@
                     ]
                   },
                   "budget_usd": {
-                    "exclusiveMinimum": 0,
+                    "deprecated": true,
+                    "description": "Compatibility field. Customer spending limits are not enforced.",
                     "type": "number"
                   },
                   "entrypoint": {
@@ -2022,9 +2015,6 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "budget_usd"
-                ],
                 "type": "object"
               },
               "expected_revision": {
@@ -2130,7 +2120,7 @@
       "id": "agents.submit",
       "version": "v1",
       "name": "submit_agent_run",
-      "description": "Durably accept input against the deployment's shared budget before provisioning. Preserve the key across retries.",
+      "description": "Durably accept input before provisioning. Preserve the key across retries.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -2422,7 +2412,7 @@
       "id": "agents.resume",
       "version": "v1",
       "name": "resume_agent",
-      "description": "Allow queued work to use compute within the existing shared budget.",
+      "description": "Allow queued work to use compute within the worker limits.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {

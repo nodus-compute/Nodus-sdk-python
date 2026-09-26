@@ -32,7 +32,7 @@ Personal history requires a member-associated login. Shared keys can use team hi
 
 `submit` also defaults to `nodus.toml` when no path is given.
 `list --limit N` accepts 1 through 100.
-Set your image, command, budget, and advanced options in a
+Set your image, command and advanced options in a
 [workload file](../getting-started/workload-files.md).
 
 ## Monitor and collect results
@@ -67,10 +67,10 @@ Older releases require IDs for sandbox commands.
 
 | Command | What it does |
 |---|---|
-| `nodus sandbox new IMAGE --name NAME --budget USD` | Admit a sandbox and print its ID while startup continues |
-| `nodus sandbox new --project . --budget USD` | Upload a project and use the qualified managed tools template |
-| `nodus sandbox new --github-repo OWNER/REPO --budget USD` | Use a repository accessible through your connected GitHub account |
-| `nodus sandbox new --source-asset-id ID --budget USD` | Reuse an immutable uploaded project |
+| `nodus sandbox new IMAGE --name NAME` | Admit a sandbox and print its ID while startup continues |
+| `nodus sandbox new --project .` | Upload a project and use the qualified managed tools template |
+| `nodus sandbox new --github-repo OWNER/REPO` | Use a repository accessible through your connected GitHub account |
+| `nodus sandbox new --source-asset-id ID` | Reuse an immutable uploaded project |
 | `nodus sandbox ls` | Show sandbox IDs, names, states and costs |
 | `nodus sandbox detail NAME_OR_ID` | Inspect the sandbox and its admitted settings |
 | `nodus sandbox exec NAME_OR_ID COMMAND` | Run a command and stream its output |
